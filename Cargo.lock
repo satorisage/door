@@ -76,6 +76,7 @@ dependencies = [
  "libc",
  "pam-client",
  "protocol",
+ "serde",
  "serde_json",
 ]
 
