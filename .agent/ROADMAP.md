@@ -5,24 +5,19 @@ milestone's task tree is the plan; `.agent/TODO.md` is its derived ready-frontie
 
 ## Active
 
-### M0 — Vision, scope, architecture decisions
-- [x] vision brief locked (`.agent/REPORTS/project-brief.md`)
-- [x] PROJECT-SCOPE.md committed
-- [ ] **ratify broker strategy** (CHECKIN-0001 → DECISION-0001) — *Critical, blocks M1*
-- [ ] **ratify implementation language** (CHECKIN-0002 → DECISION-0002) — *Critical, blocks M1*
-- [ ] one-page architecture sketch: `doord` / `door-greeter` split + IPC seam
-      `depends:` DECISION-0001, DECISION-0002
+### M1 — Privileged core skeleton (`doord`)
+- [x] Cargo workspace scaffolded (`doord` / `door-greeter` / `protocol`)
+- [ ] `protocol` crate: bespoke greeter↔core message types (D-0001)
+- [ ] IPC server: Unix socket, peer-credential checked
+- [ ] PAM auth conversation (multi-prompt capable)
+- [ ] privilege drop + sanitized session environment
+- [ ] threat model written for the auth path
+      `depends:` D-0001, D-0002
 
-**Done-when:** scope committed; both Critical decisions filed (ratified or
-Proposed-with-ratify-task); architecture sketch exists.
+**Done-when:** `doord` runs a PAM auth conversation over a peer-cred-checked
+Unix socket, drops privileges, and the auth-path threat model is written.
 
 ## Backlog (future milestones, not yet sequenced)
-
-### M1 — Privileged core skeleton (`doord`)
-- PAM auth conversation over a peer-cred-checked Unix socket
-- privilege drop + sanitized session environment
-- threat model written for the auth path
-  `depends:` M0
 
 ### M2 — Session discovery + launch
 - discover `/usr/share/wayland-sessions` + `xsessions`
@@ -55,4 +50,6 @@ Proposed-with-ratify-task); architecture sketch exists.
 
 ## Shipped
 
-- (none yet)
+- **M0 — Vision, scope, architecture decisions** (2026-06-25): brief locked,
+  PROJECT-SCOPE committed, D-0001 (no greetd / bespoke protocol) and D-0002
+  (Rust) ratified Binding.

@@ -41,3 +41,5 @@ automates this.
 
 (Add a row per decision in numeric order. Mark superseded decisions
 inline in the title cell: `— **Superseded by 0NNN (YYYY-MM-DD)**`.)
+| 0001 | 2026-06-25 | [Fully self-contained: bespoke IPC protocol, no greetd](DECISION-0001-bespoke-no-greetd.md) |
+| 0002 | 2026-06-25 | [Rust for the whole stack (doord + door-greeter)](DECISION-0002-rust-stack.md) |

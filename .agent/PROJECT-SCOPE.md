@@ -65,8 +65,10 @@ These extend PERSONAL-PRINCIPLES.md for door. Lower number wins on conflict.
 - **Privilege separation is non-negotiable.** The greeter runs unprivileged;
   the privileged path is minimal, drops privileges, and is the only thing that
   touches PAM/VT/seat/session-spawn. Greeter compromise ≠ root.
-- **Memory-safe language for the privileged path** (presumptively Rust). The
-  most security-critical code does not get a use-after-free bug class.
+- **Rust for the whole stack** (D-0002) — memory-safe across the trust
+  boundary; the most security-critical code does not get a use-after-free class.
+- **No greetd, no greetd protocol** (D-0001). door is fully self-contained with
+  a bespoke IPC protocol; it takes no runtime or wire dependency on greetd.
 - **No network, ever.** No XDMCP / remote login. Local Unix-socket IPC only,
   peer-credential checked.
 - **Exactly one DM owns the machine.** door ships installed-but-disabled until
@@ -105,9 +107,8 @@ These extend PERSONAL-PRINCIPLES.md for door. Lower number wins on conflict.
   true live preview exists).
 
 ### Planned but not yet specified (preserve, do not extend)
-- **greetd IPC compatibility.** Whether `doord` speaks the existing greetd
-  protocol (instant compat with existing greeters) is an open Critical decision
-  — preserved as a candidate, not built until ratified.
+- **Greeter UI toolkit.** GTK4 / Qt-QML / Iced / bespoke wgpu — a Material
+  decision deferred (D-0002 fixes the language, not the rendering stack).
 - **Theming engine.** Beyond the first beautiful default — preserved, not
   developed until one default ships and proves out.
 
@@ -124,6 +125,8 @@ These extend PERSONAL-PRINCIPLES.md for door. Lower number wins on conflict.
   check-in.
 - **A general theming/plugin marketplace** — out until the core + one default
   exist.
+- **greetd interop / compatibility** — decided out (D-0001); door replaces that
+  layer rather than joining it. Re-adding needs a superseding decision.
 - **Non-systemd init support** — v1 assumes `logind`; `seatd`-only/elogind
   portability is a later candidate, not v1.
 
@@ -163,13 +166,13 @@ to hard-stop until a TTY revert is in hand, even if otherwise Material.
 
 ## Active milestone
 
-**Milestone:** M0 — Vision, scope, and the broker-strategy decision (see ROADMAP
-`## Active` once created).
-**Definition of done:** scope committed; the Critical "greetd-IPC vs. own
-protocol" and "language" decisions are filed as DECISIONs (ratified or
-explicitly Proposed-with-ratify-task); a one-page architecture sketch of the
-`doord`/`door-greeter` split + IPC seam exists.
-**Active blockers:** the two open Critical decisions above (in CHECKINS).
+**Milestone:** M1 — Privileged core skeleton (see ROADMAP `## Active`). M0 is
+done: scope committed; D-0001 (no greetd, bespoke protocol) and D-0002 (Rust)
+ratified Binding; Cargo workspace scaffolded.
+**Definition of done (M1):** `doord` runs a PAM auth conversation over a
+peer-cred-checked Unix socket, drops privileges, and a threat model for the auth
+path is written.
+**Active blockers:** none — M1 is unblocked.
 
 ## Project-specific glossary
 

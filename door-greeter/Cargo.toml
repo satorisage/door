@@ -1,0 +1,12 @@
+[package]
+name = "door-greeter"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "door-greeter"
+path = "src/main.rs"
+
+[dependencies]
+protocol = { workspace = true }
