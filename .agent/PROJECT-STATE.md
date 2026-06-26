@@ -1,10 +1,11 @@
 # Project State
 
 **Last updated:** 2026-06-25
-**Active focus:** M1 (privileged core skeleton) — code-complete and
-unit/integration-tested. Only the **live root run** remains for M1 DoD (proves
-the real PAM conversation + `SO_PEERCRED` foreign-uid rejection). Privilege-drop
-live demonstration was split out to M2's DoD (`serve()` stays root by design).
+**Active focus:** M2 (session discovery + launch). **M1 is COMPLETE** — live root
+run on 2026-06-25 confirmed `✓ AUTH SUCCESS` over the peercred socket plus
+foreign-uid rejection. M2 builds on the served socket: discover sessions, then
+spawn the chosen one as the authenticated user — this is where `privdrop::drop_to`
+finally fires (its live privilege-drop demo is M2's DoD).
 
 ---
 
@@ -41,8 +42,9 @@ ready/blocked frontier. Per-task DoD (`done-when:`) and progress live in
 ROADMAP — do **not** duplicate the DoD checklist here (D-0050 dissolved the
 old lockstep-with-SCOPE mandate, a Principle-7 violation).
 
-**Milestone:** M1 — Privileged core skeleton (`doord`); see `ROADMAP.md` `## Active`.
-**Active blockers:** none — seam defaults ratified (D-0003); IPC server unblocked.
+**Milestone:** M2 — Session discovery + launch; see `ROADMAP.md` `## Active`.
+**Active blockers:** none — M1 (the privileged core + served socket) is complete;
+M2's spawn path builds directly on it.
 
 (Projects not using ROADMAP may keep a short DoD list here instead.)
 
@@ -70,11 +72,10 @@ it by kind: deferred-but-committed → a `## Backlog` task in `.agent/ROADMAP.md
 
 ## 5. Next session
 
-Run the M1 live root run: `cargo build -p doord --examples`, then
-`sudo bash /tmp/doord-live-daemon.sh` (daemon, Terminal 1) and the two
-`login_probe` invocations it prints (Terminal 2) — (A) authorized PAM success,
-(B) foreign-uid peercred rejection. Report logs back; then mark the M1 live-run
-task `[x]`. Privilege-drop live demo now lives in M2's DoD (not M1).
+Start M2 (session discovery + launch). First task: discover installed sessions
+from `/usr/share/wayland-sessions` + `xsessions` (parse `.desktop` `Exec=`/`Name=`),
+exposed over the existing IPC seam. Then the spawn path — where `privdrop::drop_to`
+fires — with the live privilege-drop demo as the DoD.
 
 ---
 
