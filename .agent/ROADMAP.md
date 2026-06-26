@@ -23,11 +23,13 @@ milestone's task tree is the plan; `.agent/TODO.md` is its derived ready-frontie
       **bound to the authenticated user** (the greeter's `Start` carries only a
       session id, never an identity). Protocol → v2 (`Response::Started`, an
       additive variant per D-0003 E2). Unit + IPC tests green.
+- [x] **demonstrate the privilege drop on real hardware** (2026-06-25) — live
+      root run passed: a `Start` after a real PAM success spawned the session and
+      the daemon's child reported `uid=1000(stephen) gid=1000(stephen)` with the
+      user's supplementary groups (not root's), `PATH` = the sanitized allowlist,
+      and `LD_PRELOAD` unset — the privilege drop (S3/S4) and env sanitization
+      (S5) confirmed end to end; child reaped (`exit status: 0`).
 - [ ] `logind` seat/VT/session wiring
-- [ ] **demonstrate the privilege drop on real hardware** — carried over from M1;
-      run `sudo bash /tmp/door-spawn-demo.sh`, log in as the user, `Start` the
-      `iddemo` session, and observe the spawned `id` report the user's uid/gid
-      with the sanitized env (drop + env sanitization, live).
   `depends:` M1
   **Done-when (drop):** a spawned session runs as the authenticated user's
   uid/gid with a sanitized environment, verified live (e.g. spawned `id`).

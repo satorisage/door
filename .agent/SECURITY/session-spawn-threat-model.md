@@ -77,10 +77,10 @@ lands. They are listed in §5 as explicitly deferred, not silently omitted.
 - S1, S2 — exercised by in-process IPC tests (auth-gate refusal with no launch;
   post-auth launch bound to the authenticated user and chosen session).
 - S5, and `Exec`/argv/cwd honoring — unit-tested (`spawn::tests`).
-- S3, S4 — mechanism present, unit-tested in `privdrop`; the **live privilege
-  drop** (a session exec'd as the user's uid/gid with the sanitized env) is the
-  drop sub-task's definition-of-done and requires a root run —
-  `sudo bash /tmp/door-spawn-demo.sh` — the next demonstrable step, mirroring
-  M1's live auth run.
+- S3, S4 — unit-tested in `privdrop` **and live-confirmed on real hardware**
+  (2026-06-25 root run): a `Start` after a real PAM success spawned a session that
+  reported `uid=1000 gid=1000` with the user's supplementary groups (not root's),
+  the sanitized `PATH`, and `LD_PRELOAD` unset — the drop (S3), the ordering (S4),
+  and the env allowlist (S5) demonstrated end to end.
 - S6, S7 — code-reviewed; covered indirectly by the unknown-session and
   generic-error paths in `ipc::run_start`.

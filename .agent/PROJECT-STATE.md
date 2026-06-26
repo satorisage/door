@@ -2,12 +2,13 @@
 
 **Last updated:** 2026-06-25
 **Active focus:** M2 (session discovery + launch). Discovery shipped; the
-**session-spawn path is now built and tested** — `Start` is auth-gated and bound
-to the PAM-authenticated user, the daemon forks and runs `privdrop::drop_to` in
-`pre_exec` (drop-or-abort), sanitizes the env, and execs the discovered `Exec`
-(protocol → v2, `Response::Started`). Two M2 tasks remain: the **live
-privilege-drop demo on real hardware** (`sudo bash /tmp/door-spawn-demo.sh` — the
-drop sub-task's DoD) and **logind seat/VT/session wiring**.
+**session-spawn path is built, tested, and live-confirmed** — `Start` is
+auth-gated and bound to the PAM-authenticated user; the daemon forks, runs
+`privdrop::drop_to` in `pre_exec` (drop-or-abort), sanitizes the env, and execs
+the discovered `Exec` (protocol → v2, `Response::Started`). **Live root run on
+2026-06-25 passed:** spawned child reported `uid=1000(stephen) gid=1000(stephen)`
+with the user's groups, sanitized `PATH`, `LD_PRELOAD` unset — the drop sub-task's
+DoD is met. **One M2 task remains: logind seat/VT/session wiring.**
 
 ---
 
@@ -74,19 +75,18 @@ it by kind: deferred-but-committed → a `## Backlog` task in `.agent/ROADMAP.md
 
 ## 5. Next session
 
-Two M2 tasks remain:
-1. **Live privilege-drop demo** (the drop sub-task's DoD) — run
-   `sudo bash /tmp/door-spawn-demo.sh`, log in as the user, `Start` the `iddemo`
-   session, and confirm the spawned `id` reports the user's uid/gid with the
-   sanitized env. Then check the demo box in `ROADMAP.md` and record the result
-   (mirroring M1's "live root run passed" follow-up).
-2. **logind seat/VT/session wiring** — `setsid`/controlling tty, VT switch, the
-   logind session registration (`XDG_SESSION_*`), and session lifecycle
-   (re-greet, respawn policy). Its threats are deferred in
-   `SECURITY/session-spawn-threat-model.md` §5 (N1/N2) and modeled when it lands.
+One M2 task remains: **logind seat/VT/session wiring** — `setsid`/controlling
+tty, VT switch, the logind session registration (`XDG_SESSION_*`), and session
+lifecycle (re-greet, respawn policy). Its threats are deferred in
+`SECURITY/session-spawn-threat-model.md` §5 (N1/N2) and modeled when it lands.
+This completes M2 (its Done-when names the seat/VT wiring as the last piece).
 
 Open doc item: correct D-0003 H5's ordering text to match the reviewed `privdrop`
 code (`initgroups → setresgid → setresuid`); see the note in `ROADMAP.md`.
+
+Demo leftovers from the live run (optional cleanup): `/etc/pam.d/doord` (a valid
+service — door's production default; safe to keep), `/run/doord-demo.sock`,
+`/tmp/door-demo-sessions/`.
 
 ---
 
