@@ -78,16 +78,10 @@ fn handshake_then_serves_requests() {
     let resp: Response = read_frame(&mut conn).unwrap();
     assert_eq!(resp, Response::Sessions(Vec::new()));
 
-    // A privileged request that isn't built yet gets a clean refusal, not a crash.
-    write_frame(
-        &mut conn,
-        &Request::BeginAuth {
-            username: "stephen".to_string(),
-        },
-    )
-    .unwrap();
-    let resp: Response = read_frame(&mut conn).unwrap();
-    assert!(matches!(resp, Response::Error { .. }));
+    // BeginAuth drives a real PAM conversation in this (spawned-binary) test, so
+    // its outcome depends on the host PAM stack; the deterministic auth-flow
+    // coverage lives in the in-process tests in src/ipc.rs. Here we only assert
+    // the seam stays alive and serves the framed request/response protocol.
 }
 
 #[test]

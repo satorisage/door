@@ -12,10 +12,19 @@ milestone's task tree is the plan; `.agent/TODO.md` is its derived ready-frontie
 - [x] IPC server: Unix socket, peer-credential checked (D-0003: pathname socket,
       `SO_PEERCRED` uid gate, single-conn, length-prefixed framing, read timeout;
       E2E-tested in `doord/tests/ipc_smoke.rs`)
-- [ ] PAM auth conversation (multi-prompt capable)
-- [ ] privilege drop + sanitized session environment (D-0003 H5 ordering)
-- [ ] threat model written for the auth path
+- [x] PAM auth conversation (multi-prompt capable) — `Authenticator`/`AuthChannel`
+      seam, real PAM via `pam-client`, min-failure-delay; in-process auth-flow
+      tests (`doord/src/ipc.rs`). Live root run pending (see below).
+- [x] privilege drop + sanitized session environment (D-0003 H5 ordering) —
+      `privdrop::{drop_to,sanitized_env}`, ordering + verify + uid-0 refusal;
+      env allowlist unit-tested. `drop_to` wired to spawn in M2.
+- [x] threat model written for the auth path — `.agent/SECURITY/auth-path-threat-model.md`
       `depends:` D-0001, D-0002, D-0003
+
+**M1 status:** code-complete and unit/integration-tested. One step remains for
+full definition-of-done: a **live root run** proving the real PAM conversation,
+the peercred rejection of a foreign uid, and the privilege drop on real
+hardware (cannot be done unprivileged in this environment).
 
 **Done-when:** `doord` runs a PAM auth conversation over a peer-cred-checked
 Unix socket, drops privileges, and the auth-path threat model is written.

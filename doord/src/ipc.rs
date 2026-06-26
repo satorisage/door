@@ -27,24 +27,33 @@ use std::os::unix::fs::PermissionsExt;
 use std::os::unix::io::AsRawFd;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::Path;
-use std::time::Duration;
+use std::thread;
+use std::time::{Duration, Instant};
 
 use protocol::{read_frame, write_frame, FrameError, Request, Response, PROTOCOL_VERSION};
 
 use crate::config::Config;
+use crate::pam::{AuthOutcome, Authenticator, SocketChannel};
 
 /// How long the daemon waits on a stalled read before dropping the peer.
 const READ_TIMEOUT: Duration = Duration::from_secs(30);
 
+/// Floor on how long a *failed* authentication takes to report. A wrong username
+/// must not fail visibly faster than a wrong password, or the timing itself
+/// leaks which accounts exist. Only the failure path is padded — success is not
+/// slowed. Lockout/backoff proper is left to the PAM stack (`pam_faillock`).
+const MIN_AUTH_FAILURE: Duration = Duration::from_secs(1);
+
 /// Bind the socket and serve greeters forever. Returns only on a fatal error
 /// setting up the listener; per-connection errors are logged and the loop
 /// continues.
-pub fn serve(config: &Config) -> io::Result<()> {
+pub fn serve(config: &Config, authenticator: &dyn Authenticator) -> io::Result<()> {
     let listener = bind(config)?;
     eprintln!(
-        "doord: listening on {} (greeter uid {})",
+        "doord: listening on {} (greeter uid {}, pam service '{}')",
         config.socket_path.display(),
-        config.greeter_uid
+        config.greeter_uid,
+        config.pam_service
     );
 
     for incoming in listener.incoming() {
@@ -52,7 +61,7 @@ pub fn serve(config: &Config) -> io::Result<()> {
             Ok(stream) => {
                 // Sequential by construction: we fully serve one greeter before
                 // accepting the next. One seat, one greeter (no concurrency).
-                if let Err(e) = handle_connection(stream, config) {
+                if let Err(e) = handle_connection(stream, config, authenticator) {
                     eprintln!("doord: connection ended: {e}");
                 }
             }
@@ -103,7 +112,11 @@ fn bind(config: &Config) -> io::Result<UnixListener> {
 
 /// Serve one greeter: authorize it, run the handshake, then answer requests
 /// until it disconnects.
-fn handle_connection(stream: UnixStream, config: &Config) -> Result<(), FrameError> {
+fn handle_connection(
+    stream: UnixStream,
+    config: &Config,
+    authenticator: &dyn Authenticator,
+) -> Result<(), FrameError> {
     let cred = peer_cred(&stream)?;
     if cred.uid != config.greeter_uid {
         // Wrong peer: refuse before reading a single request byte.
@@ -137,8 +150,80 @@ fn handle_connection(stream: UnixStream, config: &Config) -> Result<(), FrameErr
             }
         };
 
-        let response = dispatch(&request);
-        write_frame(&mut conn, &response)?;
+        // BeginAuth opens a multi-step PAM conversation that does its own socket
+        // round-trips through the connection; the rest are single request →
+        // response.
+        match request {
+            Request::BeginAuth { username } => {
+                if run_auth(&mut conn, authenticator, &username)?.is_break() {
+                    return Ok(());
+                }
+            }
+            other => {
+                let response = dispatch(&other);
+                write_frame(&mut conn, &response)?;
+            }
+        }
+    }
+}
+
+/// Whether the connection should keep serving or be torn down.
+enum AuthFlow {
+    Continue,
+    Break,
+}
+
+impl AuthFlow {
+    fn is_break(&self) -> bool {
+        matches!(self, AuthFlow::Break)
+    }
+}
+
+/// Run one authentication conversation to its terminal response. The
+/// [`Authenticator`] pumps prompts and replies over `conn` via a
+/// [`SocketChannel`]; we only send the final verdict here, padding the failure
+/// path to [`MIN_AUTH_FAILURE`] so a fast rejection can't be timed.
+fn run_auth(
+    conn: &mut UnixStream,
+    authenticator: &dyn Authenticator,
+    username: &str,
+) -> Result<AuthFlow, FrameError> {
+    let started = Instant::now();
+    let outcome = {
+        let mut channel = SocketChannel::new(conn);
+        authenticator.authenticate(username, &mut channel)
+    };
+
+    let response = match outcome {
+        AuthOutcome::Success => {
+            eprintln!("doord: authentication succeeded for '{username}'");
+            Response::AuthSuccess
+        }
+        AuthOutcome::Failure => {
+            pad_failure(started);
+            Response::AuthFailure {
+                reason: "Authentication failed".to_string(),
+            }
+        }
+        AuthOutcome::Cancelled => Response::AuthFailure {
+            reason: "Authentication cancelled".to_string(),
+        },
+        AuthOutcome::Transport => {
+            // The greeter is gone; nothing left to reply to.
+            eprintln!("doord: greeter vanished mid-authentication");
+            return Ok(AuthFlow::Break);
+        }
+    };
+
+    write_frame(conn, &response)?;
+    Ok(AuthFlow::Continue)
+}
+
+/// Sleep until at least [`MIN_AUTH_FAILURE`] has elapsed since `started`.
+fn pad_failure(started: Instant) {
+    let elapsed = started.elapsed();
+    if elapsed < MIN_AUTH_FAILURE {
+        thread::sleep(MIN_AUTH_FAILURE - elapsed);
     }
 }
 
@@ -194,11 +279,15 @@ fn dispatch(request: &Request) -> Response {
             protocol_version: PROTOCOL_VERSION,
         },
         Request::ListSessions => Response::Sessions(Vec::new()),
-        Request::BeginAuth { .. }
-        | Request::AuthReply { .. }
-        | Request::CancelAuth
-        | Request::Start { .. }
-        | Request::Power(_) => Response::Error {
+        // BeginAuth is handled by the conversation path, not here.
+        Request::BeginAuth { .. } => Response::Error {
+            message: "internal: auth request reached the stateless dispatch".to_string(),
+        },
+        // A reply or cancel with no conversation in progress is a stray message.
+        Request::AuthReply { .. } | Request::CancelAuth => Response::Error {
+            message: "no authentication in progress".to_string(),
+        },
+        Request::Start { .. } | Request::Power(_) => Response::Error {
             message: "not yet available: the privileged core is still being built".to_string(),
         },
     }
@@ -242,4 +331,133 @@ fn chown_group(path: &Path, gid: u32) -> io::Result<()> {
         return Err(io::Error::last_os_error());
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::pam::ScriptedAuthenticator;
+    use protocol::{AuthPrompt, Secret};
+    use std::path::PathBuf;
+
+    fn test_config() -> Config {
+        Config {
+            socket_path: PathBuf::from("/unused-in-pair-test.sock"),
+            // A socketpair reports the creating process's creds on SO_PEERCRED,
+            // so authorize our own uid.
+            greeter_uid: unsafe { libc::getuid() },
+            greeter_gid: None,
+            pam_service: "unused-in-pair-test".to_string(),
+        }
+    }
+
+    /// Drive a full handshake + auth conversation over an in-process socketpair
+    /// against the scripted authenticator, returning the terminal response to
+    /// the supplied password.
+    fn run_conversation(password_typed: &str) -> Response {
+        let (mut client, server) = UnixStream::pair().unwrap();
+        let typed = password_typed.to_string();
+        let handle = thread::spawn(move || {
+            let cfg = test_config();
+            let auth = ScriptedAuthenticator {
+                password: "hunter2".to_string(),
+            };
+            let _ = handle_connection(server, &cfg, &auth);
+            let _ = typed; // captured to keep the closure's intent explicit
+        });
+
+        write_frame(
+            &mut client,
+            &Request::Hello {
+                protocol_version: PROTOCOL_VERSION,
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            read_frame::<_, Response>(&mut client).unwrap(),
+            Response::Welcome {
+                protocol_version: PROTOCOL_VERSION
+            }
+        );
+
+        write_frame(
+            &mut client,
+            &Request::BeginAuth {
+                username: "stephen".to_string(),
+            },
+        )
+        .unwrap();
+        // The conversation's first step is the password prompt.
+        assert_eq!(
+            read_frame::<_, Response>(&mut client).unwrap(),
+            Response::Auth(AuthPrompt::Question {
+                text: "Password:".to_string(),
+                secret: true,
+            })
+        );
+
+        write_frame(
+            &mut client,
+            &Request::AuthReply {
+                response: Secret::new(password_typed.to_string()),
+            },
+        )
+        .unwrap();
+        let terminal: Response = read_frame(&mut client).unwrap();
+
+        drop(client);
+        handle.join().unwrap();
+        terminal
+    }
+
+    #[test]
+    fn correct_password_authenticates() {
+        assert_eq!(run_conversation("hunter2"), Response::AuthSuccess);
+    }
+
+    #[test]
+    fn wrong_password_is_refused() {
+        assert!(matches!(
+            run_conversation("wrong"),
+            Response::AuthFailure { .. }
+        ));
+    }
+
+    #[test]
+    fn cancel_during_conversation_ends_it() {
+        let (mut client, server) = UnixStream::pair().unwrap();
+        let handle = thread::spawn(move || {
+            let cfg = test_config();
+            let auth = ScriptedAuthenticator {
+                password: "hunter2".to_string(),
+            };
+            let _ = handle_connection(server, &cfg, &auth);
+        });
+
+        write_frame(
+            &mut client,
+            &Request::Hello {
+                protocol_version: PROTOCOL_VERSION,
+            },
+        )
+        .unwrap();
+        let _welcome: Response = read_frame(&mut client).unwrap();
+
+        write_frame(
+            &mut client,
+            &Request::BeginAuth {
+                username: "stephen".to_string(),
+            },
+        )
+        .unwrap();
+        let _prompt: Response = read_frame(&mut client).unwrap();
+
+        // Cancel instead of answering.
+        write_frame(&mut client, &Request::CancelAuth).unwrap();
+        let terminal: Response = read_frame(&mut client).unwrap();
+        assert!(matches!(terminal, Response::AuthFailure { .. }));
+
+        drop(client);
+        handle.join().unwrap();
+    }
 }

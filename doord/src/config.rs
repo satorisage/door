@@ -12,6 +12,10 @@ use std::path::PathBuf;
 /// Default production socket path. The parent dir is created `root:root 0700`.
 const DEFAULT_SOCKET_PATH: &str = "/run/doord/door.sock";
 
+/// Default PAM service name. Resolves to `/etc/pam.d/doord` (installed by door),
+/// falling back to `/etc/pam.d/other` — which denies — if door's file is absent.
+const DEFAULT_PAM_SERVICE: &str = "doord";
+
 /// Resolved daemon configuration.
 pub struct Config {
     /// Pathname Unix socket to listen on (`DOORD_SOCKET`).
@@ -22,6 +26,8 @@ pub struct Config {
     /// Group to own the socket, if known (`DOORD_GREETER_GID`); `None` skips the
     /// chgrp, leaving the peercred check as the sole authorization gate.
     pub greeter_gid: Option<u32>,
+    /// PAM service name to authenticate against (`DOORD_PAM_SERVICE`).
+    pub pam_service: String,
 }
 
 impl Config {
@@ -38,10 +44,16 @@ impl Config {
 
         let greeter_gid = env_u32("DOORD_GREETER_GID");
 
+        let pam_service = std::env::var("DOORD_PAM_SERVICE")
+            .ok()
+            .filter(|v| !v.is_empty())
+            .unwrap_or_else(|| DEFAULT_PAM_SERVICE.to_string());
+
         Config {
             socket_path,
             greeter_uid,
             greeter_gid,
+            pam_service,
         }
     }
 }
