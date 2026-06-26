@@ -11,9 +11,20 @@ enters a session scope; greeter framing never reaches the worker (`O_CLOEXEC`).
 **Multi-login live run passed:** two back-to-back logins registered sessions 17
 then 18 (leader = the worker, each in its own scope), ran as `uid=1000` on
 `/dev/tty4` with `XDG_SESSION_*`, **each closed cleanly**, and the daemon stayed in
-`system.slice/doord-m2.service`. `cargo test` green (30). **Next: promote the next
-milestone** (M3 greeter, gated on the greeter-toolkit decision in ROADMAP
-`## Loose`).
+`system.slice/doord-m2.service`. `cargo test` green (30). M2 committed + merged +
+pushed (`4470f88`).
+
+**Now active: M3 — minimal greeter (functional, ugly).** Toolkit ratified **Iced +
+iced_layershell (D-0006)**. **The greeter is built and unit-tested** (`door-greeter`):
+`client.rs` (protocol client, 4 tests over a scripted socket pair) + `app.rs` (the
+`iced_layershell` overlay — session picker, username/password, sign-in, power
+buttons; a background worker thread owns the blocking client and bridges to Iced
+via a `stream::channel` subscription, handing the UI its command channel through
+`Message::WorkerReady`). The auth→start flow auto-answers the password prompt.
+Clippy clean; 34 tests green workspace-wide. **Remaining for M3: the live
+end-to-end** — run `door-greeter` under a compositor (e.g. `cage`) on a real VT
+against a live `doord`. Daemon-side `Power` is still stubbed (returns "not yet
+available") — a small follow-up, not blocking. See ROADMAP `## Active`.
 
 ---
 
@@ -50,9 +61,9 @@ ready/blocked frontier. Per-task DoD (`done-when:`) and progress live in
 ROADMAP — do **not** duplicate the DoD checklist here (D-0050 dissolved the
 old lockstep-with-SCOPE mandate, a Principle-7 violation).
 
-**Milestone:** M2 — Session discovery + launch; see `ROADMAP.md` `## Active`.
-**Active blockers:** none — M1 (the privileged core + served socket) is complete;
-M2's spawn path builds directly on it.
+**Milestone:** M3 — Minimal greeter (functional, ugly); see `ROADMAP.md` `## Active`.
+**Active blockers:** none — M1/M2 (the privileged core, served socket, and full
+session handoff) are complete and the greeter toolkit is ratified (D-0006).
 
 (Projects not using ROADMAP may keep a short DoD list here instead.)
 
@@ -80,11 +91,31 @@ it by kind: deferred-but-committed → a `## Backlog` task in `.agent/ROADMAP.md
 
 ## 5. Next session
 
-**M2 is done; pick the next milestone.** M3 (minimal greeter) is the natural next
-step but is gated on the **greeter-toolkit decision** (ROADMAP `## Loose`,
-Material) — decide GTK4 / Qt-QML / Iced / bespoke wgpu before starting it.
-Residual M2 follow-ups, not blockers: the N2 session lifecycle (respawn backoff,
-re-greet policy, concurrent-session arbitration) and the M5 hardening pass.
+**M3 — finish the live end-to-end.** The greeter is built and **verified running**
+(2026-06-26): run directly against a wlroots compositor (wayland-0) it connects to
+doord, handshakes, lists sessions, renders, and holds the connection — no crash.
+What remains is a human driving auth → start.
+
+Two findings from the first live attempt:
+- The greeter uses `KeyboardInteractivity::Exclusive` (correct for a real login
+  screen) — running it in a *live desktop* grabs the keyboard. A **dev mode**
+  (`DOORD_GREETER_DEV=1`) now renders a small floating surface with on-demand
+  keyboard so the full flow can be smoke-tested nested without lockout:
+  `DOORD_GREETER_DEV=1 DOORD_SOCKET=/run/doord-demo.sock ./target/debug/door-greeter`
+  (Ctrl-C the launching terminal to quit). Use `/tmp/doord-m3-greeter.sh` to bring
+  doord up first.
+- **`cage` (this Arch build) has no `wlr-layer-shell` support** (no
+  `zwlr_layer_shell` symbols) — it cannot host the layer-shell greeter, nested or
+  on a VT. The production greeter needs a layer-shell-capable host compositor
+  (sway / weston / labwc), **or** we reconsider a plain-iced fullscreen toplevel
+  (which works under cage). This is a deployment-compositor decision for M6 /
+  possibly a D-0006 follow-up — flagged, not yet decided.
+
+Residual: daemon-side `Power` is still stubbed; M2's N2 session lifecycle and the
+M5 hardening pass remain.
+
+Open doc item: correct D-0003 H5's ordering text (`initgroups → setresgid →
+setresuid`); see the note in `ROADMAP.md`.
 
 Open doc item: correct D-0003 H5's ordering text to match the reviewed `privdrop`
 code (`initgroups → setresgid → setresuid`); see the note in `ROADMAP.md`.

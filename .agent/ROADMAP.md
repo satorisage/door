@@ -5,67 +5,56 @@ milestone's task tree is the plan; `.agent/TODO.md` is its derived ready-frontie
 
 ## Active
 
-### M2 — Session discovery + launch ✓ COMPLETE (2026-06-26)
-> All tasks done and live-confirmed. Summarized in `## Shipped`. Next milestone
-> not yet promoted — M3 (greeter) is gated on the greeter-toolkit decision in
-> `## Loose`.
-- [x] discover `/usr/share/wayland-sessions` + `xsessions` — `sessions` module:
-      scans data-dir roots (`DOORD_SESSION_DIRS`-overridable), parses `.desktop`
-      (Name/Comment/Exec→argv, skips Hidden/NoDisplay, dedups by id), keeps `Exec`
-      daemon-side; `ListSessions` returns the wire projection. Unit-tested +
-      E2E in `ipc_smoke.rs`.
-- [x] spawn honoring `.desktop` `Exec=` (incl. wrapper launchers like
-      `start-hyprland`): `spawn::build_command` runs `exec[0]` (bare names and
-      wrappers resolved against the sanitized `PATH`, absolute paths as-is) with
-      the discovered argv, env cleared and rebuilt from the allowlist, cwd = home.
-      Unit-tested.
-- [x] wire `privdrop::drop_to` into the spawn path: the `spawn` module forks via
-      `Command`, runs `drop_to` in `pre_exec` (groups→gid→uid, verified, refuses
-      uid 0 — the reviewed mechanism, used as-is per the task), then execs. `Start`
-      is **auth-gated** (per-connection state; refused before a PAM success) and
-      **bound to the authenticated user** (the greeter's `Start` carries only a
-      session id, never an identity). Protocol → v2 (`Response::Started`, an
-      additive variant per D-0003 E2). Unit + IPC tests green.
-- [x] **demonstrate the privilege drop on real hardware** (2026-06-25) — live
-      root run passed: a `Start` after a real PAM success spawned the session and
-      the daemon's child reported `uid=1000(stephen) gid=1000(stephen)` with the
-      user's supplementary groups (not root's), `PATH` = the sanitized allowlist,
-      and `LD_PRELOAD` unset — the privilege drop (S3/S4) and env sanitization
-      (S5) confirmed end to end; child reaped (`exit status: 0`).
-- [x] `logind` seat/VT/session wiring — **complete, live-confirmed 2026-06-26**
-  `depends:` M1
-  Implements D-0004 (pam_systemd) + D-0005 (per-login worker = logind leader). The
-  daemon re-execs itself as a short-lived session worker (`worker.rs`) that owns
-  the whole PAM transaction, is the logind leader, `setsid`s + takes the seat's VT
-  as controlling tty before the privilege drop (`spawn::session_setup`), runs the
-  session in the sanitized allowlist ∪ PAM env, then closes the session and exits.
-  The daemon never enters a session scope; greeter framing stays solely in the
-  daemon (worker never reads a greeter byte). Threat model S9–S13.
-  `cargo test` green (30). **Multi-login live run passed (2026-06-26):** two
-  back-to-back logins registered sessions 17 then 18 (leader = the per-login
-  worker, each in its own `session-N.scope`), ran as `uid=1000` on `/dev/tty4`
-  with `XDG_SESSION_*`/`XDG_RUNTIME_DIR`, **each closed cleanly on exit**
-  (`loginctl` empty on tty4 after), and the daemon stayed in
-  `system.slice/doord-m2.service` — never a session scope.
+### M3 — Minimal greeter (functional, ugly)
 
-> **Note (D-0003 H5 text vs code):** H5 reads `setresgid → initgroups →
+Toolkit ratified: **Iced + iced_layershell** (D-0006). The greeter is the
+unprivileged, untrusted half: it speaks the `protocol` crate over the daemon
+socket, holds no credential beyond submit, and starts no session itself.
+
+- [x] **protocol client** (`door-greeter/src/client.rs`): connects `DOORD_SOCKET`,
+      runs the `Hello`/`Welcome` handshake, typed API over the conversation
+      (`list_sessions`, `begin_auth` + `recv_auth`/`reply`, `start`, `power`).
+      Blocking I/O isolated; 4 unit tests over a scripted socket pair.
+      `depends:` M1
+- [x] **Iced layer-shell shell** (`door-greeter/src/app.rs`): `wlr-layer-shell`
+      overlay via `iced_layershell` (Overlay layer, all-edge anchor, Exclusive
+      keyboard); Iced app (State/update/view) with the client on a background
+      worker thread, bridged via an `iced_futures::stream::channel` subscription
+      that hands the UI its command channel through `Message::WorkerReady`.
+      `depends:` D-0006
+- [x] **picker + auth UI**: session pick_list, username + password fields, Sign-in
+      button; renders each prompt, sends the `AuthReply` (auto-answers the password
+      prompt if pre-typed), then issues `Start` on success. Password cleared on
+      submit. *(In-memory plaintext during entry is inherent to the text field;
+      deeper zeroization is the M5 audit.)*
+      `depends:` protocol client, Iced layer-shell shell
+- [x] **power controls (greeter side)**: suspend / reboot / power-off buttons →
+      `Request::Power`. **Daemon-side Power still returns "not yet available"**
+      (`ipc::dispatch`); the greeter surfaces that as a status line. Implementing
+      logind Power in the daemon is a small follow-up (deferred, not blocking M3).
+      `depends:` Iced layer-shell shell, protocol client
+- [ ] **live end-to-end**: drive auth → `Start` against a live `doord` under a
+      layer-shell compositor.
+      *(2026-06-26: greeter **verified running** against a wlroots compositor —
+      connects, handshakes, lists sessions, renders, holds the connection, no
+      crash. A `DOORD_GREETER_DEV=1` mode (floating + on-demand keyboard) added for
+      safe nested smoke-testing without keyboard lockout. Remaining: a human
+      driving the full auth+start. **Note:** `cage` (this build) lacks
+      `wlr-layer-shell`, so the production host compositor is an open item —
+      sway/weston/labwc, or reconsider plain-iced toplevel; deployment/M6 detail.)*
+      `depends:` picker + auth UI, power controls (greeter side)
+
+**Done-when (M3):** the greeter, an unprivileged Wayland layer-shell client, lists
+the daemon's sessions, drives the PAM conversation to a successful auth, and starts
+the chosen session against a live `doord` — holding no credential beyond submit and
+never touching privilege. Ugly is fine; M4 makes it beautiful.
+
+> **Carry-forward (D-0003 H5 text vs code):** H5 reads `setresgid → initgroups →
 > setresuid`; the shipped+reviewed `privdrop` does `initgroups → setresgid →
-> setresuid` (the idiomatic order — `initgroups` then `setgid`, both before
-> `setuid`). Both are safe (groups+gid before uid, post-drop verify, refuse uid
-> 0). Drift is in the decision *text*, not the security property — flagged for a
-> doc correction to H5; not blocking.
-
-**Done-when (M2): ✓ met (live, 2026-06-26).** The daemon discovers installed
-sessions, and on a successful auth spawns the chosen session as the authenticated
-user (privileges dropped, environment sanitized) wired into the seat/VT via
-logind — demonstrated end to end with two clean back-to-back logins.
+> setresuid` (both safe: groups+gid before uid, post-drop verify, refuse uid 0).
+> A doc-only correction to H5's text; not blocking. (Also tracked in STATE §5.)
 
 ## Backlog (future milestones, not yet sequenced)
-
-### M3 — Minimal greeter (functional, ugly)
-- Wayland client: session picker, password field, power controls
-- speaks the IPC protocol; holds no credential beyond submit
-  `depends:` M1
 
 ### M4 — The beautiful greeter
 - first beautiful default: animation, theming, system-wide assets
@@ -83,7 +72,8 @@ logind — demonstrated end to end with two clean back-to-back logins.
 
 ## Loose
 
-- Decide greeter toolkit (GTK4 / Qt-QML / Iced / bespoke wgpu) — Material.
+- ~~Decide greeter toolkit (GTK4 / Qt-QML / Iced / bespoke wgpu)~~ — **resolved
+  2026-06-26: Iced + iced_layershell (D-0006).**
 
 ## Shipped
 

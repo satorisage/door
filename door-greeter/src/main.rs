@@ -10,12 +10,15 @@
 //!
 //! Because it runs pre-session, every asset it renders (theme, cursor, font,
 //! shaders, wallpaper) must be installed system-wide and world-readable, or it
-//! silently falls back to stock. The rendering toolkit is not yet chosen; this
-//! skeleton is the protocol-facing shell that a UI will be built onto.
+//! silently falls back to stock. The toolkit is **Iced + iced_layershell**
+//! (D-0006); this binary wires the protocol [`client`] to that layer-shell UI.
 
-fn main() {
-    // Skeleton. The Wayland surface, session picker, and the daemon connection
-    // (speaking the `protocol` crate's messages over the local socket) land
-    // here once the privileged core can answer them.
-    eprintln!("door-greeter: skeleton — UI not yet implemented");
+mod app;
+mod client;
+
+fn main() -> iced_layershell::Result {
+    // The greeter is the Wayland layer-shell UI built on `client` (the
+    // protocol-facing half). It connects to the daemon, lists sessions, runs the
+    // PAM conversation, and asks the daemon to start the chosen session.
+    app::run()
 }
