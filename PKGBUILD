@@ -43,10 +43,10 @@ package() {
     install -Dm644 dist/pam.d/doord            "$pkgdir/etc/pam.d/doord"
     install -Dm644 dist/pam.d/door-greeter     "$pkgdir/etc/pam.d/door-greeter"
 
-    # systemd units (installed, NOT enabled) + the greeter system user.
-    install -Dm644 dist/systemd/doord.service        "$pkgdir/usr/lib/systemd/system/doord.service"
-    install -Dm644 dist/systemd/door-greeter.service "$pkgdir/usr/lib/systemd/system/door-greeter.service"
-    install -Dm644 dist/sysusers.d/door.conf         "$pkgdir/usr/lib/sysusers.d/door.conf"
+    # systemd unit (installed, NOT enabled) + the greeter system user. doord owns
+    # the greeter lifecycle (D-0008), so there is no separate greeter unit.
+    install -Dm644 dist/systemd/doord.service "$pkgdir/usr/lib/systemd/system/doord.service"
+    install -Dm644 dist/sysusers.d/door.conf  "$pkgdir/usr/lib/sysusers.d/door.conf"
 
     install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE" 2>/dev/null || true
 }
