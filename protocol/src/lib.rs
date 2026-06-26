@@ -46,7 +46,10 @@ pub use secret::Secret;
 /// any credential crosses the seam. Bump this on **any** change to message
 /// shape (new variant, new field, changed encoding); the handshake then keeps a
 /// peer from ever being handed a message its version cannot parse.
-pub const PROTOCOL_VERSION: u32 = 1;
+///
+/// v2 added [`Response::Started`] — the session-spawn outcome — as an additive
+/// variant (the sanctioned evolution path: a new variant guarded by this bump).
+pub const PROTOCOL_VERSION: u32 = 2;
 
 /// A desktop session the daemon discovered and is willing to start.
 ///
@@ -138,6 +141,11 @@ pub enum Response {
     Auth(AuthPrompt),
     /// Authentication succeeded; the greeter may now [`Request::Start`].
     AuthSuccess,
+    /// The chosen session was launched for the authenticated user (answer to a
+    /// successful [`Request::Start`]). The greeter should step aside: the daemon
+    /// now owns the running session. Carries no detail — the session's pid, seat,
+    /// and lifecycle live entirely on the privileged side of the seam.
+    Started,
     /// Authentication failed; the conversation is over (greeter may retry).
     AuthFailure { reason: String },
     /// The daemon refused or could not satisfy a request. Never leaks

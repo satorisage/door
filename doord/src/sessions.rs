@@ -351,7 +351,7 @@ mod tests {
             "[Desktop Entry]\nName=i3\nExec=/usr/bin/i3\n",
         );
 
-        let mut sessions = discover(&[root.path.clone()]);
+        let mut sessions = discover(std::slice::from_ref(&root.path));
         sessions.sort_by(|a, b| a.id.cmp(&b.id));
 
         assert_eq!(sessions.len(), 2);
@@ -393,7 +393,7 @@ mod tests {
         );
         root.write("wayland-sessions", "good.desktop", "[Desktop Entry]\nName=Good\nExec=good\n");
 
-        let sessions = discover(&[root.path.clone()]);
+        let sessions = discover(std::slice::from_ref(&root.path));
         assert_eq!(sessions.len(), 1);
         assert_eq!(sessions[0].id, "good");
     }
@@ -433,7 +433,7 @@ mod tests {
             "[Desktop Entry]\nName=Plasma\nName[de]=Plasma-DE\nExec=startplasma-wayland\n\n[Desktop Action new]\nName=Should be ignored\nExec=should-not-win\n",
         );
 
-        let sessions = discover(&[root.path.clone()]);
+        let sessions = discover(std::slice::from_ref(&root.path));
         assert_eq!(sessions.len(), 1);
         assert_eq!(sessions[0].name, "Plasma");
         assert_eq!(sessions[0].exec, vec!["startplasma-wayland"]);
