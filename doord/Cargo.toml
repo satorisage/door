@@ -1,0 +1,12 @@
+[package]
+name = "doord"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "doord"
+path = "src/main.rs"
+
+[dependencies]
+protocol = { workspace = true }
