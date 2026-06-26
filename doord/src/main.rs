@@ -21,18 +21,22 @@
 mod config;
 mod hardening;
 mod ipc;
+mod pam;
+mod privdrop;
 
 use std::process::ExitCode;
 
 use config::Config;
+use pam::PamAuthenticator;
 
 fn main() -> ExitCode {
     // Lock down the process before opening any attack surface.
     hardening::apply_baseline();
 
     let config = Config::from_env();
+    let authenticator = PamAuthenticator::new(config.pam_service.clone());
 
-    match ipc::serve(&config) {
+    match ipc::serve(&config, &authenticator) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
             eprintln!("doord: fatal: could not serve on {}: {e}", config.socket_path.display());
