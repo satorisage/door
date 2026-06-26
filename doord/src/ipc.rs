@@ -33,8 +33,7 @@ use std::time::{Duration, Instant};
 use protocol::{read_frame, write_frame, FrameError, Request, Response, PROTOCOL_VERSION};
 
 use crate::config::Config;
-use crate::pam::{AuthOutcome, Authenticator, SocketChannel};
-use crate::spawn::SessionLauncher;
+use crate::pam::{AuthOutcome, Login, LoginFactory};
 
 /// How long the daemon waits on a stalled read before dropping the peer.
 const READ_TIMEOUT: Duration = Duration::from_secs(30);
@@ -48,17 +47,15 @@ const MIN_AUTH_FAILURE: Duration = Duration::from_secs(1);
 /// Bind the socket and serve greeters forever. Returns only on a fatal error
 /// setting up the listener; per-connection errors are logged and the loop
 /// continues.
-pub fn serve(
-    config: &Config,
-    authenticator: &dyn Authenticator,
-    launcher: &dyn SessionLauncher,
-) -> io::Result<()> {
+pub fn serve(config: &Config, logins: &dyn LoginFactory) -> io::Result<()> {
     let listener = bind(config)?;
     eprintln!(
-        "doord: listening on {} (greeter uid {}, pam service '{}')",
+        "doord: listening on {} (greeter uid {}, pam service '{}', seat '{}' vt {:?})",
         config.socket_path.display(),
         config.greeter_uid,
-        config.pam_service
+        config.pam_service,
+        config.seat.seat,
+        config.seat.vtnr,
     );
 
     for incoming in listener.incoming() {
@@ -66,7 +63,7 @@ pub fn serve(
             Ok(stream) => {
                 // Sequential by construction: we fully serve one greeter before
                 // accepting the next. One seat, one greeter (no concurrency).
-                if let Err(e) = handle_connection(stream, config, authenticator, launcher) {
+                if let Err(e) = handle_connection(stream, config, logins) {
                     eprintln!("doord: connection ended: {e}");
                 }
             }
@@ -120,8 +117,7 @@ fn bind(config: &Config) -> io::Result<UnixListener> {
 fn handle_connection(
     stream: UnixStream,
     config: &Config,
-    authenticator: &dyn Authenticator,
-    launcher: &dyn SessionLauncher,
+    logins: &dyn LoginFactory,
 ) -> Result<(), FrameError> {
     let cred = peer_cred(&stream)?;
     if cred.uid != config.greeter_uid {
@@ -141,11 +137,21 @@ fn handle_connection(
         return Ok(());
     }
 
-    // Per-connection authentication state. `Start` is honored only once this is
-    // `Some`, and the session is launched as *this* user — never one the greeter
-    // names. The greeter cannot set it; only a completed PAM success does. It is
-    // scoped to the connection, so it cannot outlive the greeter that earned it.
-    let mut authenticated: Option<String> = None;
+    // The per-connection login owns the PAM transaction (auth → session). It is
+    // handed its own clone of the connection so its PAM conversation can prompt
+    // the greeter without contending with this loop's request reads (the two
+    // never read concurrently: the loop is blocked inside `authenticate` while
+    // the conversation runs). `Start` is honored only once the login reports an
+    // authenticated user — bound by a completed PAM success, never by anything
+    // the greeter names — and the login dies with the connection that earned it.
+    let greeter = match conn.try_clone() {
+        Ok(g) => g,
+        Err(e) => {
+            eprintln!("doord: could not clone greeter connection for PAM: {e}");
+            return Ok(());
+        }
+    };
+    let mut login = logins.begin(greeter);
 
     loop {
         let request: Request = match read_frame(&mut conn) {
@@ -166,17 +172,17 @@ fn handle_connection(
         // BeginAuth runs a multi-step PAM conversation over the connection, and
         // Start launches and then owns the session. The rest are stateless.
         match request {
-            Request::BeginAuth { username } => match run_auth(&mut conn, authenticator, &username)?
-            {
-                AuthFlow::Authenticated(user) => authenticated = Some(user),
-                AuthFlow::Continue => {}
-                AuthFlow::Break => return Ok(()),
-            },
-            Request::Start { session_id } => match authenticated.as_deref() {
+            Request::BeginAuth { username } => {
+                match run_auth(&mut conn, login.as_mut(), &username)? {
+                    AuthFlow::Continue => {}
+                    AuthFlow::Break => return Ok(()),
+                }
+            }
+            Request::Start { session_id } => {
                 // The session-start gate: no auth, no spawn. A compromised greeter
                 // cannot reach the privilege handoff without first driving a real
                 // PAM success, and then only for the user that success bound.
-                None => {
+                if login.user().is_none() {
                     eprintln!("doord: refusing Start: no authenticated user on this connection");
                     write_frame(
                         &mut conn,
@@ -184,15 +190,12 @@ fn handle_connection(
                             message: "authenticate before starting a session".to_string(),
                         },
                     )?;
+                } else if run_start(&mut conn, config, login.as_mut(), &session_id)?.is_started() {
+                    // The session is running and the greeter has stepped aside;
+                    // this connection's work is done.
+                    return Ok(());
                 }
-                Some(username) => {
-                    if run_start(&mut conn, config, launcher, username, &session_id)?.is_started() {
-                        // The session is running and the greeter has stepped
-                        // aside; this connection's work is done.
-                        return Ok(());
-                    }
-                }
-            },
+            }
             other => {
                 let response = dispatch(&other, config);
                 write_frame(&mut conn, &response)?;
@@ -201,12 +204,13 @@ fn handle_connection(
     }
 }
 
-/// Outcome of an authentication conversation, as it affects the connection.
+/// Outcome of an authentication conversation, as it affects the connection. The
+/// authenticated identity itself lives in the login, not here — the loop only
+/// needs to know whether to keep serving.
 enum AuthFlow {
-    /// The attempt failed or was cancelled; keep serving (the greeter may retry).
+    /// Authenticated, or a retryable failure/cancel; keep serving. On success the
+    /// login now reports a user, which the `Start` gate reads.
     Continue,
-    /// PAM accepted the user; remember them for a later `Start`.
-    Authenticated(String),
     /// The greeter vanished mid-conversation; tear the connection down.
     Break,
 }
@@ -225,28 +229,24 @@ impl StartFlow {
     }
 }
 
-/// Run one authentication conversation to its terminal response. The
-/// [`Authenticator`] pumps prompts and replies over `conn` via a
-/// [`SocketChannel`]; we only send the final verdict here, padding the failure
-/// path to [`MIN_AUTH_FAILURE`] so a fast rejection can't be timed.
+/// Run one authentication conversation to its terminal response. The [`Login`]
+/// pumps prompts and replies over its own clone of the connection; we only send
+/// the final verdict here, padding the failure path to [`MIN_AUTH_FAILURE`] so a
+/// fast rejection can't be timed. On success the login is now bound to the user,
+/// which the `Start` gate reads — the loop keeps serving either way.
 fn run_auth(
     conn: &mut UnixStream,
-    authenticator: &dyn Authenticator,
+    login: &mut dyn Login,
     username: &str,
 ) -> Result<AuthFlow, FrameError> {
     let started = Instant::now();
-    let outcome = {
-        let mut channel = SocketChannel::new(conn);
-        authenticator.authenticate(username, &mut channel)
-    };
+    let outcome = login.authenticate(username);
 
     match outcome {
         AuthOutcome::Success => {
             eprintln!("doord: authentication succeeded for '{username}'");
             write_frame(conn, &Response::AuthSuccess)?;
-            // Bind the connection to the user PAM actually authenticated; a later
-            // Start spawns as this identity, not whatever the greeter may claim.
-            Ok(AuthFlow::Authenticated(username.to_string()))
+            Ok(AuthFlow::Continue)
         }
         AuthOutcome::Failure => {
             pad_failure(started);
@@ -275,19 +275,22 @@ fn run_auth(
     }
 }
 
-/// Launch the chosen session for the already-authenticated `username`. Resolves
-/// the session id against current discovery, hands off to the [`SessionLauncher`]
-/// (which drops privilege and execs), tells the greeter [`Response::Started`],
-/// then owns the running session until it exits. A logical failure (unknown
-/// session, spawn error) sends a non-leaky [`Response::Error`] and keeps the
-/// connection serving so the greeter can choose again.
+/// Launch the chosen session for the already-authenticated login. Resolves the
+/// session id against current discovery, hands off to the [`Login`] (which opens
+/// the logind session, drops privilege, and execs), tells the greeter
+/// [`Response::Started`], then owns the running session until it exits. A logical
+/// failure (unknown session, spawn error) sends a non-leaky [`Response::Error`]
+/// and keeps the connection serving so the greeter can choose again.
 fn run_start(
     conn: &mut UnixStream,
     config: &Config,
-    launcher: &dyn SessionLauncher,
-    username: &str,
+    login: &mut dyn Login,
     session_id: &str,
 ) -> Result<StartFlow, FrameError> {
+    // For journaling only; the launch binds to the login's authenticated user,
+    // not to anything derived from the request.
+    let username = login.user().unwrap_or("?").to_string();
+
     // Re-discover so the picker and the launch agree on the same id, even if the
     // installed set changed while the greeter was up. The Exec stays daemon-side.
     let session = crate::sessions::discover(&config.session_dirs)
@@ -308,7 +311,7 @@ fn run_start(
         }
     };
 
-    match launcher.launch(&session, username) {
+    match login.start(&session, &config.seat) {
         Ok(child) => {
             eprintln!("doord: started session '{}' for '{username}'", session.id);
             // Tell the greeter before we block on the session: it steps aside,
@@ -465,9 +468,8 @@ fn chown_group(path: &Path, gid: u32) -> io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::pam::ScriptedAuthenticator;
-    use crate::sessions::DiscoveredSession;
-    use crate::spawn::{LaunchError, SessionChild};
+    use crate::config::SeatTarget;
+    use crate::pam::testing::ScriptedLoginFactory;
     use protocol::{AuthPrompt, Secret};
     use std::path::PathBuf;
     use std::sync::atomic::{AtomicU32, Ordering};
@@ -482,29 +484,20 @@ mod tests {
             greeter_uid: unsafe { libc::getuid() },
             greeter_gid: None,
             pam_service: "unused-in-pair-test".to_string(),
+            seat: SeatTarget {
+                seat: "seat0".to_string(),
+                vtnr: None,
+            },
         }
     }
 
-    /// A launcher that records each (session id, username) it is asked to start
-    /// and never forks — so the connection's auth-gating and identity-binding can
-    /// be asserted without privilege. The shared log lets the test thread read
-    /// what the daemon thread launched.
-    #[derive(Clone, Default)]
-    struct RecordingLauncher {
-        calls: Arc<Mutex<Vec<(String, String)>>>,
-    }
-
-    impl SessionLauncher for RecordingLauncher {
-        fn launch(
-            &self,
-            session: &DiscoveredSession,
-            username: &str,
-        ) -> Result<SessionChild, LaunchError> {
-            self.calls
-                .lock()
-                .unwrap()
-                .push((session.id.clone(), username.to_string()));
-            Ok(SessionChild::detached())
+    /// A scripted login factory accepting `hunter2`, recording launches into the
+    /// shared log the test thread reads — so the connection's auth-gating and
+    /// identity-binding can be asserted without privilege, PAM, or a real spawn.
+    fn scripted_logins(calls: Arc<Mutex<Vec<(String, String)>>>) -> ScriptedLoginFactory {
+        ScriptedLoginFactory {
+            password: "hunter2".to_string(),
+            calls,
         }
     }
 
@@ -538,11 +531,8 @@ mod tests {
         let typed = password_typed.to_string();
         let handle = thread::spawn(move || {
             let cfg = test_config();
-            let auth = ScriptedAuthenticator {
-                password: "hunter2".to_string(),
-            };
-            let launcher = RecordingLauncher::default();
-            let _ = handle_connection(server, &cfg, &auth, &launcher);
+            let logins = scripted_logins(Arc::new(Mutex::new(Vec::new())));
+            let _ = handle_connection(server, &cfg, &logins);
             let _ = typed; // captured to keep the closure's intent explicit
         });
 
@@ -608,11 +598,8 @@ mod tests {
         let (mut client, server) = UnixStream::pair().unwrap();
         let handle = thread::spawn(move || {
             let cfg = test_config();
-            let auth = ScriptedAuthenticator {
-                password: "hunter2".to_string(),
-            };
-            let launcher = RecordingLauncher::default();
-            let _ = handle_connection(server, &cfg, &auth, &launcher);
+            let logins = scripted_logins(Arc::new(Mutex::new(Vec::new())));
+            let _ = handle_connection(server, &cfg, &logins);
         });
 
         write_frame(
@@ -652,11 +639,8 @@ mod tests {
                 session_dirs: session_dir_with("hyprland"),
                 ..test_config()
             };
-            let auth = ScriptedAuthenticator {
-                password: "hunter2".to_string(),
-            };
-            let launcher = RecordingLauncher { calls: calls_in };
-            let _ = handle_connection(server, &cfg, &auth, &launcher);
+            let logins = scripted_logins(calls_in);
+            let _ = handle_connection(server, &cfg, &logins);
         });
 
         // Handshake, then jump straight to Start without authenticating.
@@ -702,11 +686,8 @@ mod tests {
                 session_dirs: session_dir_with("hyprland"),
                 ..test_config()
             };
-            let auth = ScriptedAuthenticator {
-                password: "hunter2".to_string(),
-            };
-            let launcher = RecordingLauncher { calls: calls_in };
-            let _ = handle_connection(server, &cfg, &auth, &launcher);
+            let logins = scripted_logins(calls_in);
+            let _ = handle_connection(server, &cfg, &logins);
         });
 
         write_frame(

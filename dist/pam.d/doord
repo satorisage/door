@@ -5,6 +5,14 @@
 # door owns the conversation, not the policy.
 #
 # If this file is absent, libpam falls back to /etc/pam.d/other, which denies.
+#
+# The `session` include is load-bearing, not boilerplate: doord opens a PAM
+# session (pam_open_session) when launching the user's session, and the included
+# chain (system-local-login -> system-login) runs `pam_systemd.so` in its session
+# phase. That is what registers the logind session — seat/VT assignment, the
+# session scope cgroup, XDG_SESSION_ID / XDG_RUNTIME_DIR — from the XDG_SEAT /
+# XDG_VTNR / XDG_SESSION_TYPE/CLASS/DESKTOP that doord sets before opening it.
+# door does not call logind directly; do not remove the session include.
 
 auth       requisite    pam_nologin.so
 auth       include      system-local-login

@@ -5,7 +5,10 @@ milestone's task tree is the plan; `.agent/TODO.md` is its derived ready-frontie
 
 ## Active
 
-### M2 — Session discovery + launch
+### M2 — Session discovery + launch ✓ COMPLETE (2026-06-26)
+> All tasks done and live-confirmed. Summarized in `## Shipped`. Next milestone
+> not yet promoted — M3 (greeter) is gated on the greeter-toolkit decision in
+> `## Loose`.
 - [x] discover `/usr/share/wayland-sessions` + `xsessions` — `sessions` module:
       scans data-dir roots (`DOORD_SESSION_DIRS`-overridable), parses `.desktop`
       (Name/Comment/Exec→argv, skips Hidden/NoDisplay, dedups by id), keeps `Exec`
@@ -29,10 +32,21 @@ milestone's task tree is the plan; `.agent/TODO.md` is its derived ready-frontie
       user's supplementary groups (not root's), `PATH` = the sanitized allowlist,
       and `LD_PRELOAD` unset — the privilege drop (S3/S4) and env sanitization
       (S5) confirmed end to end; child reaped (`exit status: 0`).
-- [ ] `logind` seat/VT/session wiring
+- [x] `logind` seat/VT/session wiring — **complete, live-confirmed 2026-06-26**
   `depends:` M1
-  **Done-when (drop):** a spawned session runs as the authenticated user's
-  uid/gid with a sanitized environment, verified live (e.g. spawned `id`).
+  Implements D-0004 (pam_systemd) + D-0005 (per-login worker = logind leader). The
+  daemon re-execs itself as a short-lived session worker (`worker.rs`) that owns
+  the whole PAM transaction, is the logind leader, `setsid`s + takes the seat's VT
+  as controlling tty before the privilege drop (`spawn::session_setup`), runs the
+  session in the sanitized allowlist ∪ PAM env, then closes the session and exits.
+  The daemon never enters a session scope; greeter framing stays solely in the
+  daemon (worker never reads a greeter byte). Threat model S9–S13.
+  `cargo test` green (30). **Multi-login live run passed (2026-06-26):** two
+  back-to-back logins registered sessions 17 then 18 (leader = the per-login
+  worker, each in its own `session-N.scope`), ran as `uid=1000` on `/dev/tty4`
+  with `XDG_SESSION_*`/`XDG_RUNTIME_DIR`, **each closed cleanly on exit**
+  (`loginctl` empty on tty4 after), and the daemon stayed in
+  `system.slice/doord-m2.service` — never a session scope.
 
 > **Note (D-0003 H5 text vs code):** H5 reads `setresgid → initgroups →
 > setresuid`; the shipped+reviewed `privdrop` does `initgroups → setresgid →
@@ -41,9 +55,10 @@ milestone's task tree is the plan; `.agent/TODO.md` is its derived ready-frontie
 > 0). Drift is in the decision *text*, not the security property — flagged for a
 > doc correction to H5; not blocking.
 
-**Done-when (M2):** the daemon discovers installed sessions, and on a successful
-auth spawns the chosen session as the authenticated user (privileges dropped,
-environment sanitized) wired into the seat/VT via logind.
+**Done-when (M2): ✓ met (live, 2026-06-26).** The daemon discovers installed
+sessions, and on a successful auth spawns the chosen session as the authenticated
+user (privileges dropped, environment sanitized) wired into the seat/VT via
+logind — demonstrated end to end with two clean back-to-back logins.
 
 ## Backlog (future milestones, not yet sequenced)
 
@@ -72,6 +87,15 @@ environment sanitized) wired into the seat/VT via logind.
 
 ## Shipped
 
+- **M2 — Session discovery + launch** (2026-06-26): `.desktop` session discovery
+  (`sessions`), auth-gated identity-bound `Start`, and the full logind handoff —
+  pam_systemd registration (D-0004) with a **per-login session worker as the
+  logind leader** (D-0005): the daemon re-execs a short-lived worker that owns the
+  PAM transaction, `setsid`s + takes the seat's VT as controlling tty, drops
+  privilege, runs the session in the sanitized allowlist ∪ PAM env, then closes the
+  session and exits — the daemon never enters a session scope, and greeter framing
+  never reaches the worker (`O_CLOEXEC`). Threat model `SECURITY/session-spawn-threat-model.md`
+  (S1–S13). **Live-confirmed** (multi-login, clean close, daemon out of scope).
 - **M1 — Privileged core skeleton (`doord`)** (2026-06-25): Cargo workspace +
   hardened `protocol` crate (D-0001 message types, version handshake, redacted
   `Secret`, strict serde, shared framing, D-0003); peercred-checked Unix-socket

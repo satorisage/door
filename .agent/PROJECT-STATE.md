@@ -1,14 +1,19 @@
 # Project State
 
-**Last updated:** 2026-06-25
-**Active focus:** M2 (session discovery + launch). Discovery shipped; the
-**session-spawn path is built, tested, and live-confirmed** — `Start` is
-auth-gated and bound to the PAM-authenticated user; the daemon forks, runs
-`privdrop::drop_to` in `pre_exec` (drop-or-abort), sanitizes the env, and execs
-the discovered `Exec` (protocol → v2, `Response::Started`). **Live root run on
-2026-06-25 passed:** spawned child reported `uid=1000(stephen) gid=1000(stephen)`
-with the user's groups, sanitized `PATH`, `LD_PRELOAD` unset — the drop sub-task's
-DoD is met. **One M2 task remains: logind seat/VT/session wiring.**
+**Last updated:** 2026-06-26
+**Active focus:** **M2 is COMPLETE and live-confirmed (2026-06-26).** The full
+logind handoff works: pam_systemd registration (D-0004) with a **per-login session
+worker as the logind leader** (D-0005) — the daemon re-execs itself (`worker.rs`)
+into a short-lived process that owns the PAM transaction, is the logind leader,
+`setsid`s + takes the seat's VT, drops privilege, runs the session in the
+sanitized allowlist ∪ PAM env, then closes the session and exits. The daemon never
+enters a session scope; greeter framing never reaches the worker (`O_CLOEXEC`).
+**Multi-login live run passed:** two back-to-back logins registered sessions 17
+then 18 (leader = the worker, each in its own scope), ran as `uid=1000` on
+`/dev/tty4` with `XDG_SESSION_*`, **each closed cleanly**, and the daemon stayed in
+`system.slice/doord-m2.service`. `cargo test` green (30). **Next: promote the next
+milestone** (M3 greeter, gated on the greeter-toolkit decision in ROADMAP
+`## Loose`).
 
 ---
 
@@ -75,11 +80,19 @@ it by kind: deferred-but-committed → a `## Backlog` task in `.agent/ROADMAP.md
 
 ## 5. Next session
 
-One M2 task remains: **logind seat/VT/session wiring** — `setsid`/controlling
-tty, VT switch, the logind session registration (`XDG_SESSION_*`), and session
-lifecycle (re-greet, respawn policy). Its threats are deferred in
-`SECURITY/session-spawn-threat-model.md` §5 (N1/N2) and modeled when it lands.
-This completes M2 (its Done-when names the seat/VT wiring as the last piece).
+**M2 is done; pick the next milestone.** M3 (minimal greeter) is the natural next
+step but is gated on the **greeter-toolkit decision** (ROADMAP `## Loose`,
+Material) — decide GTK4 / Qt-QML / Iced / bespoke wgpu before starting it.
+Residual M2 follow-ups, not blockers: the N2 session lifecycle (respawn backoff,
+re-greet policy, concurrent-session arbitration) and the M5 hardening pass.
+
+Open doc item: correct D-0003 H5's ordering text to match the reviewed `privdrop`
+code (`initgroups → setresgid → setresuid`); see the note in `ROADMAP.md`.
+
+Cleanup from the live runs (optional): `sudo systemctl stop doord-m2` (the test
+service is still running), `rm -f /run/doord-demo.sock`, `/tmp/doord-m2-*`. The
+installed `/etc/pam.d/doord` is now the complete production file (the M1 stub is
+backed up at `/etc/pam.d/doord.m1-stub.bak`) — safe to keep.
 
 Open doc item: correct D-0003 H5's ordering text to match the reviewed `privdrop`
 code (`initgroups → setresgid → setresuid`); see the note in `ROADMAP.md`.

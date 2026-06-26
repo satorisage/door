@@ -1,28 +1,36 @@
-//! Authentication: the PAM conversation, bridged to the greeter over IPC.
+//! The daemon side of a login: spawning the per-login session worker and
+//! proxying its PAM conversation to the greeter.
 //!
-//! PAM drives the dialogue — it decides when to ask for a password, a second
-//! factor, or show a message — but door's greeter is what the user actually
-//! types into, across the socket. This module is the bridge: each PAM prompt is
-//! turned into a [`protocol::AuthPrompt`] sent to the greeter, and the greeter's
-//! reply is fed back to PAM.
+//! Per D-0005 the daemon never runs PAM itself — it re-execs itself as a
+//! short-lived [worker](crate::worker) that owns the PAM transaction and is the
+//! logind session leader. This module is the daemon's handle to that worker:
+//! [`WorkerLogin`] forks the worker, relays the worker's
+//! [`WorkerEvent::Prompt`](crate::worker::WorkerEvent) prompts to the greeter as
+//! [`AuthPrompt`] frames and the greeter's reply back as a
+//! [`WorkerCommand::Reply`](crate::worker::WorkerCommand), and on `Start` tells
+//! the worker to launch — then hands back a [`SessionChild`] that waits on the
+//! worker (which lives exactly as long as the session it leads).
 //!
-//! The bridge is split from PAM itself by two small traits so the IPC flow can
-//! be tested without root or a live PAM stack:
+//! All greeter wire-protocol framing stays here in the daemon (the trust
+//! boundary, D-0003); the worker speaks only the private daemon↔worker codec and
+//! cannot reach a greeter byte (the greeter socket is `O_CLOEXEC` and is closed
+//! by the worker's `exec`).
 //!
-//! - [`AuthChannel`] is "how to ask the greeter something" — the production
-//!   impl ([`SocketChannel`]) writes/reads frames; a test impl can script it.
-//! - [`Authenticator`] is "what decides the outcome" — the production impl
-//!   ([`PamAuthenticator`]) runs PAM; a test impl can return a fixed verdict.
-//!
-//! Secrets are handled with care end to end: the greeter's reply arrives as a
-//! [`Secret`] (redacted, zeroized) and is only widened to the `CString` PAM
-//! requires at the last moment, inside the conversation callback.
+//! The [`Login`]/[`LoginFactory`] seam is abstracted so the IPC flow can be tested
+//! in-process without root, a live PAM stack, or a real worker.
 
-use std::ffi::{CStr, CString};
+use std::io;
+use std::os::unix::io::AsRawFd;
 use std::os::unix::net::UnixStream;
+use std::os::unix::process::CommandExt;
+use std::process::{Child, Command};
 
-use pam_client::{Context, ConversationHandler, ErrorCode, Flag};
-use protocol::{read_frame, write_frame, AuthPrompt, Request, Response, Secret};
+use protocol::{read_frame, write_frame, AuthPrompt, Request, Response};
+
+use crate::config::SeatTarget;
+use crate::sessions::{DiscoveredSession, SessionKind};
+use crate::spawn::{LaunchError, SessionChild};
+use crate::worker::{self, Verdict, WorkerCommand, WorkerEvent, WorkerSeat, WorkerSession, CONTROL_FD};
 
 /// The result of an authentication attempt, as the daemon will report it.
 #[derive(Debug, PartialEq, Eq)]
@@ -30,210 +38,355 @@ pub enum AuthOutcome {
     /// Credentials accepted and the account is permitted to log in.
     Success,
     /// Authentication or account checks rejected the attempt. The reason is
-    /// deliberately coarse here — the detailed PAM error is journaled, never
-    /// sent to the login screen (it could reveal whether an account exists).
+    /// deliberately coarse — the detailed PAM error is journaled by the worker,
+    /// never sent to the login screen (it could reveal whether an account exists).
     Failure,
     /// The user asked to cancel the in-progress conversation.
     Cancelled,
-    /// The greeter connection broke mid-conversation; the caller should drop it.
+    /// The worker or greeter connection broke mid-conversation; drop the login.
     Transport,
 }
 
-/// Why an [`AuthChannel`] round-trip could not complete.
-#[derive(Debug)]
-pub enum ChannelFault {
-    /// The greeter sent [`Request::CancelAuth`] instead of a reply.
-    Cancelled,
-    /// The socket failed (closed, timed out).
-    Transport,
-    /// The greeter sent something other than a reply or a cancel.
-    Protocol,
-}
-
-/// How the daemon talks to the greeter during a conversation. Abstracted so the
-/// auth flow can be driven by a scripted channel in tests.
-pub trait AuthChannel {
-    /// Ask the greeter a question and wait for the typed reply.
-    fn ask(&mut self, text: &str, secret: bool) -> Result<Secret, ChannelFault>;
-    /// Show the greeter a one-way message (no reply expected). Best-effort: a
-    /// transport failure here is reported via the next [`ask`](AuthChannel::ask)
-    /// or surfaces as the conversation ending.
-    fn notify(&mut self, prompt: AuthPrompt);
-}
-
-/// What decides an authentication outcome. The production impl runs PAM; tests
-/// can substitute a scripted verdict to exercise the IPC flow deterministically.
-pub trait Authenticator {
-    fn authenticate(&self, username: &str, channel: &mut dyn AuthChannel) -> AuthOutcome;
-}
-
-/// Production [`AuthChannel`]: each prompt is a frame to the greeter, each reply
-/// a frame back.
-pub struct SocketChannel<'a> {
-    stream: &'a mut UnixStream,
-}
-
-impl<'a> SocketChannel<'a> {
-    pub fn new(stream: &'a mut UnixStream) -> Self {
-        SocketChannel { stream }
-    }
-}
-
-impl AuthChannel for SocketChannel<'_> {
-    fn ask(&mut self, text: &str, secret: bool) -> Result<Secret, ChannelFault> {
-        let prompt = Response::Auth(AuthPrompt::Question {
-            text: text.to_string(),
-            secret,
-        });
-        if write_frame(self.stream, &prompt).is_err() {
-            return Err(ChannelFault::Transport);
-        }
-        match read_frame::<_, Request>(self.stream) {
-            Ok(Request::AuthReply { response }) => Ok(response),
-            Ok(Request::CancelAuth) => Err(ChannelFault::Cancelled),
-            Ok(_) => Err(ChannelFault::Protocol),
-            Err(_) => Err(ChannelFault::Transport),
-        }
-    }
-
-    fn notify(&mut self, prompt: AuthPrompt) {
-        // One-way; a failure just means the next ask() will also fail and end
-        // the conversation. We intentionally don't surface it here.
-        let _ = write_frame(self.stream, &Response::Auth(prompt));
-    }
-}
-
-/// Production [`Authenticator`]: runs a real PAM transaction for `service`.
-pub struct PamAuthenticator {
-    service: String,
-}
-
-impl PamAuthenticator {
-    pub fn new(service: impl Into<String>) -> Self {
-        PamAuthenticator {
-            service: service.into(),
+impl From<Verdict> for AuthOutcome {
+    fn from(v: Verdict) -> Self {
+        match v {
+            Verdict::Success => AuthOutcome::Success,
+            Verdict::Failure => AuthOutcome::Failure,
+            Verdict::Cancelled => AuthOutcome::Cancelled,
+            Verdict::Transport => AuthOutcome::Transport,
         }
     }
 }
 
-impl Authenticator for PamAuthenticator {
-    fn authenticate(&self, username: &str, channel: &mut dyn AuthChannel) -> AuthOutcome {
-        let conv = GreeterConversation {
-            channel,
-            fault: None,
-        };
-        let mut context = match Context::new(&self.service, Some(username), conv) {
-            Ok(ctx) => ctx,
+/// One greeter's login. Created per connection; drives auth and then the session.
+pub trait Login {
+    /// Run one authentication conversation to a terminal outcome. On
+    /// [`AuthOutcome::Success`] the login is bound to `username` and [`start`]
+    /// may be called; the greeter may retry after any non-success outcome.
+    ///
+    /// [`start`]: Login::start
+    fn authenticate(&mut self, username: &str) -> AuthOutcome;
+
+    /// The user bound by a prior successful [`authenticate`], if any. The
+    /// session-start gate reads this: no authenticated user, no launch.
+    ///
+    /// [`authenticate`]: Login::authenticate
+    fn user(&self) -> Option<&str>;
+
+    /// Launch `session` on `seat` as the authenticated user. Only valid after a
+    /// successful [`authenticate`]. Returns a handle that waits on the running
+    /// session (for the worker-backed login, the worker process — which exits when
+    /// the session ends, after closing the logind session).
+    ///
+    /// [`authenticate`]: Login::authenticate
+    fn start(
+        &mut self,
+        session: &DiscoveredSession,
+        seat: &SeatTarget,
+    ) -> Result<SessionChild, LaunchError>;
+}
+
+/// Builds a fresh [`Login`] per greeter connection, handing it that connection's
+/// socket (a clone the login owns for relaying the PAM conversation).
+pub trait LoginFactory {
+    fn begin(&self, greeter: UnixStream) -> Box<dyn Login>;
+}
+
+/// Production [`LoginFactory`]: each login re-execs the daemon as a session
+/// worker. The worker reads its configuration (PAM service, seat, …) from the
+/// inherited environment, so the factory itself carries no state.
+pub struct WorkerLoginFactory;
+
+impl WorkerLoginFactory {
+    pub fn new() -> Self {
+        WorkerLoginFactory
+    }
+}
+
+impl Default for WorkerLoginFactory {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl LoginFactory for WorkerLoginFactory {
+    fn begin(&self, greeter: UnixStream) -> Box<dyn Login> {
+        match spawn_worker() {
+            Ok((child, control)) => Box::new(WorkerLogin {
+                greeter,
+                control,
+                child: Some(child),
+                username: None,
+            }),
             Err(e) => {
-                eprintln!("doord: pam_start failed for service '{}': {e}", self.service);
-                return AuthOutcome::Failure;
+                eprintln!("doord: could not start the session worker: {e}");
+                Box::new(DeadLogin)
             }
-        };
+        }
+    }
+}
 
-        let auth_result = context.authenticate(Flag::NONE);
+/// A worker-backed login: the daemon's end of the control socket plus the worker
+/// process and the greeter socket it relays the conversation over.
+pub struct WorkerLogin {
+    greeter: UnixStream,
+    control: UnixStream,
+    /// The worker process. Taken at [`start`](Login::start) and wrapped in the
+    /// returned [`SessionChild`]; the daemon waits on it for the session lifetime.
+    child: Option<Child>,
+    username: Option<String>,
+}
 
-        // A transport break or cancel during the conversation takes precedence
-        // over whatever code PAM returned for the aborted attempt.
-        if let Some(fault) = context.conversation_mut().fault.take() {
-            return match fault {
-                ChannelFault::Cancelled => AuthOutcome::Cancelled,
-                ChannelFault::Transport => AuthOutcome::Transport,
-                ChannelFault::Protocol => AuthOutcome::Failure,
+impl Login for WorkerLogin {
+    fn authenticate(&mut self, username: &str) -> AuthOutcome {
+        if write_frame(
+            &mut self.control,
+            &WorkerCommand::Auth {
+                username: username.to_string(),
+            },
+        )
+        .is_err()
+        {
+            return AuthOutcome::Transport;
+        }
+
+        loop {
+            let event = match read_frame::<_, WorkerEvent>(&mut self.control) {
+                Ok(event) => event,
+                // The worker died; nothing more will come.
+                Err(_) => return AuthOutcome::Transport,
             };
-        }
 
-        if let Err(e) = auth_result {
-            // Detailed reason to the journal only — never to the greeter.
-            eprintln!("doord: authentication failed for '{username}': {e}");
-            return AuthOutcome::Failure;
-        }
-
-        // Authenticated — now check the account is allowed to log in at all
-        // (not expired, not locked, password not required-to-change-and-absent).
-        if let Err(e) = context.acct_mgmt(Flag::NONE) {
-            eprintln!("doord: account check denied '{username}': {e}");
-            return AuthOutcome::Failure;
-        }
-
-        AuthOutcome::Success
-    }
-}
-
-/// The PAM-facing conversation callback. libpam calls these methods; each one
-/// relays through the [`AuthChannel`] to the greeter. A `fault` is latched the
-/// first time a round-trip fails so the outer [`PamAuthenticator`] can tell a
-/// dropped greeter from a real authentication failure.
-struct GreeterConversation<'a> {
-    channel: &'a mut dyn AuthChannel,
-    fault: Option<ChannelFault>,
-}
-
-impl GreeterConversation<'_> {
-    fn ask(&mut self, prompt: &CStr, secret: bool) -> Result<CString, ErrorCode> {
-        if self.fault.is_some() {
-            return Err(ErrorCode::CONV_ERR);
-        }
-        let text = prompt.to_string_lossy();
-        match self.channel.ask(&text, secret) {
-            Ok(reply) => {
-                // Widen to the CString PAM needs only here, at the last moment.
-                // A NUL inside the secret can't be a valid password; reject it.
-                let result = CString::new(reply.expose()).map_err(|_| ErrorCode::CONV_ERR);
-                // `reply` (a Secret) is zeroized as it drops at end of scope.
-                result
-            }
-            Err(fault) => {
-                self.fault = Some(fault);
-                Err(ErrorCode::CONV_ERR)
+            match event {
+                WorkerEvent::Prompt { text, secret } => {
+                    let question = Response::Auth(AuthPrompt::Question { text, secret });
+                    if write_frame(&mut self.greeter, &question).is_err() {
+                        let _ = write_frame(&mut self.control, &WorkerCommand::Cancel);
+                        return AuthOutcome::Transport;
+                    }
+                    match read_frame::<_, Request>(&mut self.greeter) {
+                        Ok(Request::AuthReply { response }) => {
+                            if write_frame(&mut self.control, &WorkerCommand::Reply { response })
+                                .is_err()
+                            {
+                                return AuthOutcome::Transport;
+                            }
+                        }
+                        // A cancel or any other frame ends the conversation; tell
+                        // the worker to abort it.
+                        Ok(_) => {
+                            let _ = write_frame(&mut self.control, &WorkerCommand::Cancel);
+                        }
+                        Err(_) => {
+                            let _ = write_frame(&mut self.control, &WorkerCommand::Cancel);
+                            return AuthOutcome::Transport;
+                        }
+                    }
+                }
+                WorkerEvent::Info { text } => {
+                    let _ = write_frame(&mut self.greeter, &Response::Auth(AuthPrompt::Info { text }));
+                }
+                WorkerEvent::Error { text } => {
+                    let _ =
+                        write_frame(&mut self.greeter, &Response::Auth(AuthPrompt::Error { text }));
+                }
+                WorkerEvent::Auth(verdict) => {
+                    let outcome = AuthOutcome::from(verdict);
+                    if outcome == AuthOutcome::Success {
+                        self.username = Some(username.to_string());
+                    }
+                    return outcome;
+                }
+                // Session events have no place during authentication.
+                WorkerEvent::Started | WorkerEvent::StartFailed => return AuthOutcome::Failure,
             }
         }
     }
+
+    fn user(&self) -> Option<&str> {
+        self.username.as_deref()
+    }
+
+    fn start(
+        &mut self,
+        session: &DiscoveredSession,
+        seat: &SeatTarget,
+    ) -> Result<SessionChild, LaunchError> {
+        let command = WorkerCommand::Start {
+            session: WorkerSession {
+                id: session.id.clone(),
+                exec: session.exec.clone(),
+                session_type: match session.kind {
+                    SessionKind::Wayland => "wayland",
+                    SessionKind::X11 => "x11",
+                }
+                .to_string(),
+            },
+            seat: WorkerSeat {
+                seat: seat.seat.clone(),
+                vtnr: seat.vtnr,
+            },
+        };
+        if let Err(e) = write_frame(&mut self.control, &command) {
+            return Err(LaunchError::Spawn(io::Error::other(format!(
+                "telling the worker to start failed: {e}"
+            ))));
+        }
+
+        loop {
+            match read_frame::<_, WorkerEvent>(&mut self.control) {
+                Ok(WorkerEvent::Started) => {
+                    let child = self.child.take().ok_or_else(|| {
+                        LaunchError::Spawn(io::Error::other("session worker already consumed"))
+                    })?;
+                    return Ok(SessionChild::new(child));
+                }
+                Ok(WorkerEvent::StartFailed) => {
+                    return Err(LaunchError::Spawn(io::Error::other(
+                        "the session worker refused the launch",
+                    )));
+                }
+                // Stray events before the terminal one: ignore.
+                Ok(_) => {}
+                Err(e) => {
+                    return Err(LaunchError::Spawn(io::Error::other(format!(
+                        "the session worker vanished: {e}"
+                    ))));
+                }
+            }
+        }
+    }
 }
 
-impl ConversationHandler for GreeterConversation<'_> {
-    fn prompt_echo_on(&mut self, prompt: &CStr) -> Result<CString, ErrorCode> {
-        self.ask(prompt, false)
-    }
+/// Re-exec the daemon as a session worker, returning the worker process and the
+/// daemon's end of the control socket. The worker's end is dup'd onto
+/// [`CONTROL_FD`] (kept open across `exec`); every other fd — listener, greeter
+/// socket — is `O_CLOEXEC` and is closed by the `exec`, so the worker is reachable
+/// only over the control socket and can never touch a greeter byte.
+fn spawn_worker() -> io::Result<(Child, UnixStream)> {
+    let (daemon_end, worker_end) = UnixStream::pair()?;
+    let worker_fd = worker_end.as_raw_fd();
 
-    fn prompt_echo_off(&mut self, prompt: &CStr) -> Result<CString, ErrorCode> {
-        self.ask(prompt, true)
-    }
-
-    fn text_info(&mut self, msg: &CStr) {
-        if self.fault.is_some() {
-            return;
-        }
-        self.channel.notify(AuthPrompt::Info {
-            text: msg.to_string_lossy().into_owned(),
+    let mut command = Command::new("/proc/self/exe");
+    command.arg(worker::WORKER_ARG);
+    // SAFETY: the closure runs in the forked child before `exec`. It only dup's an
+    // inherited fd onto a fixed number and clears that fd's close-on-exec flag —
+    // async-signal-safe syscalls touching no shared parent state.
+    unsafe {
+        command.pre_exec(move || {
+            if libc::dup2(worker_fd, CONTROL_FD) < 0 {
+                return Err(io::Error::last_os_error());
+            }
+            // dup2 clears CLOEXEC on the new fd; set it explicitly too in case the
+            // inherited fd already was CONTROL_FD (then dup2 is a no-op).
+            if libc::fcntl(CONTROL_FD, libc::F_SETFD, 0) < 0 {
+                return Err(io::Error::last_os_error());
+            }
+            Ok(())
         });
     }
 
-    fn error_msg(&mut self, msg: &CStr) {
-        if self.fault.is_some() {
-            return;
-        }
-        self.channel.notify(AuthPrompt::Error {
-            text: msg.to_string_lossy().into_owned(),
-        });
+    let child = command.spawn()?;
+    // The parent keeps only its end; the child's inherited copy is CLOEXEC and is
+    // gone after exec — only the dup'd CONTROL_FD survives there.
+    drop(worker_end);
+    Ok((child, daemon_end))
+}
+
+/// A login whose worker could not be started: every operation fails closed, so a
+/// worker-spawn failure degrades to "cannot authenticate / cannot start", never
+/// to an unauthenticated launch.
+struct DeadLogin;
+
+impl Login for DeadLogin {
+    fn authenticate(&mut self, _username: &str) -> AuthOutcome {
+        AuthOutcome::Transport
+    }
+    fn user(&self) -> Option<&str> {
+        None
+    }
+    fn start(
+        &mut self,
+        _session: &DiscoveredSession,
+        _seat: &SeatTarget,
+    ) -> Result<SessionChild, LaunchError> {
+        Err(LaunchError::Spawn(io::Error::other(
+            "the session worker is unavailable",
+        )))
     }
 }
 
-/// A scripted authenticator for tests: asks once for a secret and accepts only
-/// if it matches `password`. Lets the IPC auth flow be exercised end to end
-/// without root or a live PAM stack.
+/// Test login seam: a scripted [`LoginFactory`]/[`Login`] that asks once for a
+/// secret over the greeter socket (exercising the real IPC framing) and accepts
+/// only if it matches `password`, then records launches instead of forking a
+/// worker. Lets the connection's auth-gating and identity-binding be exercised end
+/// to end without root, a live PAM stack, or a real session spawn.
 #[cfg(test)]
-pub struct ScriptedAuthenticator {
-    pub password: String,
-}
+pub mod testing {
+    use super::*;
+    use std::sync::{Arc, Mutex};
 
-#[cfg(test)]
-impl Authenticator for ScriptedAuthenticator {
-    fn authenticate(&self, _username: &str, channel: &mut dyn AuthChannel) -> AuthOutcome {
-        match channel.ask("Password:", true) {
-            Ok(reply) if reply.expose() == self.password => AuthOutcome::Success,
-            Ok(_) => AuthOutcome::Failure,
-            Err(ChannelFault::Cancelled) => AuthOutcome::Cancelled,
-            Err(_) => AuthOutcome::Transport,
+    pub struct ScriptedLoginFactory {
+        pub password: String,
+        /// Shared log of every (session id, username) a begun login was asked to
+        /// start — the test thread reads this to assert what was launched.
+        pub calls: Arc<Mutex<Vec<(String, String)>>>,
+    }
+
+    impl LoginFactory for ScriptedLoginFactory {
+        fn begin(&self, greeter: UnixStream) -> Box<dyn Login> {
+            Box::new(ScriptedLogin {
+                password: self.password.clone(),
+                greeter,
+                user: None,
+                calls: self.calls.clone(),
+            })
+        }
+    }
+
+    struct ScriptedLogin {
+        password: String,
+        greeter: UnixStream,
+        user: Option<String>,
+        calls: Arc<Mutex<Vec<(String, String)>>>,
+    }
+
+    impl Login for ScriptedLogin {
+        fn authenticate(&mut self, username: &str) -> AuthOutcome {
+            let question = Response::Auth(AuthPrompt::Question {
+                text: "Password:".to_string(),
+                secret: true,
+            });
+            if write_frame(&mut self.greeter, &question).is_err() {
+                return AuthOutcome::Transport;
+            }
+            match read_frame::<_, Request>(&mut self.greeter) {
+                Ok(Request::AuthReply { response }) if response.expose() == self.password => {
+                    self.user = Some(username.to_string());
+                    AuthOutcome::Success
+                }
+                Ok(Request::AuthReply { .. }) => AuthOutcome::Failure,
+                Ok(Request::CancelAuth) => AuthOutcome::Cancelled,
+                Ok(_) => AuthOutcome::Failure,
+                Err(_) => AuthOutcome::Transport,
+            }
+        }
+
+        fn user(&self) -> Option<&str> {
+            self.user.as_deref()
+        }
+
+        fn start(
+            &mut self,
+            session: &DiscoveredSession,
+            _seat: &SeatTarget,
+        ) -> Result<SessionChild, LaunchError> {
+            let user = self
+                .user
+                .clone()
+                .expect("start is only reached after a successful authenticate");
+            self.calls.lock().unwrap().push((session.id.clone(), user));
+            Ok(SessionChild::detached())
         }
     }
 }

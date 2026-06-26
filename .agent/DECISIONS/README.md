@@ -44,3 +44,5 @@ inline in the title cell: `— **Superseded by 0NNN (YYYY-MM-DD)**`.)
 | 0001 | 2026-06-25 | [Fully self-contained: bespoke IPC protocol, no greetd](DECISION-0001-bespoke-no-greetd.md) |
 | 0002 | 2026-06-25 | [Rust for the whole stack (doord + door-greeter)](DECISION-0002-rust-stack.md) |
 | 0003 | 2026-06-25 | [Hardened seam & TCB security defaults](DECISION-0003-hardened-seam-defaults.md) |
+| 0004 | 2026-06-25 | [logind session registration via pam_systemd](DECISION-0004-logind-session-pam-systemd.md) — *leadership clause superseded by 0005 (2026-06-26)* |
+| 0005 | 2026-06-26 | [Per-login session worker is the logind session leader](DECISION-0005-per-login-session-worker.md) |
