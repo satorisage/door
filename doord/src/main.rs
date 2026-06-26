@@ -23,6 +23,7 @@ mod hardening;
 mod ipc;
 mod pam;
 mod privdrop;
+mod sessions;
 
 use std::process::ExitCode;
 

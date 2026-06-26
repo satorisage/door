@@ -12,13 +12,15 @@ use std::path::PathBuf;
 use std::process::{Child, Command};
 use std::time::{Duration, Instant};
 
-use protocol::{read_frame, write_frame, Request, Response, PROTOCOL_VERSION};
+use protocol::{read_frame, write_frame, Request, Response, Session, PROTOCOL_VERSION};
 
 /// A daemon child that is killed when the handle drops, so a failed assertion
-/// never leaks a running process.
+/// never leaks a running process. Owns a throwaway session data-dir so discovery
+/// is deterministic and isolated from whatever sessions the host has installed.
 struct Daemon {
     child: Child,
     socket: PathBuf,
+    session_root: PathBuf,
 }
 
 impl Drop for Daemon {
@@ -26,6 +28,7 @@ impl Drop for Daemon {
         let _ = self.child.kill();
         let _ = self.child.wait();
         let _ = std::fs::remove_file(&self.socket);
+        let _ = std::fs::remove_dir_all(&self.session_root);
     }
 }
 
@@ -33,12 +36,29 @@ fn start_daemon(tag: &str) -> Daemon {
     let socket = std::env::temp_dir().join(format!("doord-test-{tag}-{}.sock", std::process::id()));
     let _ = std::fs::remove_file(&socket);
 
+    // A controlled session root: exactly one known Wayland session, so the
+    // discovery answer is deterministic regardless of the host's installed DEs.
+    let session_root =
+        std::env::temp_dir().join(format!("doord-test-sessions-{tag}-{}", std::process::id()));
+    let wayland = session_root.join("wayland-sessions");
+    std::fs::create_dir_all(&wayland).expect("create session dir");
+    std::fs::write(
+        wayland.join("testde.desktop"),
+        "[Desktop Entry]\nName=Test DE\nComment=for the smoke test\nExec=/usr/bin/test-de\n",
+    )
+    .expect("write session entry");
+
     let child = Command::new(env!("CARGO_BIN_EXE_doord"))
         .env("DOORD_SOCKET", &socket)
+        .env("DOORD_SESSION_DIRS", &session_root)
         .spawn()
         .expect("spawn doord");
 
-    Daemon { child, socket }
+    Daemon {
+        child,
+        socket,
+        session_root,
+    }
 }
 
 fn connect(socket: &PathBuf) -> UnixStream {
@@ -73,10 +93,18 @@ fn handshake_then_serves_requests() {
     let resp: Response = read_frame(&mut conn).unwrap();
     assert_eq!(resp, Response::Welcome { protocol_version: PROTOCOL_VERSION });
 
-    // ListSessions is answered (empty until session discovery lands).
+    // ListSessions discovers the controlled session root and returns the wire
+    // projection (id/name/comment) — the daemon-side `Exec` never crosses.
     write_frame(&mut conn, &Request::ListSessions).unwrap();
     let resp: Response = read_frame(&mut conn).unwrap();
-    assert_eq!(resp, Response::Sessions(Vec::new()));
+    assert_eq!(
+        resp,
+        Response::Sessions(vec![Session {
+            id: "testde".to_string(),
+            name: "Test DE".to_string(),
+            comment: Some("for the smoke test".to_string()),
+        }])
+    );
 
     // BeginAuth drives a real PAM conversation in this (spawned-binary) test, so
     // its outcome depends on the host PAM stack; the deterministic auth-flow
