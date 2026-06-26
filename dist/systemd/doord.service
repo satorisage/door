@@ -1,0 +1,25 @@
+[Unit]
+Description=door — privileged login daemon (doord)
+Documentation=https://github.com/satorisage/door
+# doord is the trusted core: it owns PAM, logind/seat/VT, and session spawn, and
+# serves the local socket the unprivileged greeter connects to. It holds no UI.
+After=systemd-user-sessions.service systemd-logind.service
+Wants=systemd-logind.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/doord
+# /run/doord (root:root 0700) holds the socket; doord locks down door.sock to
+# 0660 root:<greeter group> itself.
+RuntimeDirectory=doord
+RuntimeDirectoryMode=0700
+# The greeter is named, not a numeric uid (doord resolves it). Seat/VT are door's.
+Environment=DOORD_GREETER_USER=door-greeter
+Environment=DOORD_SEAT=seat0
+Environment=DOORD_VTNR=1
+# DOORD_SOCKET defaults to /run/doord/door.sock; DOORD_PAM_SERVICE to "doord".
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=graphical.target

@@ -136,6 +136,7 @@ impl State {
 }
 
 fn update(state: &mut State, message: Message) -> Task<Message> {
+    let mut task = Task::none();
     match message {
         Message::WorkerReady(tx) => {
             state.cmd_tx = Some(tx);
@@ -189,6 +190,9 @@ fn update(state: &mut State, message: Message) -> Task<Message> {
         Message::SessionStarted => {
             state.phase = Phase::Started;
             state.status = "Session started.".to_string();
+            // The greeter's job is done: step aside so the host compositor (cage)
+            // exits and frees the VT for the session the daemon just launched.
+            task = iced::exit();
         }
         Message::DaemonError(message) => {
             state.password.clear();
@@ -216,7 +220,7 @@ fn update(state: &mut State, message: Message) -> Task<Message> {
         }
         Message::PowerPressed(action) => state.send(Command::Power(action)),
     }
-    Task::none()
+    task
 }
 
 fn view(state: &State) -> Element<'_, Message> {
