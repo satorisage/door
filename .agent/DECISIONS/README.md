@@ -46,4 +46,5 @@ inline in the title cell: `— **Superseded by 0NNN (YYYY-MM-DD)**`.)
 | 0003 | 2026-06-25 | [Hardened seam & TCB security defaults](DECISION-0003-hardened-seam-defaults.md) |
 | 0004 | 2026-06-25 | [logind session registration via pam_systemd](DECISION-0004-logind-session-pam-systemd.md) — *leadership clause superseded by 0005 (2026-06-26)* |
 | 0005 | 2026-06-26 | [Per-login session worker is the logind session leader](DECISION-0005-per-login-session-worker.md) |
-| 0006 | 2026-06-26 | [Greeter UI toolkit: Iced + iced_layershell](DECISION-0006-greeter-toolkit-iced.md) |
+| 0006 | 2026-06-26 | [Greeter UI toolkit: Iced + iced_layershell](DECISION-0006-greeter-toolkit-iced.md) — *surface clause superseded by 0007 (2026-06-26); Iced stands* |
+| 0007 | 2026-06-26 | [Greeter host: cage + plain-iced fullscreen toplevel](DECISION-0007-greeter-host-cage-toplevel.md) |

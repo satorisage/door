@@ -5,54 +5,47 @@ milestone's task tree is the plan; `.agent/TODO.md` is its derived ready-frontie
 
 ## Active
 
-### M3 — Minimal greeter (functional, ugly)
+### M6 — Packaging + reversible install
 
-Toolkit ratified: **Iced + iced_layershell** (D-0006). The greeter is the
-unprivileged, untrusted half: it speaks the `protocol` crate over the daemon
-socket, holds no credential beyond submit, and starts no session itself.
+**Criticality: Critical** — install/enable is the lockout-risk domain (SCOPE
+rubric: "anything that could lock the machine out of the GUI without a tested
+revert", and any change to the live DM hard-stops). **Revert-first:** door
+installs *disabled by default*, never clobbers the existing DM, and ships a
+two-command TTY revert that is **tested before** door is ever enabled.
 
-- [x] **protocol client** (`door-greeter/src/client.rs`): connects `DOORD_SOCKET`,
-      runs the `Hello`/`Welcome` handshake, typed API over the conversation
-      (`list_sessions`, `begin_auth` + `recv_auth`/`reply`, `start`, `power`).
-      Blocking I/O isolated; 4 unit tests over a scripted socket pair.
-      `depends:` M1
-- [x] **Iced layer-shell shell** (`door-greeter/src/app.rs`): `wlr-layer-shell`
-      overlay via `iced_layershell` (Overlay layer, all-edge anchor, Exclusive
-      keyboard); Iced app (State/update/view) with the client on a background
-      worker thread, bridged via an `iced_futures::stream::channel` subscription
-      that hands the UI its command channel through `Message::WorkerReady`.
-      `depends:` D-0006
-- [x] **picker + auth UI**: session pick_list, username + password fields, Sign-in
-      button; renders each prompt, sends the `AuthReply` (auto-answers the password
-      prompt if pre-typed), then issues `Start` on success. Password cleared on
-      submit. *(In-memory plaintext during entry is inherent to the text field;
-      deeper zeroization is the M5 audit.)*
-      `depends:` protocol client, Iced layer-shell shell
-- [x] **power controls (greeter side)**: suspend / reboot / power-off buttons →
-      `Request::Power`. **Daemon-side Power still returns "not yet available"**
-      (`ipc::dispatch`); the greeter surfaces that as a status line. Implementing
-      logind Power in the daemon is a small follow-up (deferred, not blocking M3).
-      `depends:` Iced layer-shell shell, protocol client
-- [ ] **live end-to-end**: drive auth → `Start` against a live `doord` under a
-      layer-shell compositor.
-      *(2026-06-26: greeter **verified running** against a wlroots compositor —
-      connects, handshakes, lists sessions, renders, holds the connection, no
-      crash. A `DOORD_GREETER_DEV=1` mode (floating + on-demand keyboard) added for
-      safe nested smoke-testing without keyboard lockout. Remaining: a human
-      driving the full auth+start. **Note:** `cage` (this build) lacks
-      `wlr-layer-shell`, so the production host compositor is an open item —
-      sway/weston/labwc, or reconsider plain-iced toplevel; deployment/M6 detail.)*
-      `depends:` picker + auth UI, power controls (greeter side)
+*(Taken before M4/M5: ROADMAP `depends:` was M2, M4, but installing door as a real
+reversible DM on a VT is what closes M3's production path and lets the whole thing
+be exercised end to end. M4 beauty + M5 hardening follow.)*
 
-**Done-when (M3):** the greeter, an unprivileged Wayland layer-shell client, lists
-the daemon's sessions, drives the PAM conversation to a successful auth, and starts
-the chosen session against a live `doord` — holding no credential beyond submit and
-never touching privilege. Ugly is fine; M4 makes it beautiful.
+- [x] **host-compositor + greeter surface** — *gating decision* **resolved: D-0007**
+      (cage + plain-`iced` fullscreen toplevel; smallest pre-auth surface wins on
+      both security and perf; layer-shell unused in v1). Greeter **reworked**:
+      `iced_layershell` dropped, `run()` → `iced::application(...).window(fullscreen)`,
+      `to_layer_message` removed; State/update/view/worker unchanged. Builds clean,
+      4 tests green, renders as a windowed toplevel in dev mode (`DOORD_GREETER_DEV`).
+      `depends:` M3
+- [ ] **systemd units**: `doord.service` (privileged daemon; `RuntimeDirectory`
+      for `/run/doord`, the socket) + the greeter session unit (host compositor +
+      `door-greeter` on a dedicated VT; `Conflicts`/`After` that VT's getty).
+      `depends:` host-compositor + greeter surface
+- [ ] **Arch PKGBUILD**: package the `doord` / `door-greeter` binaries,
+      `/etc/pam.d/doord`, the units, and the greeter system user — **installed but
+      disabled** (the package never enables anything).
+      `depends:` systemd units
+- [ ] **reversible enable + TTY revert**: an enable step that makes door the active
+      DM while keeping the previous DM installed as fallback, and prints the exact
+      two-command TTY revert (`disable --now door…` + `enable --now <previous-dm>`).
+      The revert is tested before door is enabled.
+      `depends:` systemd units
+- [ ] **live install test**: install the package on the real machine, run the
+      enable step, and log in for real through the greeter on the VT — tested revert
+      in hand.
+      `depends:` Arch PKGBUILD, reversible enable + TTY revert
 
-> **Carry-forward (D-0003 H5 text vs code):** H5 reads `setresgid → initgroups →
-> setresuid`; the shipped+reviewed `privdrop` does `initgroups → setresgid →
-> setresuid` (both safe: groups+gid before uid, post-drop verify, refuse uid 0).
-> A doc-only correction to H5's text; not blocking. (Also tracked in STATE §5.)
+**Done-when (M6):** door installs from a PKGBUILD (disabled by default), can be
+enabled to become the machine's login manager with the previous DM kept as
+fallback, a real login through the greeter starts a session, and a tested
+two-command TTY revert restores the previous DM.
 
 ## Backlog (future milestones, not yet sequenced)
 
@@ -65,11 +58,6 @@ never touching privilege. Ugly is fine; M4 makes it beautiful.
 - secrets-zeroization audit; external review of the TCB
   `depends:` M1, M2
 
-### M6 — Packaging + reversible install
-- Arch PKGBUILD; installed-but-disabled by default
-- installer prints the two-command TTY revert; previous DM kept as fallback
-  `depends:` M2, M4
-
 ## Loose
 
 - ~~Decide greeter toolkit (GTK4 / Qt-QML / Iced / bespoke wgpu)~~ — **resolved
@@ -77,6 +65,15 @@ never touching privilege. Ugly is fine; M4 makes it beautiful.
 
 ## Shipped
 
+- **M3 — Minimal greeter (functional)** (2026-06-26): `door-greeter`, the
+  unprivileged Iced + iced_layershell client (D-0006). `client.rs` (protocol
+  client, 4 tests) + `app.rs` (layer-shell overlay: session picker,
+  username/password, sign-in, power; background worker owns the blocking client,
+  bridged to Iced via a `stream::channel` subscription). Holds no credential
+  beyond submit; starts no session itself. **Verified live** against a wlroots
+  compositor (connect → list → render → auth → `Start`); `DOORD_GREETER_DEV=1` mode
+  for safe nested testing. Open follow-ups carried into M6/later: production host
+  compositor (cage lacks layer-shell), daemon-side `Power`.
 - **M2 — Session discovery + launch** (2026-06-26): `.desktop` session discovery
   (`sessions`), auth-gated identity-bound `Start`, and the full logind handoff —
   pam_systemd registration (D-0004) with a **per-login session worker as the

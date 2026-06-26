@@ -1,9 +1,16 @@
 # DECISION-0006 — Greeter UI toolkit: Iced + iced_layershell
 
-**Status:** Binding
+**Status:** Binding (surface clause superseded by D-0007)
 **Date:** 2026-06-26
 **Ratified:** 2026-06-26
 **Project:** door
+
+> **Superseded in part by D-0007 (2026-06-26):** the `iced_layershell` /
+> `wlr-layer-shell` *surface* choice is replaced by a plain-`iced` fullscreen
+> toplevel hosted under `cage` (a live finding: cage lacks layer-shell; security +
+> perf both favor the smallest host; lock-screen is out of v1 scope). **The
+> toolkit choice — Iced — still stands.** Read this decision's toolkit rationale as
+> current; read its layer-shell specifics as historical.
 
 ## Context
 

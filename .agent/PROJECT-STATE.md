@@ -14,17 +14,19 @@ then 18 (leader = the worker, each in its own scope), ran as `uid=1000` on
 `system.slice/doord-m2.service`. `cargo test` green (30). M2 committed + merged +
 pushed (`4470f88`).
 
-**Now active: M3 — minimal greeter (functional, ugly).** Toolkit ratified **Iced +
-iced_layershell (D-0006)**. **The greeter is built and unit-tested** (`door-greeter`):
-`client.rs` (protocol client, 4 tests over a scripted socket pair) + `app.rs` (the
-`iced_layershell` overlay — session picker, username/password, sign-in, power
-buttons; a background worker thread owns the blocking client and bridges to Iced
-via a `stream::channel` subscription, handing the UI its command channel through
-`Message::WorkerReady`). The auth→start flow auto-answers the password prompt.
-Clippy clean; 34 tests green workspace-wide. **Remaining for M3: the live
-end-to-end** — run `door-greeter` under a compositor (e.g. `cage`) on a real VT
-against a live `doord`. Daemon-side `Power` is still stubbed (returns "not yet
-available") — a small follow-up, not blocking. See ROADMAP `## Active`.
+**M3 complete (2026-06-26)** — `door-greeter` (Iced + iced_layershell, D-0006)
+verified live against a wlroots compositor: connect → list → render → auth →
+`Start`. In `## Shipped`. 34 tests green workspace-wide; M2 + M3 merged to `master`
+(`cc43654`, not yet pushed).
+
+**Now active: M6 — packaging + reversible install. Criticality: Critical**
+(lockout domain — revert-first; install disabled-by-default, never clobber the
+existing DM, tested TTY revert before enabling). The **gating decision** opens M6:
+the **host compositor + greeter surface type** — the greeter is layer-shell but
+`cage` (this build) has no `wlr-layer-shell`, so either ship a layer-shell
+compositor (sway/weston/labwc) or switch the greeter to a plain-`iced` fullscreen
+toplevel that runs under `cage`. This blocks the greeter session unit and the
+PKGBUILD deps. See ROADMAP `## Active`.
 
 ---
 
@@ -61,9 +63,10 @@ ready/blocked frontier. Per-task DoD (`done-when:`) and progress live in
 ROADMAP — do **not** duplicate the DoD checklist here (D-0050 dissolved the
 old lockstep-with-SCOPE mandate, a Principle-7 violation).
 
-**Milestone:** M3 — Minimal greeter (functional, ugly); see `ROADMAP.md` `## Active`.
-**Active blockers:** none — M1/M2 (the privileged core, served socket, and full
-session handoff) are complete and the greeter toolkit is ratified (D-0006).
+**Milestone:** M6 — Packaging + reversible install; see `ROADMAP.md` `## Active`.
+**Active blockers:** the M6 gating decision — host compositor + greeter surface
+type (cage lacks layer-shell). **Criticality: Critical** (lockout domain;
+revert-first). M1/M2/M3 are complete.
 
 (Projects not using ROADMAP may keep a short DoD list here instead.)
 
