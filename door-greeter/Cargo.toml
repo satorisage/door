@@ -9,4 +9,8 @@ name = "door-greeter"
 path = "src/main.rs"
 
 [dependencies]
+futures = "0.3"
+iced = "0.14"
+iced_futures = "0.14"
+iced_layershell = "0.18.1"
 protocol = { workspace = true }
