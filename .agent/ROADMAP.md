@@ -6,7 +6,11 @@ milestone's task tree is the plan; `.agent/TODO.md` is its derived ready-frontie
 ## Active
 
 ### M2 — Session discovery + launch
-- [ ] discover `/usr/share/wayland-sessions` + `xsessions`
+- [x] discover `/usr/share/wayland-sessions` + `xsessions` — `sessions` module:
+      scans data-dir roots (`DOORD_SESSION_DIRS`-overridable), parses `.desktop`
+      (Name/Comment/Exec→argv, skips Hidden/NoDisplay, dedups by id), keeps `Exec`
+      daemon-side; `ListSessions` returns the wire projection. Unit-tested +
+      E2E in `ipc_smoke.rs`.
 - [ ] spawn honoring `.desktop` `Exec=` (incl. wrapper launchers like `start-hyprland`)
 - [ ] `logind` seat/VT/session wiring
 - [ ] wire `privdrop::drop_to` into the spawn path (D-0003 H5 ordering) and

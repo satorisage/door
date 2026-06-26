@@ -160,7 +160,7 @@ fn handle_connection(
                 }
             }
             other => {
-                let response = dispatch(&other);
+                let response = dispatch(&other, config);
                 write_frame(&mut conn, &response)?;
             }
         }
@@ -269,16 +269,25 @@ fn handshake(conn: &mut UnixStream) -> Result<bool, FrameError> {
     }
 }
 
-/// Turn a (post-handshake) request into a response. The privileged actions are
-/// not implemented yet; until session discovery, PAM, and spawn land, every
+/// Turn a (post-handshake) request into a response. The remaining privileged
+/// actions (spawn, power) are not implemented yet; until they land, every
 /// request that would touch them gets a clear, non-leaky refusal.
-fn dispatch(request: &Request) -> Response {
+fn dispatch(request: &Request, config: &Config) -> Response {
     match request {
         // A second Hello is harmless; re-acknowledge.
         Request::Hello { .. } => Response::Welcome {
             protocol_version: PROTOCOL_VERSION,
         },
-        Request::ListSessions => Response::Sessions(Vec::new()),
+        Request::ListSessions => {
+            // Re-scanned per request so a session installed while the greeter is
+            // up appears without restarting the daemon. Only the greeter-facing
+            // projection crosses the seam — the `Exec` stays in the daemon.
+            let sessions = crate::sessions::discover(&config.session_dirs)
+                .iter()
+                .map(crate::sessions::DiscoveredSession::to_wire)
+                .collect();
+            Response::Sessions(sessions)
+        }
         // BeginAuth is handled by the conversation path, not here.
         Request::BeginAuth { .. } => Response::Error {
             message: "internal: auth request reached the stateless dispatch".to_string(),
@@ -343,6 +352,7 @@ mod tests {
     fn test_config() -> Config {
         Config {
             socket_path: PathBuf::from("/unused-in-pair-test.sock"),
+            session_dirs: Vec::new(),
             // A socketpair reports the creating process's creds on SO_PEERCRED,
             // so authorize our own uid.
             greeter_uid: unsafe { libc::getuid() },

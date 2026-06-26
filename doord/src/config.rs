@@ -20,6 +20,9 @@ const DEFAULT_PAM_SERVICE: &str = "doord";
 pub struct Config {
     /// Pathname Unix socket to listen on (`DOORD_SOCKET`).
     pub socket_path: PathBuf,
+    /// Data-dir roots searched for `wayland-sessions/` and `xsessions/`
+    /// (`DOORD_SESSION_DIRS`, `:`-separated; defaults to the freedesktop dirs).
+    pub session_dirs: Vec<PathBuf>,
     /// The only uid permitted to connect, enforced via `SO_PEERCRED`
     /// (`DOORD_GREETER_UID`; defaults to the daemon's own uid for dev runs).
     pub greeter_uid: u32,
@@ -38,6 +41,22 @@ impl Config {
             .map(PathBuf::from)
             .unwrap_or_else(|| PathBuf::from(DEFAULT_SOCKET_PATH));
 
+        // `:`-separated data-dir roots, mirroring how XDG paths are written.
+        // Empty segments are dropped so a trailing `:` is harmless.
+        let session_dirs = env_os("DOORD_SESSION_DIRS")
+            .map(|raw| {
+                std::env::split_paths(&raw)
+                    .filter(|p| !p.as_os_str().is_empty())
+                    .collect::<Vec<_>>()
+            })
+            .filter(|dirs: &Vec<PathBuf>| !dirs.is_empty())
+            .unwrap_or_else(|| {
+                crate::sessions::DEFAULT_DATA_DIRS
+                    .iter()
+                    .map(PathBuf::from)
+                    .collect()
+            });
+
         // Default the allowed peer to whoever launched the daemon, so a dev run
         // authorizes its own test greeter without configuration.
         let greeter_uid = env_u32("DOORD_GREETER_UID").unwrap_or_else(current_uid);
@@ -51,6 +70,7 @@ impl Config {
 
         Config {
             socket_path,
+            session_dirs,
             greeter_uid,
             greeter_gid,
             pam_service,
