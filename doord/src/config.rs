@@ -76,11 +76,19 @@ impl Config {
                     .collect()
             });
 
-        // Default the allowed peer to whoever launched the daemon, so a dev run
+        // The greeter user may be named (`DOORD_GREETER_USER`) rather than given
+        // as a numeric uid — systemd units carry a name, not a uid. When set, it
+        // resolves both uid and gid; an explicit `DOORD_GREETER_UID`/`_GID` still
+        // overrides. Default (dev): whoever launched the daemon, so a `cargo run`
         // authorizes its own test greeter without configuration.
-        let greeter_uid = env_u32("DOORD_GREETER_UID").unwrap_or_else(current_uid);
-
-        let greeter_gid = env_u32("DOORD_GREETER_GID");
+        let named_greeter = std::env::var("DOORD_GREETER_USER")
+            .ok()
+            .filter(|v| !v.is_empty())
+            .and_then(|name| crate::user::resolve(&name).ok());
+        let greeter_uid = env_u32("DOORD_GREETER_UID")
+            .or(named_greeter.as_ref().map(|u| u.uid))
+            .unwrap_or_else(current_uid);
+        let greeter_gid = env_u32("DOORD_GREETER_GID").or(named_greeter.as_ref().map(|u| u.gid));
 
         let pam_service = std::env::var("DOORD_PAM_SERVICE")
             .ok()

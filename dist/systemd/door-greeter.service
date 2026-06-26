@@ -1,0 +1,39 @@
+# door greeter session — runs the unprivileged UI under a minimal kiosk
+# compositor (cage) on the seat's VT.
+#
+# STATUS: provisional, NOT yet validated live. The greeter's seat acquisition and
+# the greeter<->session VT handoff / re-greet loop are the deferred N1/N2 lifecycle
+# (M2 threat model §5) and the open Critical piece of M6 — see PROJECT-STATE. This
+# unit captures the intended shape; the live install test validates (or corrects)
+# it. Do not enable on a machine without a tested TTY revert in hand.
+[Unit]
+Description=door greeter (cage + door-greeter) on seat0 / tty1
+After=doord.service systemd-user-sessions.service systemd-logind.service getty@tty1.service
+Requires=doord.service
+# Take tty1 from the getty (mutually exclusive — one owner of the VT).
+Conflicts=getty@tty1.service
+
+[Service]
+# Run as the unprivileged greeter user; PAMName opens a logind session for it
+# (via pam_systemd) so cage gets seat0 DRM/input access on its VT.
+User=door-greeter
+PAMName=door-greeter
+TTYPath=/dev/tty1
+TTYReset=yes
+TTYVHangup=yes
+TTYVTDisallocate=yes
+StandardInput=tty
+StandardOutput=journal
+StandardError=journal
+# cage is the host compositor (D-0007): one fullscreen client, smallest pre-auth
+# surface. door-greeter connects back to doord over the socket.
+Environment=DOORD_SOCKET=/run/doord/door.sock
+Environment=XDG_SEAT=seat0
+ExecStart=/usr/bin/cage -- /usr/bin/door-greeter
+# Re-greet after a session ends is the deferred lifecycle work; no auto-restart in
+# v1 so a successful login (greeter exits on "Started") does not respawn cage onto
+# the VT the user's session just took.
+Restart=no
+
+[Install]
+WantedBy=graphical.target

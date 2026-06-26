@@ -24,23 +24,30 @@ be exercised end to end. M4 beauty + M5 hardening follow.)*
       `to_layer_message` removed; State/update/view/worker unchanged. Builds clean,
       4 tests green, renders as a windowed toplevel in dev mode (`DOORD_GREETER_DEV`).
       `depends:` M3
-- [ ] **systemd units**: `doord.service` (privileged daemon; `RuntimeDirectory`
-      for `/run/doord`, the socket) + the greeter session unit (host compositor +
-      `door-greeter` on a dedicated VT; `Conflicts`/`After` that VT's getty).
+- [x] **systemd units** (written; **provisional — not validated live**):
+      `dist/systemd/doord.service` (daemon, `RuntimeDirectory=/run/doord`, names the
+      greeter user, seat/VT env) + `dist/systemd/door-greeter.service` (runs
+      `cage -- door-greeter` as the greeter user on tty1, `PAMName=door-greeter` for
+      a logind session → seat access, `Conflicts=getty@tty1`). Supporting:
+      `dist/pam.d/door-greeter` (passwordless greeter session), `dist/sysusers.d/door.conf`
+      (the `door-greeter` user). Two enabling code changes landed: `DOORD_GREETER_USER`
+      name resolution (`config.rs`) and **greeter exits on `SessionStarted`** (steps
+      aside so cage frees the VT). **Open: the greeter↔session VT handoff / re-greet
+      loop** (deferred N1/N2) — the units note it; it gates the live install.
       `depends:` host-compositor + greeter surface
-- [ ] **Arch PKGBUILD**: package the `doord` / `door-greeter` binaries,
-      `/etc/pam.d/doord`, the units, and the greeter system user — **installed but
-      disabled** (the package never enables anything).
+- [x] **Arch PKGBUILD**: `PKGBUILD` + `door.install` — packages the binaries, both
+      PAM files, both units, and the greeter user; **installed disabled** (enables
+      nothing, never touches the active DM). `door.install` prints the reversible
+      enable + the two-command TTY revert.
       `depends:` systemd units
-- [ ] **reversible enable + TTY revert**: an enable step that makes door the active
-      DM while keeping the previous DM installed as fallback, and prints the exact
-      two-command TTY revert (`disable --now door…` + `enable --now <previous-dm>`).
-      The revert is tested before door is enabled.
-      `depends:` systemd units
-- [ ] **live install test**: install the package on the real machine, run the
-      enable step, and log in for real through the greeter on the VT — tested revert
-      in hand.
-      `depends:` Arch PKGBUILD, reversible enable + TTY revert
+- [ ] **reversible enable + TTY revert (validated)**: the enable/revert *commands*
+      ship in `door.install` (keep previous DM as fallback). Remaining: **test the
+      revert** and settle the greeter↔session handoff so a real login + logout
+      cycle works. Critical — revert proven before door is ever enabled.
+      `depends:` systemd units, the handoff/re-greet lifecycle
+- [ ] **live install test**: `makepkg -si`, run the enable step, log in for real
+      through the greeter on the VT — tested revert in hand.
+      `depends:` Arch PKGBUILD, reversible enable + TTY revert (validated)
 
 **Done-when (M6):** door installs from a PKGBUILD (disabled by default), can be
 enabled to become the machine's login manager with the previous DM kept as

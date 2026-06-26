@@ -21,12 +21,16 @@ verified live against a wlroots compositor: connect → list → render → auth
 
 **Now active: M6 — packaging + reversible install. Criticality: Critical**
 (lockout domain — revert-first; install disabled-by-default, never clobber the
-existing DM, tested TTY revert before enabling). The **gating decision** opens M6:
-the **host compositor + greeter surface type** — the greeter is layer-shell but
-`cage` (this build) has no `wlr-layer-shell`, so either ship a layer-shell
-compositor (sway/weston/labwc) or switch the greeter to a plain-`iced` fullscreen
-toplevel that runs under `cage`. This blocks the greeter session unit and the
-PKGBUILD deps. See ROADMAP `## Active`.
+existing DM, tested TTY revert before enabling). Gating decision **resolved
+(D-0007): cage + plain-`iced` fullscreen toplevel** (greeter reworked). **Packaging
+scaffold written** (provisional, not validated live): `dist/systemd/{doord,door-greeter}.service`,
+`dist/pam.d/door-greeter`, `dist/sysusers.d/door.conf`, `PKGBUILD` + `door.install`
+(installs disabled, prints the reversible enable + two-command TTY revert). Code:
+`DOORD_GREETER_USER` name resolution + the greeter exits on `SessionStarted` to free
+the VT. **The open Critical piece: the greeter↔session VT handoff / re-greet loop**
+(the deferred N1/N2 lifecycle) — a correct installed DM needs the greeter to yield
+the VT to the session on login and re-greet on logout; doord should orchestrate it.
+This gates the validated revert + the live install. See ROADMAP `## Active`.
 
 ---
 
