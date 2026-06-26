@@ -1,8 +1,10 @@
 # Project State
 
-**Last updated:** YYYY-MM-DD
-**Active focus:** [1-3 sentences. What's actively in-flight right now.
-The first thing you'd want to know about this project today.]
+**Last updated:** 2026-06-25
+**Active focus:** M1 (privileged core skeleton). D-0003 ratified the hardened
+seam & TCB defaults (framing, peercred socket, redacted secrets, version
+handshake, extensibility). Protocol crate hardened; building the `doord` IPC
+server on those defaults next.
 
 ---
 
@@ -38,8 +40,8 @@ ready/blocked frontier. Per-task DoD (`done-when:`) and progress live in
 ROADMAP — do **not** duplicate the DoD checklist here (D-0050 dissolved the
 old lockstep-with-SCOPE mandate, a Principle-7 violation).
 
-**Milestone:** [M<n> — short title; pointer to ROADMAP]
-**Active blockers:** [list, or "none"]
+**Milestone:** M1 — Privileged core skeleton (`doord`); see `ROADMAP.md` `## Active`.
+**Active blockers:** none — seam defaults ratified (D-0003); IPC server unblocked.
 
 (Projects not using ROADMAP may keep a short DoD list here instead.)
 

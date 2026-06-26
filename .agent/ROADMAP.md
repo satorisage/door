@@ -7,12 +7,15 @@ milestone's task tree is the plan; `.agent/TODO.md` is its derived ready-frontie
 
 ### M1 — Privileged core skeleton (`doord`)
 - [x] Cargo workspace scaffolded (`doord` / `door-greeter` / `protocol`)
-- [ ] `protocol` crate: bespoke greeter↔core message types (D-0001)
-- [ ] IPC server: Unix socket, peer-credential checked
+- [x] `protocol` crate: bespoke greeter↔core message types (D-0001) + version
+      handshake, redacted `Secret`, strict-in serde, shared framing (D-0003)
+- [x] IPC server: Unix socket, peer-credential checked (D-0003: pathname socket,
+      `SO_PEERCRED` uid gate, single-conn, length-prefixed framing, read timeout;
+      E2E-tested in `doord/tests/ipc_smoke.rs`)
 - [ ] PAM auth conversation (multi-prompt capable)
-- [ ] privilege drop + sanitized session environment
+- [ ] privilege drop + sanitized session environment (D-0003 H5 ordering)
 - [ ] threat model written for the auth path
-      `depends:` D-0001, D-0002
+      `depends:` D-0001, D-0002, D-0003
 
 **Done-when:** `doord` runs a PAM auth conversation over a peer-cred-checked
 Unix socket, drops privileges, and the auth-path threat model is written.

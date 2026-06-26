@@ -8,18 +8,51 @@
 //! is free to refuse. The daemon must treat everything arriving over this seam
 //! as untrusted input — a compromised greeter can send any bytes it likes.
 //!
-//! The protocol is deliberately door's own (not borrowed from any other login
-//! manager) so it can model door's richer flows: multi-prompt PAM
-//! conversations, session metadata for a nicer picker, and presentation hints
-//! the daemon may emit without ever handing the greeter authority.
+//! The protocol is deliberately door's own — door is replacing the login layer,
+//! not joining an existing one, so the seam is free to model door's richer
+//! flows: multi-prompt PAM conversations, session metadata for a nicer picker,
+//! and presentation hints the daemon may emit without ever handing the greeter
+//! authority.
+//!
+//! # Security & evolution invariants (the seam's contract)
+//!
+//! - **Versioned before credentialed.** The greeter's first message is always
+//!   [`Request::Hello`]; no credential crosses the seam until the daemon has
+//!   answered [`Response::Welcome`]. See [`PROTOCOL_VERSION`].
+//! - **Strict in, lenient out.** Greeter→daemon types carry
+//!   `#[serde(deny_unknown_fields)]`: untrusted input to the trusted core is
+//!   parsed strictly and rejects anything unexpected. Daemon→greeter types stay
+//!   forward-lenient, so an older greeter degrades gracefully against a newer
+//!   daemon instead of failing closed.
+//! - **Additive evolution only.** New flows are new enum variants guarded by a
+//!   [`PROTOCOL_VERSION`] bump — never untyped maps, flattening, or relaxed
+//!   parsing, which would re-open the boundary.
+//! - **Secrets are typed.** Credentials travel as [`Secret`], which never
+//!   renders in `Debug` and is zeroized on drop.
+//! - **Bounded framing.** Messages cross as length-prefixed JSON with a hard
+//!   size cap; see [`frame`].
 
 use serde::{Deserialize, Serialize};
 
+pub mod frame;
+mod secret;
+
+pub use frame::{read_frame, write_frame, FrameError, MAX_FRAME_BYTES};
+pub use secret::Secret;
+
+/// The wire-protocol version this build speaks.
+///
+/// Negotiated by the [`Request::Hello`]/[`Response::Welcome`] handshake before
+/// any credential crosses the seam. Bump this on **any** change to message
+/// shape (new variant, new field, changed encoding); the handshake then keeps a
+/// peer from ever being handed a message its version cannot parse.
+pub const PROTOCOL_VERSION: u32 = 1;
+
 /// A desktop session the daemon discovered and is willing to start.
 ///
-/// Sourced from the freedesktop session directories; the `exec` is what the
-/// daemon will run on a successful login (honoring wrapper launchers). The
-/// greeter renders `name`/`comment` only — it never runs `exec` itself.
+/// Sourced from the freedesktop session directories; the daemon runs the real
+/// `Exec=` (honoring wrapper launchers) on a successful login. The greeter
+/// renders `name`/`comment` only — it never runs anything itself.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Session {
     /// Stable identifier (the `.desktop` basename), used to select on `Start`.
@@ -34,8 +67,12 @@ pub struct Session {
 ///
 /// PAM drives the dialogue: it may ask for a password, a second factor, or show
 /// an informational message. The greeter renders the prompt and returns the
-/// user's reply in an [`Request::AuthReply`]. `secret` marks input that must be
+/// user's reply in a [`Request::AuthReply`]. `secret` marks input that must be
 /// masked and never echoed or logged.
+///
+/// Daemon→greeter, so forward-lenient: a future PAM prompt style is a new
+/// variant a newer daemon only emits once the handshake proves the greeter
+/// understands it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum AuthPrompt {
     /// Ask the user for input. `secret` ⇒ mask it (password, OTP).
@@ -47,16 +84,24 @@ pub enum AuthPrompt {
 }
 
 /// Greeter → daemon. Requests for privileged action; the daemon may refuse any.
+///
+/// **Untrusted input to the TCB** — hence `deny_unknown_fields`: a stray or
+/// extra field is a malformed frame and is rejected, not ignored.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub enum Request {
+    /// Always the first message. Declares the version the greeter speaks; the
+    /// daemon answers [`Response::Welcome`] or [`Response::Incompatible`]. No
+    /// other request is honored before a successful handshake.
+    Hello { protocol_version: u32 },
     /// Ask for the list of startable sessions.
     ListSessions,
     /// Begin an authentication conversation for `username`.
     BeginAuth { username: String },
-    /// Answer the most recent [`AuthPrompt::Question`]. The reply may be a
-    /// secret; it lives only as long as the daemon's PAM call needs it and is
-    /// zeroized after.
-    AuthReply { response: String },
+    /// Answer the most recent [`AuthPrompt::Question`]. The reply is a
+    /// [`Secret`]: it lives only as long as the daemon's PAM call needs it and
+    /// is zeroized after.
+    AuthReply { response: Secret },
     /// Abandon the in-progress conversation and start over.
     CancelAuth,
     /// After a successful auth, start `session_id` for the authenticated user.
@@ -67,6 +112,7 @@ pub enum Request {
 
 /// Seat-level power actions the greeter may request.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub enum PowerAction {
     Reboot,
     PowerOff,
@@ -74,8 +120,18 @@ pub enum PowerAction {
 }
 
 /// Daemon → greeter. State of the conversation and answers to requests.
+///
+/// Forward-lenient by design (no `deny_unknown_fields`): a newer daemon may add
+/// fields an older greeter ignores. New variants are version-gated by the
+/// handshake, so an older greeter is never sent one it cannot parse.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Response {
+    /// Handshake accepted; the daemon speaks `protocol_version`. The greeter may
+    /// now proceed. The minimum of the two versions is the agreed dialect.
+    Welcome { protocol_version: u32 },
+    /// Handshake rejected: the daemon cannot speak the greeter's version. The
+    /// daemon closes the connection after sending this; the greeter shows why.
+    Incompatible { daemon_protocol_version: u32 },
     /// The startable sessions (answer to [`Request::ListSessions`]).
     Sessions(Vec<Session>),
     /// PAM needs the greeter to render this prompt and (if a question) reply.

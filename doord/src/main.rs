@@ -13,10 +13,30 @@
 //! acts only on requests it permits, and drops privilege as early as it can.
 //! Keeping this binary small is a security property, not a style preference —
 //! every line here is attack surface that runs as root.
+//!
+//! Built so far: process hardening baseline + the authorized, framed IPC seam.
+//! PAM, privilege drop, session discovery and spawn land on top of this socket
+//! next.
 
-fn main() {
-    // Skeleton. The IPC server, PAM conversation, privilege drop, and session
-    // spawn land here as the privileged-core milestone is built out — each
-    // gated behind the auth-path threat model.
-    eprintln!("doord: skeleton — privileged core not yet implemented");
+mod config;
+mod hardening;
+mod ipc;
+
+use std::process::ExitCode;
+
+use config::Config;
+
+fn main() -> ExitCode {
+    // Lock down the process before opening any attack surface.
+    hardening::apply_baseline();
+
+    let config = Config::from_env();
+
+    match ipc::serve(&config) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(e) => {
+            eprintln!("doord: fatal: could not serve on {}: {e}", config.socket_path.display());
+            ExitCode::FAILURE
+        }
+    }
 }

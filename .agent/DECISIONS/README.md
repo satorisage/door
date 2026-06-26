@@ -43,3 +43,4 @@ automates this.
 inline in the title cell: `— **Superseded by 0NNN (YYYY-MM-DD)**`.)
 | 0001 | 2026-06-25 | [Fully self-contained: bespoke IPC protocol, no greetd](DECISION-0001-bespoke-no-greetd.md) |
 | 0002 | 2026-06-25 | [Rust for the whole stack (doord + door-greeter)](DECISION-0002-rust-stack.md) |
+| 0003 | 2026-06-25 | [Hardened seam & TCB security defaults](DECISION-0003-hardened-seam-defaults.md) |
