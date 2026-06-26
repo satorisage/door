@@ -1,0 +1,11 @@
+# dotagent MCP index — derived, never committed
+*.db
+
+# Rust
+/target/
+**/*.rs.bk
+Cargo.lock.orig
+
+# editor / OS
+*.swp
+.DS_Store
