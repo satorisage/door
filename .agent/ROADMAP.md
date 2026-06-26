@@ -22,12 +22,18 @@ milestone's task tree is the plan; `.agent/TODO.md` is its derived ready-frontie
       `depends:` D-0001, D-0002, D-0003
 
 **M1 status:** code-complete and unit/integration-tested. One step remains for
-full definition-of-done: a **live root run** proving the real PAM conversation,
-the peercred rejection of a foreign uid, and the privilege drop on real
-hardware (cannot be done unprivileged in this environment).
+full definition-of-done: a **live root run** proving the real PAM conversation
+and the `SO_PEERCRED` rejection of a foreign uid (cannot be done unprivileged in
+this environment). Harness: `doord/examples/login_probe.rs` + `/tmp/doord-live-daemon.sh`.
+
+Privilege drop is intentionally **out of M1's live scope**: `privdrop::drop_to`
+is staged for the M2 spawn path (the daemon must stay root to keep serving PAM),
+so `serve()` never drops. Its mechanism is unit-tested; its live demonstration
+moves to M2's DoD (below).
 
 **Done-when:** `doord` runs a PAM auth conversation over a peer-cred-checked
-Unix socket, drops privileges, and the auth-path threat model is written.
+Unix socket (proven by a live root run), and the auth-path threat model is
+written.
 
 ## Backlog (future milestones, not yet sequenced)
 
@@ -35,7 +41,12 @@ Unix socket, drops privileges, and the auth-path threat model is written.
 - discover `/usr/share/wayland-sessions` + `xsessions`
 - spawn honoring `.desktop` `Exec=` (incl. wrapper launchers like `start-hyprland`)
 - `logind` seat/VT/session wiring
+- wire `privdrop::drop_to` into the spawn path (D-0003 H5 ordering) and
+  **demonstrate the privilege drop on real hardware** — carried over from M1,
+  where `serve()` stays root by design
   `depends:` M1
+  **Done-when (drop):** a spawned session runs as the authenticated user's
+  uid/gid with a sanitized environment, verified live (e.g. spawned `id`).
 
 ### M3 — Minimal greeter (functional, ugly)
 - Wayland client: session picker, password field, power controls

@@ -1,10 +1,10 @@
 # Project State
 
 **Last updated:** 2026-06-25
-**Active focus:** M1 (privileged core skeleton). D-0003 ratified the hardened
-seam & TCB defaults (framing, peercred socket, redacted secrets, version
-handshake, extensibility). Protocol crate hardened; building the `doord` IPC
-server on those defaults next.
+**Active focus:** M1 (privileged core skeleton) — code-complete and
+unit/integration-tested. Only the **live root run** remains for M1 DoD (proves
+the real PAM conversation + `SO_PEERCRED` foreign-uid rejection). Privilege-drop
+live demonstration was split out to M2's DoD (`serve()` stays root by design).
 
 ---
 
@@ -70,7 +70,11 @@ it by kind: deferred-but-committed → a `## Backlog` task in `.agent/ROADMAP.md
 
 ## 5. Next session
 
-What to do first when next session starts. 1-3 lines. Can be empty.
+Run the M1 live root run: `cargo build -p doord --examples`, then
+`sudo bash /tmp/doord-live-daemon.sh` (daemon, Terminal 1) and the two
+`login_probe` invocations it prints (Terminal 2) — (A) authorized PAM success,
+(B) foreign-uid peercred rejection. Report logs back; then mark the M1 live-run
+task `[x]`. Privilege-drop live demo now lives in M2's DoD (not M1).
 
 ---
 
