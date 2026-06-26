@@ -15,54 +15,31 @@ use std::sync::mpsc;
 
 use futures::SinkExt;
 use iced::widget::{button, column, container, pick_list, row, text, text_input};
-use iced::{Alignment, Element, Length, Task};
-use iced_layershell::reexport::{Anchor, KeyboardInteractivity, Layer};
-use iced_layershell::settings::LayerShellSettings;
-use iced_layershell::to_layer_message;
+use iced::{window, Alignment, Element, Length, Task};
 
 use protocol::{PowerAction, Secret, Session};
 
 use crate::client::{AuthStep, Client, StartOutcome, DEFAULT_SOCKET};
 
-/// Run the greeter. Returns when the layer-shell surface closes.
+/// Run the greeter (D-0007): a plain `iced` fullscreen toplevel, hosted by `cage`
+/// on the greeter VT. As the sole client on its own compositor it needs nothing
+/// `wlr-layer-shell` offers (v1 has no lock screen), and `cage` — the smallest
+/// pre-auth surface — does not advertise it.
 ///
-/// Production: a fullscreen overlay that grabs the keyboard exclusively — correct
-/// for a login screen that is the sole client on its own compositor/VT.
-///
-/// Dev (`DOORD_GREETER_DEV` set): a small floating surface with on-demand keyboard,
-/// so the greeter can be smoke-tested **nested inside an existing compositor**
-/// without locking the host session's keyboard (Ctrl-C the launching terminal to
-/// quit). The host compositor must support `wlr-layer-shell` either way.
-pub fn run() -> iced_layershell::Result {
-    let dev = std::env::var_os("DOORD_GREETER_DEV").is_some();
-    let layer_settings = if dev {
-        LayerShellSettings {
-            layer: Layer::Overlay,
-            anchor: Anchor::empty(),
-            keyboard_interactivity: KeyboardInteractivity::OnDemand,
-            size: Some((480, 540)),
-            ..Default::default()
-        }
-    } else {
-        LayerShellSettings {
-            layer: Layer::Overlay,
-            // Anchor to all four edges → the surface fills the output.
-            anchor: Anchor::Top | Anchor::Bottom | Anchor::Left | Anchor::Right,
-            // Grab the keyboard exclusively: this is a login screen.
-            keyboard_interactivity: KeyboardInteractivity::Exclusive,
-            size: None,
-            ..Default::default()
-        }
-    };
+/// Production: fullscreen. Dev (`DOORD_GREETER_DEV` set): a normal window, so the
+/// greeter can be run nested in any session for testing — no keyboard grab, just a
+/// window (Ctrl-C the launching terminal, or close it, to quit).
+pub fn run() -> iced::Result {
+    let fullscreen = std::env::var_os("DOORD_GREETER_DEV").is_none();
 
-    iced_layershell::build_pattern::application(State::new, namespace, update, view)
-        .layer_settings(layer_settings)
+    iced::application(State::new, update, view)
+        .title("door")
+        .window(window::Settings {
+            fullscreen,
+            ..Default::default()
+        })
         .subscription(|_state| iced_futures::Subscription::run(daemon_worker))
         .run()
-}
-
-fn namespace() -> String {
-    "door-greeter".to_string()
 }
 
 /// A startable session, rendered by name in the picker.
@@ -100,7 +77,6 @@ pub enum Command {
     Power(PowerAction),
 }
 
-#[to_layer_message]
 #[derive(Debug, Clone)]
 pub enum Message {
     // From the worker:
@@ -239,9 +215,6 @@ fn update(state: &mut State, message: Message) -> Task<Message> {
             }
         }
         Message::PowerPressed(action) => state.send(Command::Power(action)),
-        // Layer-shell control messages injected by the `to_layer_message` macro:
-        // the greeter never sends them, so there is nothing to do.
-        _ => {}
     }
     Task::none()
 }

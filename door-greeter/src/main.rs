@@ -16,9 +16,10 @@
 mod app;
 mod client;
 
-fn main() -> iced_layershell::Result {
-    // The greeter is the Wayland layer-shell UI built on `client` (the
-    // protocol-facing half). It connects to the daemon, lists sessions, runs the
-    // PAM conversation, and asks the daemon to start the chosen session.
+fn main() -> iced::Result {
+    // The greeter is the Wayland UI built on `client` (the protocol-facing half):
+    // a plain iced fullscreen toplevel hosted by cage on the greeter VT (D-0007).
+    // It connects to the daemon, lists sessions, runs the PAM conversation, and
+    // asks the daemon to start the chosen session.
     app::run()
 }
