@@ -23,8 +23,10 @@
 use std::ffi::CString;
 use std::io;
 
-/// The identity a session is handed off to.
-#[allow(dead_code)] // home/shell are consumed by the session-spawn path (next milestone).
+/// The identity a session is handed off to. Cloned into the post-fork `pre_exec`
+/// closure so the drop runs against an owned copy in the child. Carries only
+/// public passwd fields (name/uid/gid/home/shell) — no secret — so `Debug` is fine.
+#[derive(Debug, Clone)]
 pub struct TargetUser {
     pub name: String,
     pub uid: u32,
@@ -38,7 +40,6 @@ pub struct TargetUser {
 /// failed or left a residual privilege — the caller must abort the spawn.
 ///
 /// Must run after `fork`, in the child, before `exec`.
-#[allow(dead_code)] // Wired by the session-spawn path in the next milestone.
 pub fn drop_to(target: &TargetUser) -> io::Result<()> {
     let name = CString::new(target.name.as_str())
         .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "username has a NUL byte"))?;
@@ -69,7 +70,6 @@ pub fn drop_to(target: &TargetUser) -> io::Result<()> {
 /// Confirm the privilege drop actually took effect — defense against a
 /// `setres*id` that returned success but did not fully apply, and a sanity gate
 /// that we are not about to exec a root shell.
-#[allow(dead_code)]
 fn verify_dropped(target: &TargetUser) -> io::Result<()> {
     // SAFETY: these getters take no arguments and cannot fail.
     let (ruid, euid, suid) = unsafe { (libc::getuid(), libc::geteuid(), 0u32) };
@@ -104,7 +104,6 @@ fn verify_dropped(target: &TargetUser) -> io::Result<()> {
 /// Only variables a fresh login legitimately needs are set; everything else
 /// (the daemon's `PATH`, any inherited secrets, `LD_*` injection vectors) is
 /// simply absent because we start from an empty set.
-#[allow(dead_code)] // Consumed by the session-spawn path (next milestone); unit-tested now.
 pub fn sanitized_env(target: &TargetUser) -> Vec<(String, String)> {
     vec![
         ("HOME".to_string(), target.home.clone()),

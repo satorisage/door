@@ -1,11 +1,13 @@
 # Project State
 
 **Last updated:** 2026-06-25
-**Active focus:** M2 (session discovery + launch). **M1 is COMPLETE** — live root
-run on 2026-06-25 confirmed `✓ AUTH SUCCESS` over the peercred socket plus
-foreign-uid rejection. M2 builds on the served socket: discover sessions, then
-spawn the chosen one as the authenticated user — this is where `privdrop::drop_to`
-finally fires (its live privilege-drop demo is M2's DoD).
+**Active focus:** M2 (session discovery + launch). Discovery shipped; the
+**session-spawn path is now built and tested** — `Start` is auth-gated and bound
+to the PAM-authenticated user, the daemon forks and runs `privdrop::drop_to` in
+`pre_exec` (drop-or-abort), sanitizes the env, and execs the discovered `Exec`
+(protocol → v2, `Response::Started`). Two M2 tasks remain: the **live
+privilege-drop demo on real hardware** (`sudo bash /tmp/door-spawn-demo.sh` — the
+drop sub-task's DoD) and **logind seat/VT/session wiring**.
 
 ---
 
@@ -72,10 +74,19 @@ it by kind: deferred-but-committed → a `## Backlog` task in `.agent/ROADMAP.md
 
 ## 5. Next session
 
-Start M2 (session discovery + launch). First task: discover installed sessions
-from `/usr/share/wayland-sessions` + `xsessions` (parse `.desktop` `Exec=`/`Name=`),
-exposed over the existing IPC seam. Then the spawn path — where `privdrop::drop_to`
-fires — with the live privilege-drop demo as the DoD.
+Two M2 tasks remain:
+1. **Live privilege-drop demo** (the drop sub-task's DoD) — run
+   `sudo bash /tmp/door-spawn-demo.sh`, log in as the user, `Start` the `iddemo`
+   session, and confirm the spawned `id` reports the user's uid/gid with the
+   sanitized env. Then check the demo box in `ROADMAP.md` and record the result
+   (mirroring M1's "live root run passed" follow-up).
+2. **logind seat/VT/session wiring** — `setsid`/controlling tty, VT switch, the
+   logind session registration (`XDG_SESSION_*`), and session lifecycle
+   (re-greet, respawn policy). Its threats are deferred in
+   `SECURITY/session-spawn-threat-model.md` §5 (N1/N2) and modeled when it lands.
+
+Open doc item: correct D-0003 H5's ordering text to match the reviewed `privdrop`
+code (`initgroups → setresgid → setresuid`); see the note in `ROADMAP.md`.
 
 ---
 

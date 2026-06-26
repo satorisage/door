@@ -34,6 +34,7 @@ use protocol::{read_frame, write_frame, FrameError, Request, Response, PROTOCOL_
 
 use crate::config::Config;
 use crate::pam::{AuthOutcome, Authenticator, SocketChannel};
+use crate::spawn::SessionLauncher;
 
 /// How long the daemon waits on a stalled read before dropping the peer.
 const READ_TIMEOUT: Duration = Duration::from_secs(30);
@@ -47,7 +48,11 @@ const MIN_AUTH_FAILURE: Duration = Duration::from_secs(1);
 /// Bind the socket and serve greeters forever. Returns only on a fatal error
 /// setting up the listener; per-connection errors are logged and the loop
 /// continues.
-pub fn serve(config: &Config, authenticator: &dyn Authenticator) -> io::Result<()> {
+pub fn serve(
+    config: &Config,
+    authenticator: &dyn Authenticator,
+    launcher: &dyn SessionLauncher,
+) -> io::Result<()> {
     let listener = bind(config)?;
     eprintln!(
         "doord: listening on {} (greeter uid {}, pam service '{}')",
@@ -61,7 +66,7 @@ pub fn serve(config: &Config, authenticator: &dyn Authenticator) -> io::Result<(
             Ok(stream) => {
                 // Sequential by construction: we fully serve one greeter before
                 // accepting the next. One seat, one greeter (no concurrency).
-                if let Err(e) = handle_connection(stream, config, authenticator) {
+                if let Err(e) = handle_connection(stream, config, authenticator, launcher) {
                     eprintln!("doord: connection ended: {e}");
                 }
             }
@@ -116,6 +121,7 @@ fn handle_connection(
     stream: UnixStream,
     config: &Config,
     authenticator: &dyn Authenticator,
+    launcher: &dyn SessionLauncher,
 ) -> Result<(), FrameError> {
     let cred = peer_cred(&stream)?;
     if cred.uid != config.greeter_uid {
@@ -135,6 +141,12 @@ fn handle_connection(
         return Ok(());
     }
 
+    // Per-connection authentication state. `Start` is honored only once this is
+    // `Some`, and the session is launched as *this* user — never one the greeter
+    // names. The greeter cannot set it; only a completed PAM success does. It is
+    // scoped to the connection, so it cannot outlive the greeter that earned it.
+    let mut authenticated: Option<String> = None;
+
     loop {
         let request: Request = match read_frame(&mut conn) {
             Ok(req) => req,
@@ -150,15 +162,37 @@ fn handle_connection(
             }
         };
 
-        // BeginAuth opens a multi-step PAM conversation that does its own socket
-        // round-trips through the connection; the rest are single request →
-        // response.
+        // BeginAuth and Start each do more than a single request → response:
+        // BeginAuth runs a multi-step PAM conversation over the connection, and
+        // Start launches and then owns the session. The rest are stateless.
         match request {
-            Request::BeginAuth { username } => {
-                if run_auth(&mut conn, authenticator, &username)?.is_break() {
-                    return Ok(());
+            Request::BeginAuth { username } => match run_auth(&mut conn, authenticator, &username)?
+            {
+                AuthFlow::Authenticated(user) => authenticated = Some(user),
+                AuthFlow::Continue => {}
+                AuthFlow::Break => return Ok(()),
+            },
+            Request::Start { session_id } => match authenticated.as_deref() {
+                // The session-start gate: no auth, no spawn. A compromised greeter
+                // cannot reach the privilege handoff without first driving a real
+                // PAM success, and then only for the user that success bound.
+                None => {
+                    eprintln!("doord: refusing Start: no authenticated user on this connection");
+                    write_frame(
+                        &mut conn,
+                        &Response::Error {
+                            message: "authenticate before starting a session".to_string(),
+                        },
+                    )?;
                 }
-            }
+                Some(username) => {
+                    if run_start(&mut conn, config, launcher, username, &session_id)?.is_started() {
+                        // The session is running and the greeter has stepped
+                        // aside; this connection's work is done.
+                        return Ok(());
+                    }
+                }
+            },
             other => {
                 let response = dispatch(&other, config);
                 write_frame(&mut conn, &response)?;
@@ -167,15 +201,27 @@ fn handle_connection(
     }
 }
 
-/// Whether the connection should keep serving or be torn down.
+/// Outcome of an authentication conversation, as it affects the connection.
 enum AuthFlow {
+    /// The attempt failed or was cancelled; keep serving (the greeter may retry).
     Continue,
+    /// PAM accepted the user; remember them for a later `Start`.
+    Authenticated(String),
+    /// The greeter vanished mid-conversation; tear the connection down.
     Break,
 }
 
-impl AuthFlow {
-    fn is_break(&self) -> bool {
-        matches!(self, AuthFlow::Break)
+/// Outcome of a `Start` request.
+enum StartFlow {
+    /// The session launched; the connection is finished.
+    Started,
+    /// The launch was refused (unknown session, spawn error); keep serving.
+    Failed,
+}
+
+impl StartFlow {
+    fn is_started(&self) -> bool {
+        matches!(self, StartFlow::Started)
     }
 }
 
@@ -194,29 +240,102 @@ fn run_auth(
         authenticator.authenticate(username, &mut channel)
     };
 
-    let response = match outcome {
+    match outcome {
         AuthOutcome::Success => {
             eprintln!("doord: authentication succeeded for '{username}'");
-            Response::AuthSuccess
+            write_frame(conn, &Response::AuthSuccess)?;
+            // Bind the connection to the user PAM actually authenticated; a later
+            // Start spawns as this identity, not whatever the greeter may claim.
+            Ok(AuthFlow::Authenticated(username.to_string()))
         }
         AuthOutcome::Failure => {
             pad_failure(started);
-            Response::AuthFailure {
-                reason: "Authentication failed".to_string(),
-            }
+            write_frame(
+                conn,
+                &Response::AuthFailure {
+                    reason: "Authentication failed".to_string(),
+                },
+            )?;
+            Ok(AuthFlow::Continue)
         }
-        AuthOutcome::Cancelled => Response::AuthFailure {
-            reason: "Authentication cancelled".to_string(),
-        },
+        AuthOutcome::Cancelled => {
+            write_frame(
+                conn,
+                &Response::AuthFailure {
+                    reason: "Authentication cancelled".to_string(),
+                },
+            )?;
+            Ok(AuthFlow::Continue)
+        }
         AuthOutcome::Transport => {
             // The greeter is gone; nothing left to reply to.
             eprintln!("doord: greeter vanished mid-authentication");
-            return Ok(AuthFlow::Break);
+            Ok(AuthFlow::Break)
+        }
+    }
+}
+
+/// Launch the chosen session for the already-authenticated `username`. Resolves
+/// the session id against current discovery, hands off to the [`SessionLauncher`]
+/// (which drops privilege and execs), tells the greeter [`Response::Started`],
+/// then owns the running session until it exits. A logical failure (unknown
+/// session, spawn error) sends a non-leaky [`Response::Error`] and keeps the
+/// connection serving so the greeter can choose again.
+fn run_start(
+    conn: &mut UnixStream,
+    config: &Config,
+    launcher: &dyn SessionLauncher,
+    username: &str,
+    session_id: &str,
+) -> Result<StartFlow, FrameError> {
+    // Re-discover so the picker and the launch agree on the same id, even if the
+    // installed set changed while the greeter was up. The Exec stays daemon-side.
+    let session = crate::sessions::discover(&config.session_dirs)
+        .into_iter()
+        .find(|s| s.id == session_id);
+
+    let session = match session {
+        Some(session) => session,
+        None => {
+            eprintln!("doord: refusing Start: no session with id '{session_id}'");
+            write_frame(
+                conn,
+                &Response::Error {
+                    message: "no such session".to_string(),
+                },
+            )?;
+            return Ok(StartFlow::Failed);
         }
     };
 
-    write_frame(conn, &response)?;
-    Ok(AuthFlow::Continue)
+    match launcher.launch(&session, username) {
+        Ok(child) => {
+            eprintln!("doord: started session '{}' for '{username}'", session.id);
+            // Tell the greeter before we block on the session: it steps aside,
+            // the daemon stays as the session's parent for its whole lifetime.
+            write_frame(conn, &Response::Started)?;
+            match child.wait() {
+                Ok(Some(status)) => {
+                    eprintln!("doord: session '{}' exited ({status})", session.id)
+                }
+                Ok(None) => {}
+                Err(e) => eprintln!("doord: waiting on session '{}' failed: {e}", session.id),
+            }
+            Ok(StartFlow::Started)
+        }
+        Err(e) => {
+            // Detail to the journal; the login screen sees only a generic refusal
+            // (a spawn error must not, e.g., reveal whether an account exists).
+            eprintln!("doord: could not start session '{}' for '{username}': {e}", session.id);
+            write_frame(
+                conn,
+                &Response::Error {
+                    message: "could not start the session".to_string(),
+                },
+            )?;
+            Ok(StartFlow::Failed)
+        }
+    }
 }
 
 /// Sleep until at least [`MIN_AUTH_FAILURE`] has elapsed since `started`.
@@ -288,15 +407,16 @@ fn dispatch(request: &Request, config: &Config) -> Response {
                 .collect();
             Response::Sessions(sessions)
         }
-        // BeginAuth is handled by the conversation path, not here.
-        Request::BeginAuth { .. } => Response::Error {
-            message: "internal: auth request reached the stateless dispatch".to_string(),
+        // BeginAuth and Start are handled by the stateful connection loop, not
+        // here; reaching this arm is an internal routing bug.
+        Request::BeginAuth { .. } | Request::Start { .. } => Response::Error {
+            message: "internal: stateful request reached the stateless dispatch".to_string(),
         },
         // A reply or cancel with no conversation in progress is a stray message.
         Request::AuthReply { .. } | Request::CancelAuth => Response::Error {
             message: "no authentication in progress".to_string(),
         },
-        Request::Start { .. } | Request::Power(_) => Response::Error {
+        Request::Power(_) => Response::Error {
             message: "not yet available: the privileged core is still being built".to_string(),
         },
     }
@@ -346,8 +466,12 @@ fn chown_group(path: &Path, gid: u32) -> io::Result<()> {
 mod tests {
     use super::*;
     use crate::pam::ScriptedAuthenticator;
+    use crate::sessions::DiscoveredSession;
+    use crate::spawn::{LaunchError, SessionChild};
     use protocol::{AuthPrompt, Secret};
     use std::path::PathBuf;
+    use std::sync::atomic::{AtomicU32, Ordering};
+    use std::sync::{Arc, Mutex};
 
     fn test_config() -> Config {
         Config {
@@ -361,6 +485,51 @@ mod tests {
         }
     }
 
+    /// A launcher that records each (session id, username) it is asked to start
+    /// and never forks — so the connection's auth-gating and identity-binding can
+    /// be asserted without privilege. The shared log lets the test thread read
+    /// what the daemon thread launched.
+    #[derive(Clone, Default)]
+    struct RecordingLauncher {
+        calls: Arc<Mutex<Vec<(String, String)>>>,
+    }
+
+    impl SessionLauncher for RecordingLauncher {
+        fn launch(
+            &self,
+            session: &DiscoveredSession,
+            username: &str,
+        ) -> Result<SessionChild, LaunchError> {
+            self.calls
+                .lock()
+                .unwrap()
+                .push((session.id.clone(), username.to_string()));
+            Ok(SessionChild::detached())
+        }
+    }
+
+    static SESSION_ROOT_COUNTER: AtomicU32 = AtomicU32::new(0);
+
+    /// Create a throwaway data-dir root holding one session with the given id,
+    /// returned as a one-element `session_dirs`. Leaked (not cleaned) — these are
+    /// tiny and live under the temp dir; keeping the helper trivial matters more.
+    fn session_dir_with(id: &str) -> Vec<PathBuf> {
+        let n = SESSION_ROOT_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let root = std::env::temp_dir().join(format!(
+            "doord-ipc-sesstest-{}-{}",
+            std::process::id(),
+            n
+        ));
+        let wayland = root.join("wayland-sessions");
+        std::fs::create_dir_all(&wayland).unwrap();
+        std::fs::write(
+            wayland.join(format!("{id}.desktop")),
+            format!("[Desktop Entry]\nName={id}\nExec=/usr/bin/{id}\n"),
+        )
+        .unwrap();
+        vec![root]
+    }
+
     /// Drive a full handshake + auth conversation over an in-process socketpair
     /// against the scripted authenticator, returning the terminal response to
     /// the supplied password.
@@ -372,7 +541,8 @@ mod tests {
             let auth = ScriptedAuthenticator {
                 password: "hunter2".to_string(),
             };
-            let _ = handle_connection(server, &cfg, &auth);
+            let launcher = RecordingLauncher::default();
+            let _ = handle_connection(server, &cfg, &auth, &launcher);
             let _ = typed; // captured to keep the closure's intent explicit
         });
 
@@ -441,7 +611,8 @@ mod tests {
             let auth = ScriptedAuthenticator {
                 password: "hunter2".to_string(),
             };
-            let _ = handle_connection(server, &cfg, &auth);
+            let launcher = RecordingLauncher::default();
+            let _ = handle_connection(server, &cfg, &auth, &launcher);
         });
 
         write_frame(
@@ -469,5 +640,126 @@ mod tests {
 
         drop(client);
         handle.join().unwrap();
+    }
+
+    #[test]
+    fn start_before_auth_is_refused_and_never_launches() {
+        let (mut client, server) = UnixStream::pair().unwrap();
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let calls_in = calls.clone();
+        let handle = thread::spawn(move || {
+            let cfg = Config {
+                session_dirs: session_dir_with("hyprland"),
+                ..test_config()
+            };
+            let auth = ScriptedAuthenticator {
+                password: "hunter2".to_string(),
+            };
+            let launcher = RecordingLauncher { calls: calls_in };
+            let _ = handle_connection(server, &cfg, &auth, &launcher);
+        });
+
+        // Handshake, then jump straight to Start without authenticating.
+        write_frame(
+            &mut client,
+            &Request::Hello {
+                protocol_version: PROTOCOL_VERSION,
+            },
+        )
+        .unwrap();
+        let _welcome: Response = read_frame(&mut client).unwrap();
+
+        write_frame(
+            &mut client,
+            &Request::Start {
+                session_id: "hyprland".to_string(),
+            },
+        )
+        .unwrap();
+        let resp: Response = read_frame(&mut client).unwrap();
+        assert!(
+            matches!(resp, Response::Error { .. }),
+            "Start without a prior auth must be refused, got {resp:?}"
+        );
+
+        drop(client);
+        handle.join().unwrap();
+
+        // The privilege handoff was never reached.
+        assert!(
+            calls.lock().unwrap().is_empty(),
+            "no session may be launched without authentication"
+        );
+    }
+
+    #[test]
+    fn start_after_auth_launches_the_chosen_session_as_the_authed_user() {
+        let (mut client, server) = UnixStream::pair().unwrap();
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let calls_in = calls.clone();
+        let handle = thread::spawn(move || {
+            let cfg = Config {
+                session_dirs: session_dir_with("hyprland"),
+                ..test_config()
+            };
+            let auth = ScriptedAuthenticator {
+                password: "hunter2".to_string(),
+            };
+            let launcher = RecordingLauncher { calls: calls_in };
+            let _ = handle_connection(server, &cfg, &auth, &launcher);
+        });
+
+        write_frame(
+            &mut client,
+            &Request::Hello {
+                protocol_version: PROTOCOL_VERSION,
+            },
+        )
+        .unwrap();
+        let _welcome: Response = read_frame(&mut client).unwrap();
+
+        // Authenticate as "stephen".
+        write_frame(
+            &mut client,
+            &Request::BeginAuth {
+                username: "stephen".to_string(),
+            },
+        )
+        .unwrap();
+        let _prompt: Response = read_frame(&mut client).unwrap();
+        write_frame(
+            &mut client,
+            &Request::AuthReply {
+                response: Secret::new("hunter2".to_string()),
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            read_frame::<_, Response>(&mut client).unwrap(),
+            Response::AuthSuccess
+        );
+
+        // Now Start succeeds and the daemon reports the session launched.
+        write_frame(
+            &mut client,
+            &Request::Start {
+                session_id: "hyprland".to_string(),
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            read_frame::<_, Response>(&mut client).unwrap(),
+            Response::Started
+        );
+
+        drop(client);
+        handle.join().unwrap();
+
+        // Exactly the chosen session was launched, bound to the authenticated
+        // user — not anything the greeter could otherwise have named.
+        assert_eq!(
+            *calls.lock().unwrap(),
+            vec![("hyprland".to_string(), "stephen".to_string())]
+        );
     }
 }
