@@ -35,6 +35,10 @@ use crate::user;
 /// argv[1] that selects worker mode when the daemon re-execs itself.
 pub const WORKER_ARG: &str = "session-worker";
 
+/// argv[1] that selects greeter-worker mode (D-0008): doord re-execs itself here
+/// to launch the greeter in a passwordless logind session.
+pub const GREETER_WORKER_ARG: &str = "greeter-worker";
+
 /// The fd the daemon dup's the control socket onto before `exec`, where the
 /// worker picks it up. Not `O_CLOEXEC`, unlike every other fd, so it survives the
 /// re-exec; the greeter socket and listener do not.
@@ -122,6 +126,101 @@ pub fn main() -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+/// Greeter-worker entry (D-0008): doord re-execs itself here to launch the
+/// greeter. It opens a **passwordless** logind session for the greeter user (so
+/// the host compositor gets seat0 DRM/input access), forks
+/// `cage -- door-greeter` as that user on the seat VT, waits for it, then closes
+/// the session and exits. No control socket — the daemon manages this process by
+/// pid (terminate at handoff, reap on exit).
+pub fn run_greeter() -> ExitCode {
+    crate::hardening::apply_baseline();
+    let config = Config::from_env();
+    match launch_greeter(&config) {
+        Ok(status) => {
+            eprintln!("doord-greeter-worker: greeter exited ({status:?})");
+            ExitCode::SUCCESS
+        }
+        Err(e) => {
+            eprintln!("doord-greeter-worker: fatal: {e}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+fn launch_greeter(config: &Config) -> io::Result<Option<std::process::ExitStatus>> {
+    let user = config
+        .greeter_user
+        .as_deref()
+        .ok_or_else(|| io::Error::other("no greeter user configured (DOORD_GREETER_USER)"))?;
+    let target = user::resolve(user)?;
+
+    let mut context = Context::new(&config.greeter_pam_service, Some(user), NullConversation)
+        .map_err(|e| io::Error::other(format!("pam_start (greeter): {e}")))?;
+    context
+        .acct_mgmt(Flag::NONE)
+        .map_err(|e| io::Error::other(format!("greeter account check: {e}")))?;
+
+    // Register a *greeter-class* logind session on the seat/VT — that is what
+    // grants cage DRM/input. Class=greeter lets a later user session take over.
+    let putenv = |ctx: &mut Context<NullConversation>, kv: &str| -> io::Result<()> {
+        ctx.putenv(kv)
+            .map_err(|e| io::Error::other(format!("pam_putenv (greeter): {e}")))
+    };
+    putenv(&mut context, &format!("XDG_SEAT={}", config.seat.seat))?;
+    if let Some(vtnr) = config.seat.vtnr {
+        putenv(&mut context, &format!("XDG_VTNR={vtnr}"))?;
+        let _ = context.set_tty(Some(&format!("/dev/tty{vtnr}")));
+    }
+    putenv(&mut context, "XDG_SESSION_TYPE=wayland")?;
+    putenv(&mut context, "XDG_SESSION_CLASS=greeter")?;
+
+    let pam_session = context
+        .open_session(Flag::NONE)
+        .map_err(|e| io::Error::other(format!("pam_open_session (greeter): {e}")))?;
+
+    let mut pam_env: Vec<(OsString, OsString)> = pam_session.envlist().into();
+    // The greeter needs to reach the daemon socket.
+    pam_env.push((
+        OsString::from("DOORD_SOCKET"),
+        config.socket_path.clone().into_os_string(),
+    ));
+    let token = pam_session.leak();
+
+    // Fork the greeter command (cage -- door-greeter) as the greeter user, on the
+    // seat VT, with the privilege drop + VT/tty handoff (same path as a session).
+    let status = match spawn::launch(&config.greeter_cmd, &target, &pam_env, &config.seat) {
+        Ok(child) => child.wait()?,
+        Err(e) => {
+            // Close the session we opened before bailing.
+            let session = context.unleak_session(token);
+            let _ = session.close(Flag::NONE);
+            return Err(io::Error::other(format!("launching the greeter failed: {e}")));
+        }
+    };
+
+    // Greeter exited: close the logind session (still root) so the seat frees.
+    let session = context.unleak_session(token);
+    if let Err(e) = session.close(Flag::NONE) {
+        eprintln!("doord-greeter-worker: closing the greeter session failed: {e}");
+    }
+    Ok(status)
+}
+
+/// A PAM conversation that never prompts — the greeter's PAM service is
+/// passwordless, so any prompt is a misconfiguration we refuse.
+struct NullConversation;
+
+impl ConversationHandler for NullConversation {
+    fn prompt_echo_on(&mut self, _: &CStr) -> Result<CString, ErrorCode> {
+        Err(ErrorCode::CONV_ERR)
+    }
+    fn prompt_echo_off(&mut self, _: &CStr) -> Result<CString, ErrorCode> {
+        Err(ErrorCode::CONV_ERR)
+    }
+    fn text_info(&mut self, _: &CStr) {}
+    fn error_msg(&mut self, _: &CStr) {}
 }
 
 /// The session that has authenticated: the live PAM context, the user it is bound

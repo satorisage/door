@@ -50,6 +50,17 @@ pub struct Config {
     pub pam_service: String,
     /// Seat and VT a spawned session is registered on (see [`SeatTarget`]).
     pub seat: SeatTarget,
+    /// The greeter system user's name (`DOORD_GREETER_USER`), if configured.
+    /// doord launches the greeter as this user in a passwordless logind session;
+    /// `None` (dev) means no managed greeter is launched.
+    pub greeter_user: Option<String>,
+    /// PAM service for the *greeter's* passwordless session
+    /// (`DOORD_GREETER_PAM_SERVICE`; default `door-greeter`). Distinct from the
+    /// login service (`pam_service`) — this one authenticates no human.
+    pub greeter_pam_service: String,
+    /// The command doord execs as the greeter (`DOORD_GREETER_CMD`, whitespace-
+    /// split; default `cage -- /usr/bin/door-greeter`).
+    pub greeter_cmd: Vec<String>,
 }
 
 impl Config {
@@ -81,14 +92,33 @@ impl Config {
         // resolves both uid and gid; an explicit `DOORD_GREETER_UID`/`_GID` still
         // overrides. Default (dev): whoever launched the daemon, so a `cargo run`
         // authorizes its own test greeter without configuration.
-        let named_greeter = std::env::var("DOORD_GREETER_USER")
+        let greeter_user = std::env::var("DOORD_GREETER_USER")
             .ok()
-            .filter(|v| !v.is_empty())
-            .and_then(|name| crate::user::resolve(&name).ok());
+            .filter(|v| !v.is_empty());
+        let named_greeter = greeter_user
+            .as_deref()
+            .and_then(|name| crate::user::resolve(name).ok());
         let greeter_uid = env_u32("DOORD_GREETER_UID")
             .or(named_greeter.as_ref().map(|u| u.uid))
             .unwrap_or_else(current_uid);
         let greeter_gid = env_u32("DOORD_GREETER_GID").or(named_greeter.as_ref().map(|u| u.gid));
+
+        let greeter_pam_service = std::env::var("DOORD_GREETER_PAM_SERVICE")
+            .ok()
+            .filter(|v| !v.is_empty())
+            .unwrap_or_else(|| "door-greeter".to_string());
+
+        // The greeter command, whitespace-split (no shell quoting — door owns it).
+        let greeter_cmd = std::env::var("DOORD_GREETER_CMD")
+            .ok()
+            .filter(|v| !v.trim().is_empty())
+            .map(|v| v.split_whitespace().map(str::to_string).collect::<Vec<_>>())
+            .unwrap_or_else(|| {
+                ["cage", "--", "/usr/bin/door-greeter"]
+                    .iter()
+                    .map(|s| s.to_string())
+                    .collect()
+            });
 
         let pam_service = std::env::var("DOORD_PAM_SERVICE")
             .ok()
@@ -112,6 +142,9 @@ impl Config {
             greeter_gid,
             pam_service,
             seat: SeatTarget { seat, vtnr },
+            greeter_user,
+            greeter_pam_service,
+            greeter_cmd,
         }
     }
 }

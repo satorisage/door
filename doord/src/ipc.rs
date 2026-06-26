@@ -16,17 +16,21 @@
 //! - a mandatory **version handshake** ([`PROTOCOL_VERSION`]) before any other
 //!   request is honored.
 //!
-//! Session discovery, the PAM conversation, and session spawn are not built yet;
-//! until they are, post-handshake requests get a structured "not yet available"
-//! refusal. The seam, its framing, and its authorization are real and
-//! exercisable today.
+//! Above the per-connection handling sits the **login loop** ([`serve`], D-0008):
+//! when a greeter user is configured, doord owns the greeter lifecycle — it
+//! launches the greeter, serves the login, performs the greeter→session VT handoff
+//! (tears the greeter down before the session takes the seat), waits for the
+//! session to end, and re-greets. Without a greeter user (dev), it just serves
+//! whatever greeter connects.
 
+use std::cell::RefCell;
 use std::fs;
 use std::io;
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::io::AsRawFd;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::Path;
+use std::process::{Child, Command};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -34,6 +38,16 @@ use protocol::{read_frame, write_frame, FrameError, Request, Response, PROTOCOL_
 
 use crate::config::Config;
 use crate::pam::{AuthOutcome, Login, LoginFactory};
+use crate::worker;
+
+/// How long to wait for the greeter to exit after `SIGTERM` before `SIGKILL`.
+const GREETER_TERM_GRACE: Duration = Duration::from_millis(500);
+
+/// A managed greeter that lives less than this clearly failed (it never carried a
+/// real login, which lasts a session); re-greeting it immediately would spin. Back
+/// off [`GREETER_RESPAWN_BACKOFF`] before trying again.
+const GREETER_MIN_UPTIME: Duration = Duration::from_secs(3);
+const GREETER_RESPAWN_BACKOFF: Duration = Duration::from_secs(2);
 
 /// How long the daemon waits on a stalled read before dropping the peer.
 const READ_TIMEOUT: Duration = Duration::from_secs(30);
@@ -44,33 +58,126 @@ const READ_TIMEOUT: Duration = Duration::from_secs(30);
 /// slowed. Lockout/backoff proper is left to the PAM stack (`pam_faillock`).
 const MIN_AUTH_FAILURE: Duration = Duration::from_secs(1);
 
-/// Bind the socket and serve greeters forever. Returns only on a fatal error
-/// setting up the listener; per-connection errors are logged and the loop
-/// continues.
+/// The daemon's main login loop (D-0008). When a greeter user is configured,
+/// doord owns the greeter lifecycle: **greet** (launch the greeter), **serve**
+/// the login, hand off (tear the greeter down before the session takes the VT),
+/// wait for the session to end, and **re-greet**. Without a greeter user (dev),
+/// it simply serves whatever greeter connects, forever.
+///
+/// Returns only on a fatal error setting up the listener; per-connection and
+/// per-greeter errors are logged and the loop continues.
 pub fn serve(config: &Config, logins: &dyn LoginFactory) -> io::Result<()> {
     let listener = bind(config)?;
+    let manage_greeter = config.greeter_user.is_some();
     eprintln!(
-        "doord: listening on {} (greeter uid {}, pam service '{}', seat '{}' vt {:?})",
+        "doord: listening on {} (greeter uid {}, pam '{}', seat '{}' vt {:?}, managed greeter: {})",
         config.socket_path.display(),
         config.greeter_uid,
         config.pam_service,
         config.seat.seat,
         config.seat.vtnr,
+        manage_greeter,
     );
 
-    for incoming in listener.incoming() {
-        match incoming {
-            Ok(stream) => {
-                // Sequential by construction: we fully serve one greeter before
-                // accepting the next. One seat, one greeter (no concurrency).
-                if let Err(e) = handle_connection(stream, config, logins) {
+    loop {
+        // Greet: launch the greeter doord manages (re-greet on each loop). If the
+        // launch fails, back off and retry rather than block on accept() with no
+        // greeter to connect.
+        let greeter = if manage_greeter {
+            match launch_greeter(config) {
+                Ok(child) => {
+                    eprintln!("doord: launched greeter (pid {})", child.id());
+                    Some(RefCell::new(GreeterHandle::new(child)))
+                }
+                Err(e) => {
+                    eprintln!("doord: could not launch greeter: {e}; retrying shortly");
+                    thread::sleep(Duration::from_secs(2));
+                    continue;
+                }
+            }
+        } else {
+            None
+        };
+
+        // Serve one greeter connection. Sequential by construction — one seat, one
+        // greeter, no concurrency.
+        let greeted_at = Instant::now();
+        match listener.accept() {
+            Ok((stream, _)) => {
+                if let Err(e) = handle_connection(stream, config, logins, greeter.as_ref()) {
                     eprintln!("doord: connection ended: {e}");
                 }
             }
             Err(e) => eprintln!("doord: accept failed: {e}"),
         }
+
+        // Ensure the greeter is gone before re-greeting (idempotent: after a
+        // login handoff it is already terminated; after a non-login disconnect or
+        // a crash it is reaped here).
+        if let Some(greeter) = greeter {
+            greeter.borrow_mut().terminate();
+            // Crash-loop guard: a managed greeter that barely lived (it never
+            // carried a real login) must not be re-greeted in a tight spin.
+            if greeted_at.elapsed() < GREETER_MIN_UPTIME {
+                eprintln!("doord: greeter exited quickly; backing off before re-greet");
+                thread::sleep(GREETER_RESPAWN_BACKOFF);
+            }
+        }
     }
-    Ok(())
+}
+
+/// A managed greeter process (the re-exec'd greeter worker, which runs
+/// `cage -- door-greeter`). Owns the child so it can be torn down at the
+/// greeter→session handoff and reaped before a re-greet.
+struct GreeterHandle {
+    child: Option<Child>,
+}
+
+impl GreeterHandle {
+    fn new(child: Child) -> Self {
+        GreeterHandle { child: Some(child) }
+    }
+
+    /// Terminate the greeter and **wait for it to exit**, so the seat's VT/DRM is
+    /// released before the session takes it. `SIGTERM` first (cage releases the
+    /// seat and exits cleanly), escalating to `SIGKILL` if it lingers. Idempotent:
+    /// a second call (or one after the greeter already exited) just reaps.
+    fn terminate(&mut self) {
+        let Some(mut child) = self.child.take() else {
+            return;
+        };
+        let pid = child.id() as libc::pid_t;
+        // SAFETY: pid is this child's; SIGTERM is a request to exit.
+        unsafe { libc::kill(pid, libc::SIGTERM) };
+
+        let deadline = Instant::now() + GREETER_TERM_GRACE;
+        loop {
+            match child.try_wait() {
+                Ok(Some(_)) => return,
+                Ok(None) if Instant::now() < deadline => thread::sleep(Duration::from_millis(10)),
+                Ok(None) => break,
+                Err(e) => {
+                    eprintln!("doord: waiting on the greeter failed: {e}");
+                    return;
+                }
+            }
+        }
+        // Still alive after the grace period — force it.
+        // SAFETY: pid is this child's; it has not been reaped (try_wait returned None).
+        unsafe { libc::kill(pid, libc::SIGKILL) };
+        let _ = child.wait();
+    }
+}
+
+/// Re-exec the daemon as the greeter worker (D-0008). The child inherits the
+/// daemon's environment (the `DOORD_*` config), which is how the greeter worker
+/// learns the greeter user, seat/VT, PAM service, and command. No socket is
+/// passed — the daemon manages this process by pid.
+fn launch_greeter(config: &Config) -> io::Result<Child> {
+    let _ = config; // configuration travels via the inherited environment
+    Command::new("/proc/self/exe")
+        .arg(worker::GREETER_WORKER_ARG)
+        .spawn()
 }
 
 /// Create the socket directory, remove any stale socket, bind, and lock down
@@ -118,6 +225,7 @@ fn handle_connection(
     stream: UnixStream,
     config: &Config,
     logins: &dyn LoginFactory,
+    managed_greeter: Option<&RefCell<GreeterHandle>>,
 ) -> Result<(), FrameError> {
     let cred = peer_cred(&stream)?;
     if cred.uid != config.greeter_uid {
@@ -190,7 +298,15 @@ fn handle_connection(
                             message: "authenticate before starting a session".to_string(),
                         },
                     )?;
-                } else if run_start(&mut conn, config, login.as_mut(), &session_id)?.is_started() {
+                } else if run_start(
+                    &mut conn,
+                    config,
+                    login.as_mut(),
+                    managed_greeter,
+                    &session_id,
+                )?
+                .is_started()
+                {
                     // The session is running and the greeter has stepped aside;
                     // this connection's work is done.
                     return Ok(());
@@ -275,16 +391,18 @@ fn run_auth(
     }
 }
 
-/// Launch the chosen session for the already-authenticated login. Resolves the
-/// session id against current discovery, hands off to the [`Login`] (which opens
-/// the logind session, drops privilege, and execs), tells the greeter
-/// [`Response::Started`], then owns the running session until it exits. A logical
-/// failure (unknown session, spawn error) sends a non-leaky [`Response::Error`]
-/// and keeps the connection serving so the greeter can choose again.
+/// Launch the chosen session for the already-authenticated login, performing the
+/// greeter→session VT handoff (D-0008). Resolves the session id against current
+/// discovery; if doord manages the greeter, it **tears the greeter down and waits
+/// for the VT to free before** the session takes it; then it hands off to the
+/// [`Login`] (which opens the logind session, drops privilege, execs) and owns the
+/// running session until it exits. An unknown session is refused without touching
+/// the greeter (the greeter keeps serving so the user can choose again).
 fn run_start(
     conn: &mut UnixStream,
     config: &Config,
     login: &mut dyn Login,
+    managed_greeter: Option<&RefCell<GreeterHandle>>,
     session_id: &str,
 ) -> Result<StartFlow, FrameError> {
     // For journaling only; the launch binds to the login's authenticated user,
@@ -300,6 +418,7 @@ fn run_start(
     let session = match session {
         Some(session) => session,
         None => {
+            // Greeter is untouched — it keeps serving so the user can choose again.
             eprintln!("doord: refusing Start: no session with id '{session_id}'");
             write_frame(
                 conn,
@@ -311,11 +430,42 @@ fn run_start(
         }
     };
 
+    if let Some(greeter) = managed_greeter {
+        // Managed handoff: free the VT before the session takes it. Tearing the
+        // greeter down also drops this connection (we are serving the greeter) —
+        // that is intended; its job is done. We therefore send the greeter
+        // nothing and drive the session over the login's control channel.
+        eprintln!(
+            "doord: handoff '{username}' → session '{}': tearing down greeter, freeing the VT",
+            session.id
+        );
+        greeter.borrow_mut().terminate();
+
+        match login.start(&session, &config.seat) {
+            Ok(child) => {
+                eprintln!("doord: started session '{}' for '{username}'", session.id);
+                match child.wait() {
+                    Ok(Some(status)) => {
+                        eprintln!("doord: session '{}' exited ({status})", session.id)
+                    }
+                    Ok(None) => {}
+                    Err(e) => eprintln!("doord: waiting on session '{}' failed: {e}", session.id),
+                }
+            }
+            Err(e) => {
+                // The greeter is already gone; the loop re-greets after we return.
+                eprintln!("doord: session start failed after handoff for '{username}': {e}");
+            }
+        }
+        // The connection (greeter) is finished either way; the loop re-greets.
+        return Ok(StartFlow::Started);
+    }
+
+    // Unmanaged (dev): no greeter to tear down. Tell the greeter it started, then
+    // own the session; a failure keeps the connection serving.
     match login.start(&session, &config.seat) {
         Ok(child) => {
             eprintln!("doord: started session '{}' for '{username}'", session.id);
-            // Tell the greeter before we block on the session: it steps aside,
-            // the daemon stays as the session's parent for its whole lifetime.
             write_frame(conn, &Response::Started)?;
             match child.wait() {
                 Ok(Some(status)) => {
@@ -327,8 +477,6 @@ fn run_start(
             Ok(StartFlow::Started)
         }
         Err(e) => {
-            // Detail to the journal; the login screen sees only a generic refusal
-            // (a spawn error must not, e.g., reveal whether an account exists).
             eprintln!("doord: could not start session '{}' for '{username}': {e}", session.id);
             write_frame(
                 conn,
@@ -488,6 +636,10 @@ mod tests {
                 seat: "seat0".to_string(),
                 vtnr: None,
             },
+            // Tests drive the connection directly; no managed greeter.
+            greeter_user: None,
+            greeter_pam_service: "unused".to_string(),
+            greeter_cmd: vec!["true".to_string()],
         }
     }
 
@@ -532,7 +684,7 @@ mod tests {
         let handle = thread::spawn(move || {
             let cfg = test_config();
             let logins = scripted_logins(Arc::new(Mutex::new(Vec::new())));
-            let _ = handle_connection(server, &cfg, &logins);
+            let _ = handle_connection(server, &cfg, &logins, None);
             let _ = typed; // captured to keep the closure's intent explicit
         });
 
@@ -599,7 +751,7 @@ mod tests {
         let handle = thread::spawn(move || {
             let cfg = test_config();
             let logins = scripted_logins(Arc::new(Mutex::new(Vec::new())));
-            let _ = handle_connection(server, &cfg, &logins);
+            let _ = handle_connection(server, &cfg, &logins, None);
         });
 
         write_frame(
@@ -640,7 +792,7 @@ mod tests {
                 ..test_config()
             };
             let logins = scripted_logins(calls_in);
-            let _ = handle_connection(server, &cfg, &logins);
+            let _ = handle_connection(server, &cfg, &logins, None);
         });
 
         // Handshake, then jump straight to Start without authenticating.
@@ -687,7 +839,7 @@ mod tests {
                 ..test_config()
             };
             let logins = scripted_logins(calls_in);
-            let _ = handle_connection(server, &cfg, &logins);
+            let _ = handle_connection(server, &cfg, &logins, None);
         });
 
         write_frame(

@@ -24,27 +24,30 @@ be exercised end to end. M4 beauty + M5 hardening follow.)*
       `to_layer_message` removed; State/update/view/worker unchanged. Builds clean,
       4 tests green, renders as a windowed toplevel in dev mode (`DOORD_GREETER_DEV`).
       `depends:` M3
-- [x] **systemd units** (written; **provisional — not validated live**):
-      `dist/systemd/doord.service` (daemon, `RuntimeDirectory=/run/doord`, names the
-      greeter user, seat/VT env) + `dist/systemd/door-greeter.service` (runs
-      `cage -- door-greeter` as the greeter user on tty1, `PAMName=door-greeter` for
-      a logind session → seat access, `Conflicts=getty@tty1`). Supporting:
-      `dist/pam.d/door-greeter` (passwordless greeter session), `dist/sysusers.d/door.conf`
-      (the `door-greeter` user). Two enabling code changes landed: `DOORD_GREETER_USER`
-      name resolution (`config.rs`) and **greeter exits on `SessionStarted`** (steps
-      aside so cage frees the VT). **Open: the greeter↔session VT handoff / re-greet
-      loop** (deferred N1/N2) — the units note it; it gates the live install.
+- [x] **handoff / re-greet orchestration — D-0008** (built; not yet validated live):
+      doord owns the greeter lifecycle. New greeter worker (`worker::run_greeter`):
+      passwordless **greeter-class** logind session (PAM `door-greeter`) → seat
+      access, then forks `cage -- door-greeter` as the greeter user on the VT.
+      `ipc::serve` is now the **login loop**: greet → serve → on `Start`
+      **terminate the greeter and wait (SIGTERM→SIGKILL) before** the session worker
+      takes the VT (`GreeterHandle::terminate`, S14) → wait session → re-greet, with
+      a crash-loop backoff. `DOORD_GREETER_{USER,PAM_SERVICE,CMD}` config. 34 tests
+      green, clippy clean.
       `depends:` host-compositor + greeter surface
-- [x] **Arch PKGBUILD**: `PKGBUILD` + `door.install` — packages the binaries, both
-      PAM files, both units, and the greeter user; **installed disabled** (enables
-      nothing, never touches the active DM). `door.install` prints the reversible
-      enable + the two-command TTY revert.
-      `depends:` systemd units
+- [x] **systemd unit + packaging** (provisional — not validated live):
+      `dist/systemd/doord.service` (daemon owns the greeter; `RuntimeDirectory=/run/doord`,
+      names the greeter user, seat/VT env, `Conflicts=getty@tty1`),
+      `dist/pam.d/{doord,door-greeter}`, `dist/sysusers.d/door.conf` (the `door-greeter`
+      user). `door-greeter.service` was **removed** (doord owns the greeter, D-0008).
+      `PKGBUILD` + `door.install` package it all, **installed disabled**, never touch
+      the active DM; `door.install` prints the reversible enable + two-command TTY
+      revert.
+      `depends:` handoff / re-greet orchestration
 - [ ] **reversible enable + TTY revert (validated)**: the enable/revert *commands*
       ship in `door.install` (keep previous DM as fallback). Remaining: **test the
-      revert** and settle the greeter↔session handoff so a real login + logout
-      cycle works. Critical — revert proven before door is ever enabled.
-      `depends:` systemd units, the handoff/re-greet lifecycle
+      revert live** — the handoff is built but unproven on hardware. Critical —
+      revert proven before door is ever enabled.
+      `depends:` systemd unit + packaging
 - [ ] **live install test**: `makepkg -si`, run the enable step, log in for real
       through the greeter on the VT — tested revert in hand.
       `depends:` Arch PKGBUILD, reversible enable + TTY revert (validated)

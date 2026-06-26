@@ -70,17 +70,19 @@ arbitration (the residual N2).
 | S11 | VT acquisition ordered after the privilege drop, so the child can no longer open the root-owned VT device (handoff silently skipped, or grabs the wrong tty) | **Ordering.** `setsid` → open VT + `TIOCSCTTY` → dup stdio happen **while still privileged**; the privilege drop (`drop_to`) is the **last** step before exec. The VT device is opened with the authority to open it, then privilege is shed. (`spawn::session_setup`) |
 | S12 | A long-lived leader traps the daemon in a session scope, so the session never closes and no second login can register (the defect the first live run exposed under the old daemon-as-leader model) | **Per-login worker is the leader (D-0005).** The process that calls `pam_open_session` is a short-lived worker the daemon re-execs per login; it is the logind leader, spawns + waits the session, then closes the PAM session (`pam_close_session` + `setcred(DELETE_CRED)` via `worker::AuthedSession::drop`, still root) and **exits**. The session scope then empties and logind reaps it. The daemon is never in any session scope, so it serves login after login. (`worker::serve`, `worker::AuthedSession::drop`) |
 | S13 | A flaw in the PAM/session-spawn code is reachable from greeter-controlled bytes (parsing the wire protocol in the same process that holds the password and root session authority) | **Boundary split.** All greeter wire-protocol framing stays in the daemon; the worker that runs PAM and the spawn never reads a greeter byte. The daemon re-execs the worker with the greeter socket closed (it is `O_CLOEXEC`; only the control socket survives on a fixed fd), and proxies the conversation over a small private daemon↔worker codec. A greeter cannot deliver a malformed frame to the PAM/spawn process. (`pam::spawn_worker`, `worker` control protocol) |
+| S14 | Two owners of the seat VT at once — the session worker grabs the VT (DRM master) while the greeter (cage) still holds it, corrupting the handoff | **Ordered handoff (D-0008).** doord owns the greeter lifecycle. On a successful `Start` it **terminates the greeter and waits for it to exit** (`SIGTERM`→`SIGKILL` escalation, reaped — the greeter's logind session closes, releasing the seat) **before** the session worker is told to spawn. The session therefore takes a free VT; the greeter and session are never live on the seat simultaneously. The greeter is launched as the unprivileged greeter user in a passwordless **greeter-class** logind session, so a user session can supersede it. (`ipc::serve` login loop, `ipc::GreeterHandle::terminate`, `worker::run_greeter`) |
 
 ## 5. Explicitly NOT defended in this task (honest bounds)
 
 - **N1 — Seat/VT/logind session.** ~~Deferred.~~ **Now built and modeled** (S9–S13;
   D-0004 + D-0005): `setsid`, the controlling-tty handoff, the `XDG_SESSION_*` /
   logind registration via `pam_systemd`, and the per-login-worker leader.
-- **N2 — Respawn loops / session lifecycle (residual).** One clean
-  open→run→close cycle is modeled (S12). Still **not** defended: crash-loop
-  backoff, re-greet policy after a session exits, and concurrent-session
-  arbitration. door currently waits on the one session and then the connection
-  ends; a follow-up task owns the lifecycle policy.
+- **N2 — Respawn loops / session lifecycle (residual, reduced).** The greet →
+  login → session → logout → **re-greet** loop is now built (D-0008, S14). Still
+  **not** defended: **crash-loop backoff** (a greeter that dies instantly is
+  re-greeted in a tight loop — there is a 2s backoff only on *launch* failure, not
+  on rapid greeter exit), and concurrent-session arbitration on one seat. A
+  follow-up adds backoff/rate-limiting on the re-greet.
 - **N5 — ~~Daemon is in the logind session scope~~ (removed, D-0005).** Under the
   old plan A the daemon was the leader and was migrated into the session scope.
   The first live run showed this is not merely weaker isolation but a functional

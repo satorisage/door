@@ -3,8 +3,11 @@ Description=door — privileged login daemon (doord)
 Documentation=https://github.com/satorisage/door
 # doord is the trusted core: it owns PAM, logind/seat/VT, and session spawn, and
 # serves the local socket the unprivileged greeter connects to. It holds no UI.
-After=systemd-user-sessions.service systemd-logind.service
+# It also owns the greeter lifecycle (D-0008): it launches the greeter on its VT,
+# so the getty on that VT must not run.
+After=systemd-user-sessions.service systemd-logind.service getty@tty1.service
 Wants=systemd-logind.service
+Conflicts=getty@tty1.service
 
 [Service]
 Type=simple

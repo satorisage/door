@@ -48,3 +48,4 @@ inline in the title cell: `— **Superseded by 0NNN (YYYY-MM-DD)**`.)
 | 0005 | 2026-06-26 | [Per-login session worker is the logind session leader](DECISION-0005-per-login-session-worker.md) |
 | 0006 | 2026-06-26 | [Greeter UI toolkit: Iced + iced_layershell](DECISION-0006-greeter-toolkit-iced.md) — *surface clause superseded by 0007 (2026-06-26); Iced stands* |
 | 0007 | 2026-06-26 | [Greeter host: cage + plain-iced fullscreen toplevel](DECISION-0007-greeter-host-cage-toplevel.md) |
+| 0008 | 2026-06-26 | [doord owns the greeter lifecycle (handoff + re-greet)](DECISION-0008-doord-owns-greeter-lifecycle.md) |

@@ -37,11 +37,14 @@ use config::Config;
 use pam::WorkerLoginFactory;
 
 fn main() -> ExitCode {
-    // Re-exec as the per-login session worker when asked (D-0005): the daemon
-    // forks itself into this mode to hold the PAM transaction and be the logind
-    // session leader. The worker path never opens the IPC socket.
-    if std::env::args().nth(1).as_deref() == Some(worker::WORKER_ARG) {
-        return worker::main();
+    // Re-exec modes (the daemon forks itself into these): the per-login session
+    // worker (D-0005) holds the PAM transaction and is the logind session leader;
+    // the greeter worker (D-0008) holds a passwordless greeter session and runs
+    // cage. Neither opens the IPC listener.
+    match std::env::args().nth(1).as_deref() {
+        Some(worker::WORKER_ARG) => return worker::main(),
+        Some(worker::GREETER_WORKER_ARG) => return worker::run_greeter(),
+        _ => {}
     }
 
     // Lock down the process before opening any attack surface.

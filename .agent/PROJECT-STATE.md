@@ -22,15 +22,19 @@ verified live against a wlroots compositor: connect → list → render → auth
 **Now active: M6 — packaging + reversible install. Criticality: Critical**
 (lockout domain — revert-first; install disabled-by-default, never clobber the
 existing DM, tested TTY revert before enabling). Gating decision **resolved
-(D-0007): cage + plain-`iced` fullscreen toplevel** (greeter reworked). **Packaging
-scaffold written** (provisional, not validated live): `dist/systemd/{doord,door-greeter}.service`,
-`dist/pam.d/door-greeter`, `dist/sysusers.d/door.conf`, `PKGBUILD` + `door.install`
-(installs disabled, prints the reversible enable + two-command TTY revert). Code:
-`DOORD_GREETER_USER` name resolution + the greeter exits on `SessionStarted` to free
-the VT. **The open Critical piece: the greeter↔session VT handoff / re-greet loop**
-(the deferred N1/N2 lifecycle) — a correct installed DM needs the greeter to yield
-the VT to the session on login and re-greet on logout; doord should orchestrate it.
-This gates the validated revert + the live install. See ROADMAP `## Active`.
+(D-0007): cage + plain-`iced` fullscreen toplevel** (greeter reworked). **Handoff /
+re-greet orchestration built (D-0008):** doord owns the greeter lifecycle — a new
+greeter worker (`worker::run_greeter`) opens a passwordless greeter-class logind
+session (PAM `door-greeter`) for seat access and forks `cage -- door-greeter`;
+`ipc::serve` is the login loop (greet → serve → on `Start` terminate the greeter
+and wait for the VT to free **before** the session takes it (S14) → wait session →
+re-greet, with crash-loop backoff). `door-greeter.service` removed (doord owns the
+greeter); packaging is now `doord.service` + `dist/pam.d/{doord,door-greeter}` +
+`dist/sysusers.d/door.conf` + `PKGBUILD`/`door.install` (installs disabled). 34
+tests green, clippy clean. **The only remaining M6 work is the live install
+validation** (Critical, hardware, revert-first): `makepkg -si` → enable on a spare
+machine/VT → real login + logout + re-greet, tested TTY revert in hand. The handoff
+is built but unproven on hardware. See ROADMAP `## Active`.
 
 ---
 
