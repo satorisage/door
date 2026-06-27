@@ -8,7 +8,7 @@
 //! It is a `canvas::Program` generic over the host's `Message` (it emits none), so
 //! either app can drop it into a `stack` behind its UI.
 
-use iced::widget::canvas::{Frame, Geometry, Path, Program};
+use iced::widget::canvas::{gradient, Frame, Geometry, Path, Program};
 use iced::{mouse, Color, Point, Rectangle, Renderer};
 
 const fn rgb(r: u8, g: u8, b: u8) -> Color {
@@ -211,25 +211,43 @@ impl<Message> Program<Message> for Sky {
         let mut frame = Frame::new(renderer, bounds.size());
         let (w, h) = (bounds.width, bounds.height);
         let (core, blue, cyan, indigo) = palette(self.day);
-        // Day stars sit much dimmer so they stay subtle on the light background.
-        let star_mul = if self.day { 0.5 } else { 0.9 };
 
-        // Soft depth-glow (matches the desktop comet plugin), so the solid
-        // background has depth rather than reading flat. Stacked translucent circles
-        // approximate a radial since canvas fills are flat.
+        // Day gets atmosphere layers so a light background reads with the same depth
+        // as night instead of a flat white field of stars: a soft vertical sky wash
+        // (deeper periwinkle up top, clearing toward the bottom) under everything.
+        if self.day {
+            let grad = gradient::Linear::new(Point::new(w * 0.5, 0.0), Point::new(w * 0.5, h))
+                .add_stop(0.0, with_alpha(rgb(0xa8, 0xbd, 0xee), 0.60 * self.fade))
+                .add_stop(0.5, with_alpha(rgb(0xc8, 0xd5, 0xf2), 0.30 * self.fade))
+                .add_stop(1.0, with_alpha(rgb(0xe9, 0xec, 0xf4), 0.0));
+            frame.fill(&Path::rectangle(Point::new(0.0, 0.0), bounds.size()), grad);
+        }
+
+        // Soft depth-glow (matches the desktop comet plugin), so the background has
+        // depth rather than reading flat. Stacked translucent circles approximate a
+        // radial since canvas fills are flat. Day uses a larger, slightly stronger
+        // sky-blue haze (a soft sun) to stay luminous against the light wash.
         let glow_center = Point::new(w * 0.5, h * 0.42);
-        let glow_r = w.min(h) * 0.6;
+        let glow_r = w.min(h) * if self.day { 0.78 } else { 0.6 };
+        let glow_col = if self.day { rgb(0x8f, 0xb6, 0xff) } else { indigo };
+        let glow_alpha = if self.day { 0.020 } else { 0.012 };
         for i in 0..16 {
             let _t = i as f32 / 15.0; // 0 = widest/faintest .. 1 = innermost
             let radius = glow_r * (1.0 - 0.62 * _t);
             frame.fill(
                 &Path::circle(glow_center, radius),
-                with_alpha(indigo, 0.012 * self.fade),
+                with_alpha(glow_col, glow_alpha * self.fade),
             );
         }
 
-        // Starfield: parallax drift + twinkle, colored by depth.
+        // Starfield: parallax drift + twinkle, colored by depth. Night shows the full
+        // field; day keeps only the sparse brightest tier as faint daytime sparkles
+        // (a white background made every star glaringly visible and flat).
+        let star_mul = if self.day { 0.45 } else { 0.9 };
         for s in &self.stars {
+            if self.day && s.tier < 2 {
+                continue;
+            }
             let dx = if s.drift != 0.0 {
                 (self.anim * 0.25 + s.phase).sin() * s.drift
             } else {

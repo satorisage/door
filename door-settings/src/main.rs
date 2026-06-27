@@ -32,7 +32,7 @@ fn main() -> iced::Result {
 fn app_style(state: &State, _theme: &iced::Theme) -> iced::theme::Style {
     // Use the previewed variant's background so the day preview sits on a light bg
     // (not a hardcoded dark one) — the sky + card render over it accurately.
-    let t = state.preview_theme();
+    let t = &state.preview;
     iced::theme::Style {
         background_color: t.background.iced(),
         text_color: t.foreground.iced(),
@@ -134,6 +134,9 @@ struct State {
     anim: f32,
     started: Instant,
     stars: Vec<sky::Star>,
+    /// Cached built theme for the preview/window — rebuilt on edits, not per frame
+    /// (parsing every color twice each vsync frame was the day-flip stutter).
+    preview: Theme,
 }
 
 fn minutes_to_hhmm(m: u32) -> String {
@@ -143,7 +146,7 @@ fn minutes_to_hhmm(m: u32) -> String {
 impl State {
     fn new() -> Self {
         let (night, day, (start, end)) = Theme::load_pair();
-        State {
+        let mut s = State {
             night: Palette::from_theme(&night),
             day: Palette::from_theme(&day),
             font: night.font.clone().unwrap_or_default(),
@@ -160,7 +163,21 @@ impl State {
             anim: 0.0,
             started: Instant::now(),
             stars: sky::stars(),
-        }
+            preview: Theme::default(),
+        };
+        s.rebuild_preview();
+        s
+    }
+
+    /// Recompute the cached preview theme (call after any edit that affects it).
+    fn rebuild_preview(&mut self) {
+        self.preview = self.build(self.editing_day).unwrap_or_else(|_| {
+            if self.editing_day {
+                Theme::day()
+            } else {
+                Theme::default()
+            }
+        });
     }
 
     fn active(&self) -> &Palette {
@@ -229,17 +246,6 @@ impl State {
         })
     }
 
-    /// The theme to render the preview with — the active variant, or the default if
-    /// a field doesn't parse yet (the status line shows the error).
-    fn preview_theme(&self) -> Theme {
-        self.build(self.editing_day).unwrap_or_else(|_| {
-            if self.editing_day {
-                Theme::day()
-            } else {
-                Theme::default()
-            }
-        })
-    }
 }
 
 /// Render both palettes to a full `greeter.toml`, returning the temp path.
@@ -253,6 +259,9 @@ fn write_draft(state: &State) -> Result<PathBuf, String> {
 }
 
 fn update(state: &mut State, message: Message) -> Task<Message> {
+    // Every message except the per-frame animation tick can change the theme; only
+    // rebuild the cached preview for those (not 60×/s) so the day flip stays smooth.
+    let touches_theme = !matches!(message, Message::Tick);
     match message {
         Message::Set(param, value) => state.set(param, value),
         Message::CardAlpha(v) => {
@@ -312,6 +321,9 @@ fn update(state: &mut State, message: Message) -> Task<Message> {
             Err(e) => state.status = e,
         },
     }
+    if touches_theme {
+        state.rebuild_preview();
+    }
     Task::none()
 }
 
@@ -326,7 +338,7 @@ fn subscription(state: &State) -> Subscription<Message> {
 // ---- view -----------------------------------------------------------------
 
 fn view(state: &State) -> Element<'_, Message> {
-    let theme = state.preview_theme();
+    let theme = &state.preview;
 
     let panel = container(scrollable(controls(state)))
         .width(Length::Fixed(372.0))
@@ -335,7 +347,7 @@ fn view(state: &State) -> Element<'_, Message> {
         .style(glass_panel);
     let left = container(panel).padding(16);
 
-    let preview = container(preview_card(&theme, state.anim))
+    let preview = container(preview_card(theme, state.anim))
         .center_x(Length::Fill)
         .center_y(Length::Fill);
 
