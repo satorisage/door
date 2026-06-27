@@ -97,11 +97,13 @@ pub struct Sky {
 /// Day uses vivid blues/teal that read on a light background.
 fn palette(day: bool) -> (Color, Color, Color, Color) {
     if day {
+        // Harmonious blues that read on light without the harsh teal; a soft,
+        // airy glow (Bob-Ross cloud, not a hard disc).
         (
-            rgb(0x37, 0x60, 0xbf),
+            rgb(0x3a, 0x5f, 0xb0),
             rgb(0x2e, 0x7d, 0xe9),
-            rgb(0x00, 0x71, 0x97),
-            rgb(0x2e, 0x7d, 0xe9),
+            rgb(0x5a, 0xa0, 0xf0),
+            rgb(0x9c, 0xc0, 0xff),
         )
     } else {
         (CORE, BLUE, CYAN, INDIGO)
@@ -153,12 +155,15 @@ impl<Message> Program<Message> for Spinner {
         let dot = size * 0.075;
         let at = |angle: f32| Point::new(center.x + angle.cos() * ring, center.y + angle.sin() * ring);
         let (core, blue, cyan, _) = palette(self.day);
+        // The track needs more presence on a light card; the head bloom needs less.
+        let track_alpha = if self.day { 0.22 } else { 0.12 };
+        let bloom_mul = if self.day { 0.6 } else { 1.0 };
 
         // A faint static track of dots.
         const TRACK: usize = 12;
         for i in 0..TRACK {
             let a = i as f32 / TRACK as f32 * std::f32::consts::TAU;
-            frame.fill(&Path::circle(at(a), dot * 0.5), with_alpha(blue, 0.12 * self.fade));
+            frame.fill(&Path::circle(at(a), dot * 0.5), with_alpha(blue, track_alpha * self.fade));
         }
 
         // The comet: a bright head + fading trail at a *continuous* angle, so it
@@ -181,9 +186,9 @@ impl<Message> Program<Message> for Spinner {
             let alpha = (1.0 - k).powf(1.6) * self.fade;
             frame.fill(&Path::circle(at(a), r.max(0.6)), with_alpha(col, alpha));
         }
-        // Soft layered glow on the head for a silky bloom.
+        // Soft layered glow on the head for a silky bloom (gentler in day).
         for &(rr, oo) in &[(2.2f32, 0.10f32), (1.6, 0.16), (1.05, 0.30)] {
-            frame.fill(&Path::circle(at(head), dot * rr), with_alpha(cyan, oo * self.fade));
+            frame.fill(&Path::circle(at(head), dot * rr), with_alpha(cyan, oo * bloom_mul * self.fade));
         }
 
         vec![frame.into_geometry()]
@@ -204,8 +209,8 @@ impl<Message> Program<Message> for Sky {
         let mut frame = Frame::new(renderer, bounds.size());
         let (w, h) = (bounds.width, bounds.height);
         let (core, blue, cyan, indigo) = palette(self.day);
-        // Day stars sit a touch dimmer so they stay subtle on the light background.
-        let star_mul = if self.day { 0.7 } else { 0.9 };
+        // Day stars sit much dimmer so they stay subtle on the light background.
+        let star_mul = if self.day { 0.5 } else { 0.9 };
 
         // Soft depth-glow (matches the desktop comet plugin), so the solid
         // background has depth rather than reading flat. Stacked translucent circles

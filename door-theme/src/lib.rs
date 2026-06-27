@@ -146,12 +146,12 @@ impl Theme {
         Theme {
             wallpaper: None,
             background: Color::rgb(0xe1, 0xe2, 0xe7),
-            // Light frosted card.
-            card: Color::rgba(0xed, 0xee, 0xf4, 0xe0),
+            // Frosted white glass — translucent so the day sky reads through it.
+            card: Color::rgba(0xf4, 0xf6, 0xfb, 0xa6),
             accent: Color::rgb(0x2e, 0x7d, 0xe9),
-            foreground: Color::rgb(0x37, 0x60, 0xbf),
-            muted: Color::rgb(0x84, 0x8c, 0xb5),
-            field: Color::rgb(0xd5, 0xd6, 0xdb),
+            foreground: Color::rgb(0x34, 0x3b, 0x58),
+            muted: Color::rgb(0x6a, 0x73, 0x9e),
+            field: Color::rgba(0xff, 0xff, 0xff, 0x99),
             logo: None,
             font: None,
             corner_radius: 16.0,
