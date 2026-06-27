@@ -877,9 +877,7 @@ name = "door-settings"
 version = "0.0.0"
 dependencies = [
  "door-theme",
- "futures",
  "iced",
- "iced_futures",
 ]
 
 [[package]]

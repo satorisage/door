@@ -13,7 +13,7 @@
 
 use std::sync::mpsc;
 use std::sync::OnceLock;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use futures::SinkExt;
 use iced::widget::{
@@ -97,9 +97,10 @@ fn subscription(state: &State) -> Subscription<Message> {
             _ => None,
         }),
     ];
-    // The ~30 fps animation tick only runs when the sky is animated.
+    // Drive the animation off the compositor's frame clock (vsync — 60/120/144 Hz),
+    // not a fixed-rate thread, so motion is buttery smooth. Only when animated.
     if state.theme.animate {
-        subs.push(Subscription::run(anim_ticker));
+        subs.push(iced::window::frames().map(|_| Message::AnimTick));
     }
     Subscription::batch(subs)
 }
@@ -132,23 +133,6 @@ fn fade_ticker() -> impl futures::Stream<Item = Message> {
                 std::thread::sleep(Duration::from_millis(16));
                 if futures::executor::block_on(output.send(Message::Fade)).is_err() {
                     return;
-                }
-            }
-        });
-        std::future::pending::<()>().await;
-    })
-}
-
-/// Continuous ~30 fps tick driving the ambient twinkle + the breathing card edge
-/// while the greeter idles at the prompt.
-fn anim_ticker() -> impl futures::Stream<Item = Message> {
-    iced_futures::stream::channel(4, |output: futures::channel::mpsc::Sender<Message>| async move {
-        std::thread::spawn(move || {
-            let mut output = output;
-            loop {
-                std::thread::sleep(Duration::from_millis(33));
-                if futures::executor::block_on(output.send(Message::AnimTick)).is_err() {
-                    break;
                 }
             }
         });
@@ -237,9 +221,11 @@ struct State {
     date: String,
     /// Launch fade-in progress, 0.0 → 1.0 (driven by [`Message::Fade`]).
     fade: f32,
-    /// Continuously advancing animation clock (seconds-ish), driving the ambient
-    /// twinkle and the breathing card edge.
+    /// Animation clock in seconds — recomputed from `started` every frame so motion
+    /// is time-accurate and smooth (not a fixed per-tick increment).
     anim: f32,
+    /// When the greeter started, the zero point for `anim`.
+    started: Instant,
     /// Fixed ambient starfield positions (generated once so they don't jump).
     stars: Vec<sky::Star>,
 }
@@ -259,6 +245,7 @@ impl State {
             date: now_date(),
             fade: 0.0,
             anim: 0.0,
+            started: Instant::now(),
             stars: sky::stars(),
         }
     }
@@ -366,8 +353,8 @@ fn update(state: &mut State, message: Message) -> Task<Message> {
             state.date = now_date();
         }
         Message::Fade => state.fade = (state.fade + 1.0 / 24.0).min(1.0),
-        // Advance the ambient clock; wrap well before f32 precision degrades.
-        Message::AnimTick => state.anim = (state.anim + 0.033) % 10_000.0,
+        // Recompute the clock from real elapsed time each frame — smooth, jitter-free.
+        Message::AnimTick => state.anim = state.started.elapsed().as_secs_f32() % 10_000.0,
         Message::FocusNext => task = iced::widget::operation::focus_next(),
         Message::FocusPrev => task = iced::widget::operation::focus_previous(),
     }

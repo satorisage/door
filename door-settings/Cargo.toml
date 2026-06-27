@@ -16,5 +16,3 @@ path = "src/main.rs"
 # image: the wallpaper in the live preview; canvas: the shared animated sky.
 iced = { version = "0.14", features = ["image", "canvas"] }
 door-theme = { workspace = true }
-futures = "0.3"
-iced_futures = "0.14"

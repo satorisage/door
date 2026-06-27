@@ -8,9 +8,8 @@
 //! greeter keeps one source of truth for both the schema and the look.
 
 use std::path::PathBuf;
-use std::time::Duration;
+use std::time::Instant;
 
-use futures::SinkExt;
 use iced::widget::{
     button, canvas, column, container, image, row, scrollable, text, text_input, toggler, Space,
 };
@@ -79,8 +78,9 @@ struct State {
     show_clock: bool,
     animate: bool,
     status: String,
-    // Live-preview animation.
+    // Live-preview animation (clock recomputed from `started` each frame).
     anim: f32,
+    started: Instant,
     stars: Vec<sky::Star>,
 }
 
@@ -110,6 +110,7 @@ impl State {
             animate: t.animate,
             status: String::new(),
             anim: 0.0,
+            started: Instant::now(),
             stars: sky::stars(),
         }
     }
@@ -184,7 +185,7 @@ fn update(state: &mut State, message: Message) -> Task<Message> {
         Message::Set(param, value) => state.set(param, value),
         Message::ToggleClock(on) => state.show_clock = on,
         Message::ToggleAnimate(on) => state.animate = on,
-        Message::Tick => state.anim = (state.anim + 0.033) % 10_000.0,
+        Message::Tick => state.anim = state.started.elapsed().as_secs_f32() % 10_000.0,
         Message::Reset => {
             *state = State::from_theme(&Theme::default());
             state.status = "Reset to the built-in default (not saved).".to_string();
@@ -225,26 +226,11 @@ fn update(state: &mut State, message: Message) -> Task<Message> {
 
 fn subscription(state: &State) -> Subscription<Message> {
     if state.animate {
-        Subscription::run(ticker)
+        // Compositor frame clock (vsync) — smooth, not a fixed-rate thread tick.
+        iced::window::frames().map(|_| Message::Tick)
     } else {
         Subscription::none()
     }
-}
-
-/// ~30 fps tick for the live preview's animated sky.
-fn ticker() -> impl futures::Stream<Item = Message> {
-    iced_futures::stream::channel(4, |output: futures::channel::mpsc::Sender<Message>| async move {
-        std::thread::spawn(move || {
-            let mut output = output;
-            loop {
-                std::thread::sleep(Duration::from_millis(33));
-                if futures::executor::block_on(output.send(Message::Tick)).is_err() {
-                    break;
-                }
-            }
-        });
-        std::future::pending::<()>().await;
-    })
 }
 
 // ---- view -----------------------------------------------------------------
