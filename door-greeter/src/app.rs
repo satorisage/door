@@ -459,9 +459,9 @@ struct Comet {
 
 /// Three staggered comet lanes — a shooting star crosses every few seconds.
 const COMETS: [Comet; 3] = [
-    Comet { sx: 0.12, sy: -0.05, ex: 0.78, ey: 0.58, period: 7.0, offset: 0.00, streak: 0.11 },
-    Comet { sx: 0.98, sy: 0.02, ex: 0.34, ey: 0.72, period: 9.0, offset: 0.45, streak: 0.10 },
-    Comet { sx: 0.50, sy: -0.06, ex: 1.06, ey: 0.50, period: 11.0, offset: 0.78, streak: 0.09 },
+    Comet { sx: 0.12, sy: -0.05, ex: 0.78, ey: 0.58, period: 7.0, offset: 0.00, streak: 0.19 },
+    Comet { sx: 0.98, sy: 0.02, ex: 0.34, ey: 0.72, period: 9.0, offset: 0.45, streak: 0.17 },
+    Comet { sx: 0.50, sy: -0.06, ex: 1.06, ey: 0.50, period: 11.0, offset: 0.78, streak: 0.16 },
 ];
 
 /// The animated sky over the wallpaper: twinkling stars *and* periodic shooting
