@@ -1,0 +1,13 @@
+#%PAM-1.0
+# PAM service for door's greeter session (the unprivileged UI process), used by
+# door-greeter.service's PAMName. The greeter is a passwordless system user: it is
+# permitted without authentication, but a session IS opened so pam_systemd
+# registers a logind session for it — that registration is what grants the host
+# compositor (cage) seat0 DRM/input access on its VT. Mirrors greetd's greeter
+# PAM service. This service authenticates no human and must never be used for one.
+auth      required  pam_permit.so
+account   required  pam_permit.so
+session   optional  pam_keyinit.so force revoke
+session   required  pam_loginuid.so
+session   optional  pam_systemd.so
+session   required  pam_permit.so

@@ -62,11 +62,28 @@ impl SessionChild {
         SessionChild(None)
     }
 
+    /// The child's pid, if there is one. The greeter path needs it to forward a
+    /// terminate to the compositor at handoff (a childless test handle has none).
+    pub fn id(&self) -> Option<u32> {
+        self.0.as_ref().map(Child::id)
+    }
+
     /// Block until the session exits, reaping it. Returns its exit status, or
     /// `None` for a childless handle.
     pub fn wait(mut self) -> io::Result<Option<ExitStatus>> {
         match self.0.take() {
             Some(mut child) => child.wait().map(Some),
+            None => Ok(None),
+        }
+    }
+
+    /// Non-blocking check for session exit, reaping it if it has. `Ok(Some(status))`
+    /// once it exits, `Ok(None)` while it still runs. A childless test handle is
+    /// always `Ok(None)` (the caller drives it via [`wait`](Self::wait) instead).
+    /// Lets the daemon poll the session while also watching for an admin teardown.
+    pub fn try_wait(&mut self) -> io::Result<Option<ExitStatus>> {
+        match self.0.as_mut() {
+            Some(child) => child.try_wait(),
             None => Ok(None),
         }
     }
@@ -78,11 +95,17 @@ impl SessionChild {
 /// sanitized allowlist. Returns once the child has successfully `exec`'d; a
 /// VT-handoff, privilege-drop, or exec failure is an `Err`, never a half-started
 /// session.
+///
+/// `parent_death_signal`, when set, arms `PR_SET_PDEATHSIG` on the child so it is
+/// signalled if its parent (the spawning worker) dies — used by the greeter so a
+/// compositor holding seat0 can never be orphaned onto the VT. The session path
+/// passes `None`.
 pub fn launch(
     exec: &[String],
     target: &TargetUser,
     pam_env: &[(OsString, OsString)],
     seat: &SeatTarget,
+    parent_death_signal: Option<libc::c_int>,
 ) -> Result<SessionChild, LaunchError> {
     let mut cmd = build_command(exec, target, pam_env);
 
@@ -112,7 +135,7 @@ pub fn launch(
     // shares nothing with the parent and returns its result so a failed setup
     // fails the spawn.
     unsafe {
-        cmd.pre_exec(move || session_setup(&target, tty_cpath.as_deref()));
+        cmd.pre_exec(move || session_setup(&target, tty_cpath.as_deref(), parent_death_signal));
     }
 
     let child = cmd.spawn().map_err(LaunchError::Spawn)?;
@@ -125,7 +148,11 @@ pub fn launch(
 /// the VT is opened *before* the uid drop because the device is root-owned until
 /// logind reassigns it, and the privilege drop is *last* because after it we can
 /// no longer change groups or gid.
-fn session_setup(target: &TargetUser, tty_cpath: Option<&std::ffi::CStr>) -> io::Result<()> {
+fn session_setup(
+    target: &TargetUser,
+    tty_cpath: Option<&std::ffi::CStr>,
+    parent_death_signal: Option<libc::c_int>,
+) -> io::Result<()> {
     // New session: detach from the daemon's session and controlling tty so the
     // user's session leads its own. For a forked child this cannot fail.
     // SAFETY: setsid takes no arguments; the child is not already a group leader.
@@ -137,14 +164,41 @@ fn session_setup(target: &TargetUser, tty_cpath: Option<&std::ffi::CStr>) -> io:
         take_controlling_tty(tty_cpath)?;
     }
 
-    // Privilege drop LAST (see fn doc): groups → gid → uid, verified, refuses
-    // uid 0. After this the child is fully the target user.
-    privdrop::drop_to(target)
+    // Privilege drop before the parent-death signal (see fn doc): groups → gid →
+    // uid, verified, refuses uid 0. After this the child is fully the target user.
+    privdrop::drop_to(target)?;
+
+    // Parent-death signal LAST of all. It must be armed *after* the uid/gid drop:
+    // the kernel clears any pending PR_SET_PDEATHSIG whenever the effective user or
+    // group id changes, so arming it before privdrop would silently wipe it. With
+    // it set, the child is signalled the instant its parent (the spawning worker)
+    // dies — so a compositor that holds seat0 can never be orphaned onto the VT if
+    // that worker is killed before it can tear the compositor down cleanly.
+    if let Some(sig) = parent_death_signal {
+        // SAFETY: sets this process's own parent-death signal; scalar args, no
+        // shared state.
+        if unsafe { libc::prctl(libc::PR_SET_PDEATHSIG, sig as libc::c_ulong, 0, 0, 0) } != 0 {
+            return Err(io::Error::last_os_error());
+        }
+        // Close the fork→arm race: if the parent already exited, the kernel will
+        // never deliver the death signal, so fail the spawn now rather than launch
+        // a compositor that would outlive the worker meant to own it.
+        // SAFETY: getppid takes no arguments and cannot fail.
+        if unsafe { libc::getppid() } == 1 {
+            return Err(io::Error::other(
+                "parent exited before the parent-death signal was armed",
+            ));
+        }
+    }
+
+    Ok(())
 }
 
-/// Open the seat's VT, make it this session's controlling terminal, and route
-/// stdin/stdout/stderr to it — replacing the daemon's inherited stdio so the
-/// session owns the seat rather than the daemon's pipes.
+/// Open the seat's VT, make it this session's controlling terminal, and point
+/// stdin at it so the session owns the seat's console for input/VT-switch.
+/// stdout/stderr are deliberately left on the daemon's inherited streams (the
+/// service journal) rather than the VT, so the compositor's startup chatter does
+/// not paint the seat console before the desktop renders.
 fn take_controlling_tty(tty_cpath: &std::ffi::CStr) -> io::Result<()> {
     // O_NOCTTY: opening does not implicitly grab the tty; we claim it explicitly
     // below so the semantics are the same whether or not the kernel would have.
@@ -164,18 +218,23 @@ fn take_controlling_tty(tty_cpath: &std::ffi::CStr) -> io::Result<()> {
         return Err(e);
     }
 
-    // Point std{in,out,err} at the VT.
-    for std_fd in 0..3 {
-        // SAFETY: dup2 onto the three standard fds from a valid open fd.
-        if unsafe { libc::dup2(fd, std_fd) } < 0 {
-            let e = io::Error::last_os_error();
-            // SAFETY: fd is open and owned here.
-            unsafe { libc::close(fd) };
-            return Err(e);
-        }
+    // Point stdin at the VT (the session's controlling console for input), but
+    // leave stdout/stderr on the daemon's inherited streams — which are the
+    // service's journal. Routing the session's stdout/stderr to the VT instead
+    // paints the framebuffer with the compositor's startup chatter (kwin/xkbcomp
+    // keymap warnings, "Lost connection to Wayland compositor", etc.) before the
+    // desktop renders. A conventional DM logs the session to the journal/a file,
+    // not the console; do the same so the seat console stays clean and the logs
+    // are still captured.
+    // SAFETY: dup2 onto stdin from a valid open fd.
+    if unsafe { libc::dup2(fd, 0) } < 0 {
+        let e = io::Error::last_os_error();
+        // SAFETY: fd is open and owned here.
+        unsafe { libc::close(fd) };
+        return Err(e);
     }
     if fd > 2 {
-        // SAFETY: the original fd is now duplicated onto 0..3 and no longer needed.
+        // SAFETY: the original fd is duplicated onto stdin and no longer needed.
         unsafe { libc::close(fd) };
     }
     Ok(())
@@ -260,12 +319,25 @@ mod tests {
     fn command_environment_is_the_sanitized_allowlist_only_without_pam_env() {
         let cmd = build_command(&exec(&["Hyprland"]), &target(), &[]);
         // env_clear means get_envs reports the full child environment: every
-        // entry has a value (none inherited/removed), and the set is exactly the
-        // allowlist bound to the target.
+        // entry has a value (none inherited/removed). The set is the identity/PATH
+        // allowlist bound to the target, plus locale (system config, passed
+        // through deliberately) — and nothing else inherited.
         let env = env_of(&cmd);
-        let mut keys: Vec<&String> = env.keys().collect();
-        keys.sort();
-        assert_eq!(keys, ["HOME", "LOGNAME", "PATH", "SHELL", "USER"]);
+        for required in ["HOME", "USER", "LOGNAME", "SHELL", "PATH"] {
+            assert!(env.contains_key(required), "missing allowlist key: {required}");
+        }
+        let locale = [
+            "LANG", "LANGUAGE", "LC_ALL", "LC_CTYPE", "LC_NUMERIC", "LC_TIME", "LC_COLLATE",
+            "LC_MONETARY", "LC_MESSAGES", "LC_PAPER", "LC_NAME", "LC_ADDRESS", "LC_TELEPHONE",
+            "LC_MEASUREMENT", "LC_IDENTIFICATION",
+        ];
+        let allowed = ["HOME", "USER", "LOGNAME", "SHELL", "PATH"];
+        for key in env.keys() {
+            assert!(
+                allowed.contains(&key.as_str()) || locale.contains(&key.as_str()),
+                "unexpected inherited key leaked into the session: {key}"
+            );
+        }
         assert_eq!(env["HOME"], "/home/stephen");
         assert_eq!(env["USER"], "stephen");
         assert_eq!(env["LOGNAME"], "stephen");

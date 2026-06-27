@@ -6,6 +6,18 @@
 **/*.rs.bk
 Cargo.lock.orig
 
+# makepkg build outputs
+/pkg/
+/src/
+*.pkg.tar.*
+
+# local debug captures
+door.log
+*.dump
+
 # editor / OS
 *.swp
 .DS_Store
+
+# local scratch / temp scripts (survives reboot, unlike /tmp)
+/scratch/

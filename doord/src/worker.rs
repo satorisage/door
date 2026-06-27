@@ -23,6 +23,7 @@ use std::io;
 use std::os::unix::io::FromRawFd;
 use std::os::unix::net::UnixStream;
 use std::process::ExitCode;
+use std::sync::atomic::{AtomicI32, Ordering};
 
 use pam_client::{Context, ConversationHandler, ErrorCode, Flag, SessionToken};
 use protocol::{read_frame, write_frame, Secret};
@@ -34,6 +35,10 @@ use crate::user;
 
 /// argv[1] that selects worker mode when the daemon re-execs itself.
 pub const WORKER_ARG: &str = "session-worker";
+
+/// argv[1] that selects greeter-worker mode (D-0008): doord re-execs itself here
+/// to launch the greeter in a passwordless logind session.
+pub const GREETER_WORKER_ARG: &str = "greeter-worker";
 
 /// The fd the daemon dup's the control socket onto before `exec`, where the
 /// worker picks it up. Not `O_CLOEXEC`, unlike every other fd, so it survives the
@@ -122,6 +127,164 @@ pub fn main() -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+/// Greeter-worker entry (D-0008): doord re-execs itself here to launch the
+/// greeter. It opens a **passwordless** logind session for the greeter user (so
+/// the host compositor gets seat0 DRM/input access), forks
+/// `cage -- door-greeter` as that user on the seat VT, waits for it, then closes
+/// the session and exits. No control socket — the daemon manages this process by
+/// pid (terminate at handoff, reap on exit).
+pub fn run_greeter() -> ExitCode {
+    crate::hardening::apply_baseline();
+    let config = Config::from_env();
+    match launch_greeter(&config) {
+        Ok(status) => {
+            eprintln!("doord-greeter-worker: greeter exited ({status:?})");
+            ExitCode::SUCCESS
+        }
+        Err(e) => {
+            eprintln!("doord-greeter-worker: fatal: {e}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+/// The compositor child's pid, published for the terminate-forwarding signal
+/// handler (a handler takes no arguments). `0` means "no compositor running yet".
+static GREETER_CHILD_PID: AtomicI32 = AtomicI32::new(0);
+
+/// SIGTERM/SIGINT handler for the greeter-worker: forward a clean terminate to the
+/// compositor. doord ends the greeter at handoff by signalling *this* worker, but
+/// the compositor is a separate session leader holding seat0's VT/DRM; unless it is
+/// told to exit it lingers and the user session cannot take the seat. Forwarding
+/// lets it release cleanly (`cage` answers SIGTERM by tearing the display down);
+/// the child's `PR_SET_PDEATHSIG=SIGKILL` is the backstop if this worker is itself
+/// SIGKILLed before it can forward.
+extern "C" fn forward_terminate(_sig: libc::c_int) {
+    let pid = GREETER_CHILD_PID.load(Ordering::SeqCst);
+    if pid > 0 {
+        // SAFETY: async-signal-safe — an atomic load and one kill(2). SIGTERM to the
+        // compositor is exactly what the daemon meant by terminating this worker.
+        unsafe {
+            libc::kill(pid, libc::SIGTERM);
+        }
+    }
+}
+
+/// Install [`forward_terminate`] for SIGTERM and SIGINT.
+fn install_terminate_forwarder() {
+    // SAFETY: a zeroed sigaction is a valid empty handler; we point it at our
+    // async-signal-safe handler and register it for the two terminate signals.
+    unsafe {
+        let mut action: libc::sigaction = std::mem::zeroed();
+        action.sa_sigaction = forward_terminate as *const () as usize;
+        libc::sigemptyset(&mut action.sa_mask);
+        action.sa_flags = 0;
+        libc::sigaction(libc::SIGTERM, &action, std::ptr::null_mut());
+        libc::sigaction(libc::SIGINT, &action, std::ptr::null_mut());
+    }
+}
+
+fn launch_greeter(config: &Config) -> io::Result<Option<std::process::ExitStatus>> {
+    let user = config
+        .greeter_user
+        .as_deref()
+        .ok_or_else(|| io::Error::other("no greeter user configured (DOORD_GREETER_USER)"))?;
+    let target = user::resolve(user)?;
+
+    let mut context = Context::new(&config.greeter_pam_service, Some(user), NullConversation)
+        .map_err(|e| io::Error::other(format!("pam_start (greeter): {e}")))?;
+    context
+        .acct_mgmt(Flag::NONE)
+        .map_err(|e| io::Error::other(format!("greeter account check: {e}")))?;
+
+    // Register a *greeter-class* logind session on the seat/VT — that is what
+    // grants cage DRM/input. Class=greeter lets a later user session take over.
+    let putenv = |ctx: &mut Context<NullConversation>, kv: &str| -> io::Result<()> {
+        ctx.putenv(kv)
+            .map_err(|e| io::Error::other(format!("pam_putenv (greeter): {e}")))
+    };
+    putenv(&mut context, &format!("XDG_SEAT={}", config.seat.seat))?;
+    if let Some(vtnr) = config.seat.vtnr {
+        putenv(&mut context, &format!("XDG_VTNR={vtnr}"))?;
+        let _ = context.set_tty(Some(&format!("/dev/tty{vtnr}")));
+    }
+    putenv(&mut context, "XDG_SESSION_TYPE=wayland")?;
+    putenv(&mut context, "XDG_SESSION_CLASS=greeter")?;
+
+    let pam_session = context
+        .open_session(Flag::NONE)
+        .map_err(|e| io::Error::other(format!("pam_open_session (greeter): {e}")))?;
+
+    let mut pam_env: Vec<(OsString, OsString)> = pam_session.envlist().into();
+    // The greeter needs to reach the daemon socket.
+    pam_env.push((
+        OsString::from("DOORD_SOCKET"),
+        config.socket_path.clone().into_os_string(),
+    ));
+    // The greeter user has HOME=/ (sysusers), so Mesa cannot create `//.cache` for
+    // its shader cache — it logs a permission error and runs cache-disabled. Point
+    // XDG_CACHE_HOME at the greeter's own logind runtime dir (0700, writable,
+    // ephemeral), so the cache works and the warning is gone. Merged after the
+    // logind vars so it overrides nothing of theirs.
+    if let Some((_, runtime)) = pam_env
+        .iter()
+        .find(|(k, _)| k.to_str() == Some("XDG_RUNTIME_DIR"))
+    {
+        let cache_home = runtime.clone();
+        pam_env.push((OsString::from("XDG_CACHE_HOME"), cache_home));
+    }
+    let token = pam_session.leak();
+
+    // Fork the greeter command (cage -- door-greeter) as the greeter user, on the
+    // seat VT, with the privilege drop + VT/tty handoff (same path as a session).
+    let status = match spawn::launch(
+        &config.greeter_cmd,
+        &target,
+        &pam_env,
+        &config.seat,
+        Some(libc::SIGKILL),
+    ) {
+        Ok(child) => {
+            // Arm the terminate forwarder now that we have a compositor to forward
+            // to: at handoff doord signals this worker, and we relay it to the
+            // compositor so it releases seat0 before we close the session below.
+            if let Some(pid) = child.id() {
+                GREETER_CHILD_PID.store(pid as i32, Ordering::SeqCst);
+                install_terminate_forwarder();
+            }
+            child.wait()?
+        }
+        Err(e) => {
+            // Close the session we opened before bailing.
+            let session = context.unleak_session(token);
+            let _ = session.close(Flag::NONE);
+            return Err(io::Error::other(format!("launching the greeter failed: {e}")));
+        }
+    };
+
+    // Greeter exited: close the logind session (still root) so the seat frees.
+    let session = context.unleak_session(token);
+    if let Err(e) = session.close(Flag::NONE) {
+        eprintln!("doord-greeter-worker: closing the greeter session failed: {e}");
+    }
+    Ok(status)
+}
+
+/// A PAM conversation that never prompts — the greeter's PAM service is
+/// passwordless, so any prompt is a misconfiguration we refuse.
+struct NullConversation;
+
+impl ConversationHandler for NullConversation {
+    fn prompt_echo_on(&mut self, _: &CStr) -> Result<CString, ErrorCode> {
+        Err(ErrorCode::CONV_ERR)
+    }
+    fn prompt_echo_off(&mut self, _: &CStr) -> Result<CString, ErrorCode> {
+        Err(ErrorCode::CONV_ERR)
+    }
+    fn text_info(&mut self, _: &CStr) {}
+    fn error_msg(&mut self, _: &CStr) {}
 }
 
 /// The session that has authenticated: the live PAM context, the user it is bound
@@ -298,7 +461,10 @@ fn start_session(
     let pam_env: Vec<(OsString, OsString)> = pam_session.envlist().into();
     txn.session = Some(pam_session.leak());
 
-    spawn::launch(&session.exec, &target, &pam_env, &seat_target)
+    // No parent-death signal for the user session: the worker is its session
+    // leader and is meant to outlive nothing — it lives exactly as long as the
+    // session it leads.
+    spawn::launch(&session.exec, &target, &pam_env, &seat_target, None)
         .map_err(|e| io::Error::other(format!("{e}")))
 }
 
