@@ -155,15 +155,26 @@ impl<Message> Program<Message> for Spinner {
         let dot = size * 0.075;
         let at = |angle: f32| Point::new(center.x + angle.cos() * ring, center.y + angle.sin() * ring);
         let (core, blue, cyan, _) = palette(self.day);
-        // The track needs more presence on a light card; the head bloom needs less.
-        let track_alpha = if self.day { 0.22 } else { 0.12 };
-        let bloom_mul = if self.day { 0.6 } else { 1.0 };
+        // Head→mid→tail colors. Night glows bright-on-dark; day must invert the
+        // value (a deep comet inking onto a light card) or it washes out to nothing.
+        let (c_head, c_mid, c_tail, bloom_col) = if self.day {
+            (
+                rgb(0x21, 0x46, 0x93),
+                rgb(0x2e, 0x7d, 0xe9),
+                rgb(0x52, 0x82, 0xd8),
+                rgb(0x2e, 0x7d, 0xe9),
+            )
+        } else {
+            (core, cyan, blue, cyan)
+        };
+        let track_alpha = if self.day { 0.16 } else { 0.12 };
+        let bloom_mul = if self.day { 0.30 } else { 1.0 };
 
         // A faint static track of dots.
         const TRACK: usize = 12;
         for i in 0..TRACK {
             let a = i as f32 / TRACK as f32 * std::f32::consts::TAU;
-            frame.fill(&Path::circle(at(a), dot * 0.5), with_alpha(blue, track_alpha * self.fade));
+            frame.fill(&Path::circle(at(a), dot * 0.5), with_alpha(c_tail, track_alpha * self.fade));
         }
 
         // The comet: a bright head + fading trail at a *continuous* angle, so it
@@ -177,18 +188,18 @@ impl<Message> Program<Message> for Spinner {
             let a = head - k * 2.6; // trail sweeps ~2.6 rad behind the head
             let r = dot * (1.0 - 0.5 * k);
             let col = if j == 0 {
-                core
+                c_head
             } else if k < 0.4 {
-                cyan
+                c_mid
             } else {
-                blue
+                c_tail
             };
             let alpha = (1.0 - k).powf(1.6) * self.fade;
             frame.fill(&Path::circle(at(a), r.max(0.6)), with_alpha(col, alpha));
         }
         // Soft layered glow on the head for a silky bloom (gentler in day).
         for &(rr, oo) in &[(2.2f32, 0.10f32), (1.6, 0.16), (1.05, 0.30)] {
-            frame.fill(&Path::circle(at(head), dot * rr), with_alpha(cyan, oo * bloom_mul * self.fade));
+            frame.fill(&Path::circle(at(head), dot * rr), with_alpha(bloom_col, oo * bloom_mul * self.fade));
         }
 
         vec![frame.into_geometry()]

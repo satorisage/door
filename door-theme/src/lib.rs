@@ -146,8 +146,8 @@ impl Theme {
         Theme {
             wallpaper: None,
             background: Color::rgb(0xe1, 0xe2, 0xe7),
-            // Frosted white glass — translucent so the day sky reads through it.
-            card: Color::rgba(0xf4, 0xf6, 0xfb, 0xa6),
+            // Near-solid clean white card (just a hair of glass).
+            card: Color::rgba(0xf4, 0xf6, 0xfb, 0xf7),
             accent: Color::rgb(0x2e, 0x7d, 0xe9),
             foreground: Color::rgb(0x34, 0x3b, 0x58),
             muted: Color::rgb(0x6a, 0x73, 0x9e),
