@@ -43,25 +43,40 @@ be exercised end to end. M4 beauty + M5 hardening follow.)*
       the active DM; `door.install` prints the reversible enable + two-command TTY
       revert.
       `depends:` handoff / re-greet orchestration
-- [x] **lockout hardening — first live-enable postmortem** (2026-06-26; see
-      `.agent/REPORTS/2026-06-26-m6-lockout-postmortem.md`). First `enable --now`
-      locked the machine (greeter couldn't reach the socket; `Ctrl+Alt+F3` dead;
-      chroot to recover). Two root causes fixed: **(RC1)** `/run/doord` was
-      `0700 root:root` (RuntimeDirectory), unreachable by the greeter user —
-      `ipc::bind` now group-owns it `0750 root:<greeter>`; **(RC2)** recoverability
-      — `doord.service` now `Conflicts=display-manager.service` + `StartLimit*`;
-      `ipc::serve` gives up after `GREETER_MAX_RAPID_FAILURES` (restores VT to
-      `VT_AUTO`/`KD_TEXT` and exits cleanly = no respawn) instead of thrashing the
-      GPU forever. 34 tests green, clippy clean. **Still unproven on hardware.**
+- [x] **lockout hardening — live-enable postmortem (RC1–RC4, proven)** (2026-06-26;
+      see `.agent/REPORTS/2026-06-26-m6-lockout-postmortem.md`). First `enable --now`
+      locked the machine; postmortem found **four** root causes, all fixed and
+      **proven on hardware** (commit `7aef481`): **(RC1)** `/run/doord` `0700
+      root:root` unreachable by the greeter user → `ipc::bind` group-owns it
+      `0750 root:<greeter>`; **(RC2)** recoverability — `Conflicts=display-manager`
+      + `StartLimit*` + `ipc::serve` gives up after `GREETER_MAX_RAPID_FAILURES`
+      (VT → `VT_AUTO`/`KD_TEXT`, clean exit); **(RC3)** handoff orphaned cage →
+      greeter-worker SIGTERM-forwards to cage + `PR_SET_PDEATHSIG` backstop;
+      **(RC4)** non-UTF-8 session locale black screen → `privdrop::sanitized_env`
+      passes `LANG`/`LC_*` + `C.UTF-8` fail-safe. 38 tests green, clippy clean.
+      Live boot: greeter → auth → handoff → Plasma rendered.
       `depends:` systemd unit + packaging
-- [ ] **reversible enable + TTY revert (validated)**: the enable/revert *commands*
-      ship in `door.install` (keep previous DM as fallback). Remaining: **test the
-      revert live** — the handoff + lockout hardening are built but unproven on
-      hardware. Critical — revert proven before door is ever enabled.
-      `depends:` lockout hardening — first live-enable postmortem
-- [ ] **live install test**: `makepkg -si`, run the enable step, log in for real
-      through the greeter on the VT — tested revert in hand.
+- [x] **reversible enable + TTY revert (validated, with RC5 follow-up)** (2026-06-26):
+      enable path proven on hardware; revert (`disable --now doord` + `enable --now
+      sddm`) demonstrated to restore the previous DM. Surfaced **RC5** (material):
+      a clean `systemctl stop`/`disable` of doord does **not** reset a graphics-mode
+      VT, so the revert can leave tty1 frozen until the fallback DM starts — `getty`
+      on another VT + SSH keep it recoverable (not a true lockout). `door.install`
+      revert note updated (`--now` required; known-issue documented). RC5 code fix
+      queued below.
+      `depends:` lockout hardening — live-enable postmortem (RC1–RC4, proven)
+- [x] **live install test** (2026-06-26): installed via the package (`door 0.0.0-1`,
+      `pacman -Qo /usr/bin/doord`), enabled, logged in for real through the greeter
+      on the VT into Plasma; reverted to sddm with the revert in hand.
       `depends:` Arch PKGBUILD, reversible enable + TTY revert (validated)
+- [ ] **RC5 — reset the VT on admin teardown** (material; see postmortem RC5):
+      give doord a shutdown/`Drop` path that restores `VT_AUTO`/`KD_TEXT` whenever
+      it exits owning the VT with no live handoff — extend the RC2 *crash*-path
+      guarantee to the *admin stop/disable* path so the revert never leaves a
+      frozen VT. `depends:` reversible enable + TTY revert (validated, with RC5 follow-up)
+- [ ] **RC6 — greeter shader-cache home** (cosmetic; see postmortem RC6): give the
+      `door-greeter` user a writable `XDG_CACHE_HOME`/home so Mesa stops logging
+      `Failed to create //.cache`. Deferred to M4/M5 polish.
 
 **Done-when (M6):** door installs from a PKGBUILD (disabled by default), can be
 enabled to become the machine's login manager with the previous DM kept as

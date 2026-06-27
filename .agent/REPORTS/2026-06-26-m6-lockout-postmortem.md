@@ -142,6 +142,39 @@ can never again land in a non-UTF-8 locale. Locale vars are system config, not a
 code path, and go in at the target user's own privilege — none of the escalation
 risk the allowlist exists to block.
 
+## Root cause 5 — clean `stop`/`disable` of doord doesn't reset the VT (the revert "lockout")
+
+Found 2026-06-26 during the live **revert** test. The documented revert
+(`systemctl disable --now doord` + `systemctl enable --now sddm`) left tty1
+frozen on the last greeter/session framebuffer — *looked* like a hard lockout,
+though `getty@tty2` + SSH were both live (recoverable, not a true lockout).
+
+Two compounding causes:
+
+1. **VT not reset on clean shutdown.** The RC2 VT-reset (`KD_TEXT`/`VT_AUTO`)
+   only fires on the *greeter give-up* path (`ipc::serve` after
+   `GREETER_MAX_RAPID_FAILURES`). An admin-initiated `systemctl stop` (SIGTERM)
+   exits **without** restoring the VT, so when the VT is in `KD_GRAPHICS`
+   (cage/session left it there) it stays frozen. Fix: a shutdown/`Drop` handler
+   that restores `VT_AUTO` + `KD_TEXT` whenever doord exits while owning the VT
+   with no live handoff in flight — so the *admin teardown* path leaves a usable
+   console, same guarantee RC2 gave the *crash* path.
+2. **`enable` ≠ start.** Enabling sddm mid-session arms it for next boot but
+   does not launch it; the revert needs `enable --now`. The doc says `--now`,
+   but it is easy to drop, and the frozen VT (cause 1) made the gap look fatal.
+
+Distinct from RC1–RC4 (socket / lockout-storm / handoff-orphan / locale): this
+is the **teardown-by-admin** path — the exact path the revert uses.
+
+## Root cause 6 (cosmetic) — greeter shader-cache permission error
+
+`Failed to create //.cache for shader cache (Permission denied)` in the greeter
+log: the `door-greeter` sysusers account has `HOME=/`, unwritable by uid 954, so
+Mesa cannot create its shader cache and disables it. **Harmless** — a one-time
+perf optimization for the *greeter only*; no functional, auth, or session
+impact. Fix: give the greeter a writable `XDG_CACHE_HOME` (e.g. under `/run`) or
+a real home.
+
 ## Disposition
 
 - RC1 (socket dir perms) — **fixed** (`ipc.rs::bind`).
@@ -161,5 +194,11 @@ risk the allowlist exists to block.
   succeeded for 'stephen'` → `handoff … tearing down greeter, freeing the VT`
   (no `EPERM`) → `started session 'plasma'`, and Plasma rendered. SSH safety
   net held throughout. All four root causes now demonstrated on real hardware.
+- RC5 (clean stop/disable doesn't reset the VT → revert looks like a lockout)
+  — **found, not yet fixed.** Material: the revert path leaves tty1 frozen
+  (getty@tty2 + SSH kept it recoverable). Fix is the symmetric VT-reset on the
+  admin-teardown path + `enable --now` doc emphasis.
+- RC6 (greeter shader-cache permission error from `HOME=/`) — **found, not yet
+  fixed.** Cosmetic; greeter `XDG_CACHE_HOME`/home. Deferred to M4/M5 polish.
 - Re-validation stays **revert-first on a spare VT/machine**, escape path
   confirmed working *before* `enable`.
