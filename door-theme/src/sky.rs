@@ -143,8 +143,9 @@ impl<Message> Program<Message> for Spinner {
 
         // The comet: a bright head + fading trail at a *continuous* angle, so it
         // glides smoothly around the ring rather than snapping between track dots.
-        let head = self.anim * 2.0; // ~0.32 rev/s
-        const TRAIL: usize = 12;
+        let head = self.anim * 2.5; // ~0.4 rev/s
+        // A dense trail reads as a continuous streak rather than separate dots.
+        const TRAIL: usize = 20;
         for j in 0..TRAIL {
             let k = j as f32 / TRAIL as f32; // 0 head .. ~1 tail
             let a = head - k * 2.6; // trail sweeps ~2.6 rad behind the head
