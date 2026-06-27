@@ -9,12 +9,20 @@ post_install() {
 
    Make door the active login manager (reversible) — as root:
      systemctl status display-manager.service | head -1   # note your current DM
-     systemctl disable --now <current-dm>.service          # keep it installed = fallback
+     systemctl disable <current-dm>.service                # keep it installed = fallback
      systemctl enable  --now doord.service                 # doord owns the greeter
 
-   REVERT — from a text VT (Ctrl+Alt+F3), if the greeter misbehaves:
+   doord conflicts with display-manager.service, so enabling it stops your
+   current DM automatically; keep the DM *installed* as the fallback.
+
+   REVERT — from a text VT (Ctrl+Alt+F3) or over SSH:
      systemctl disable --now doord.service
      systemctl enable  --now <current-dm>.service
+
+   FAIL-SAFE: if the greeter cannot start (bad perms, missing compositor, crash),
+   doord stops itself after a few quick failures, restores a text console, and
+   exits instead of locking the machine — so the revert above stays reachable.
+   Check 'journalctl -u doord' for the reason.
 
    WARNING: the greeter<->session VT handoff is built (D-0008) but not yet
    validated live. Test on a spare machine or a spare VT with the revert above

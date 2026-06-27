@@ -41,13 +41,24 @@ use crate::pam::{AuthOutcome, Login, LoginFactory};
 use crate::worker;
 
 /// How long to wait for the greeter to exit after `SIGTERM` before `SIGKILL`.
-const GREETER_TERM_GRACE: Duration = Duration::from_millis(500);
+/// The greeter-worker does real teardown in this window — it forwards the
+/// terminate to its compositor (which releases seat0's DRM/VT) and then closes the
+/// greeter logind session — so the grace must cover a DRM teardown plus a session
+/// close, not just a process exit. If it overruns, the `SIGKILL` lands and the
+/// compositor's `PR_SET_PDEATHSIG` still guarantees it dies and frees the VT.
+const GREETER_TERM_GRACE: Duration = Duration::from_secs(2);
 
 /// A managed greeter that lives less than this clearly failed (it never carried a
 /// real login, which lasts a session); re-greeting it immediately would spin. Back
 /// off [`GREETER_RESPAWN_BACKOFF`] before trying again.
 const GREETER_MIN_UPTIME: Duration = Duration::from_secs(3);
 const GREETER_RESPAWN_BACKOFF: Duration = Duration::from_secs(2);
+
+/// After this many *consecutive* quick greeter failures the daemon stops trying
+/// and exits cleanly ([`give_up`]). Relaunching a compositor (cage) that grabs
+/// DRM/KMS on a tight loop is what wedges the GPU and blacks out every VT, so a
+/// sustained failure must fail *safe* — leave a usable text console — not spin.
+const GREETER_MAX_RAPID_FAILURES: u32 = 3;
 
 /// How long the daemon waits on a stalled read before dropping the peer.
 const READ_TIMEOUT: Duration = Duration::from_secs(30);
@@ -79,6 +90,9 @@ pub fn serve(config: &Config, logins: &dyn LoginFactory) -> io::Result<()> {
         manage_greeter,
     );
 
+    // Consecutive quick-failure streak; reset by any greeter that lasts a real
+    // login. A sustained streak trips the give-up path rather than thrashing.
+    let mut rapid_failures: u32 = 0;
     loop {
         // Greet: launch the greeter doord manages (re-greet on each loop). If the
         // launch fails, back off and retry rather than block on accept() with no
@@ -91,7 +105,11 @@ pub fn serve(config: &Config, logins: &dyn LoginFactory) -> io::Result<()> {
                 }
                 Err(e) => {
                     eprintln!("doord: could not launch greeter: {e}; retrying shortly");
-                    thread::sleep(Duration::from_secs(2));
+                    rapid_failures += 1;
+                    if rapid_failures >= GREETER_MAX_RAPID_FAILURES {
+                        return give_up(config, rapid_failures);
+                    }
+                    thread::sleep(GREETER_RESPAWN_BACKOFF);
                     continue;
                 }
             }
@@ -117,12 +135,105 @@ pub fn serve(config: &Config, logins: &dyn LoginFactory) -> io::Result<()> {
         if let Some(greeter) = greeter {
             greeter.borrow_mut().terminate();
             // Crash-loop guard: a managed greeter that barely lived (it never
-            // carried a real login) must not be re-greeted in a tight spin.
+            // carried a real login) must not be re-greeted in a tight spin. Count
+            // the streak; once it crosses the threshold, give up (fail safe) so a
+            // broken greeter can't wedge the GPU/VT by being relaunched forever.
             if greeted_at.elapsed() < GREETER_MIN_UPTIME {
-                eprintln!("doord: greeter exited quickly; backing off before re-greet");
+                rapid_failures += 1;
+                if rapid_failures >= GREETER_MAX_RAPID_FAILURES {
+                    return give_up(config, rapid_failures);
+                }
+                eprintln!(
+                    "doord: greeter exited quickly ({rapid_failures}/{GREETER_MAX_RAPID_FAILURES}); backing off before re-greet"
+                );
                 thread::sleep(GREETER_RESPAWN_BACKOFF);
+            } else {
+                // A greeter that carried a real login clears the streak.
+                rapid_failures = 0;
             }
         }
+    }
+}
+
+/// Abandon the login loop after the greeter has failed too many times in a row.
+/// Restores the seat VT to a usable text console — a crashed or SIGKILLed
+/// compositor leaves it in graphics mode with switching wedged — then returns so
+/// the daemon exits *cleanly*. With `Type=simple` + `Restart=on-failure`, a clean
+/// exit does **not** respawn: doord stops thrashing and the machine stays
+/// recoverable from a text VT or SSH instead of locked out. The journal says why.
+fn give_up(config: &Config, failures: u32) -> io::Result<()> {
+    eprintln!(
+        "doord: greeter failed {failures} times in quick succession; giving up to keep the \
+         console usable. Check the greeter binary, the socket permissions, and the compositor, \
+         then re-enable doord. Restoring the VT and exiting."
+    );
+    if let Some(vtnr) = config.seat.vtnr {
+        restore_text_vt(vtnr);
+    }
+    Ok(())
+}
+
+/// Linux console/VT ioctls the `libc` crate does not expose for Linux. These are
+/// stable kernel ABI (`<linux/kd.h>`, `<linux/vt.h>`).
+mod vt_ioctl {
+    pub const KDSETMODE: libc::Ioctl = 0x4B3A;
+    pub const KD_TEXT: libc::c_int = 0x00;
+    pub const VT_SETMODE: libc::Ioctl = 0x5602;
+    pub const VT_ACTIVATE: libc::Ioctl = 0x5606;
+    pub const VT_AUTO: libc::c_char = 0x00;
+
+    /// Mirrors `struct vt_mode` from `<linux/vt.h>`.
+    #[repr(C)]
+    pub struct VtMode {
+        pub mode: libc::c_char,
+        pub waitv: libc::c_char,
+        pub relsig: libc::c_short,
+        pub acqsig: libc::c_short,
+        pub frsig: libc::c_short,
+    }
+}
+
+/// Restore VT `vtnr` to a switchable text console. A compositor (cage) that was
+/// SIGKILLed never undoes its own VT setup: it leaves the VT in graphics mode
+/// and — the part that actually freezes `Ctrl+Alt+Fn` — in process-controlled
+/// switch mode (`VT_PROCESS`), where the kernel waits forever for a switch ack
+/// from the dead process. We reset switching to kernel-driven (`VT_AUTO`) and the
+/// console to text (`KD_TEXT`), then make the VT current so the user sees it.
+/// doord runs as root, so it can open the VT; this is best-effort cleanup on the
+/// give-up path, so a failure is logged, not fatal.
+fn restore_text_vt(vtnr: u32) {
+    let path = format!("/dev/tty{vtnr}");
+    let c_path = match std::ffi::CString::new(path.clone()) {
+        Ok(c) => c,
+        Err(_) => return,
+    };
+    // SAFETY: c_path is a valid NUL-terminated path; open returns an owned fd or -1.
+    let fd = unsafe { libc::open(c_path.as_ptr(), libc::O_RDWR | libc::O_NOCTTY) };
+    if fd < 0 {
+        eprintln!(
+            "doord: could not open {path} to restore the console: {}",
+            io::Error::last_os_error()
+        );
+        return;
+    }
+    let auto = vt_ioctl::VtMode {
+        mode: vt_ioctl::VT_AUTO,
+        waitv: 0,
+        relsig: 0,
+        acqsig: 0,
+        frsig: 0,
+    };
+    // SAFETY: fd is a freshly opened VT we own; each request matches its argument
+    // type per the kernel ABI (VT_SETMODE takes a *const vt_mode; KDSETMODE and
+    // VT_ACTIVATE take an int). fd is closed exactly once below.
+    unsafe {
+        // Kernel-driven switching again (undo a dead compositor's VT_PROCESS).
+        libc::ioctl(fd, vt_ioctl::VT_SETMODE, &auto as *const vt_ioctl::VtMode);
+        // Leave graphics mode so the text console renders.
+        libc::ioctl(fd, vt_ioctl::KDSETMODE, vt_ioctl::KD_TEXT);
+        // Bring this VT to the foreground so the restored console is visible.
+        libc::ioctl(fd, vt_ioctl::VT_ACTIVATE, vtnr as libc::c_int);
+        libc::close(fd);
     }
 }
 
@@ -186,14 +297,34 @@ fn bind(config: &Config) -> io::Result<UnixListener> {
     let path = &config.socket_path;
 
     if let Some(dir) = path.parent() {
-        // The directory gates who can even see the socket: root-owned, 0700. We
-        // only lock down a directory we create — if it already exists we may not
-        // own it (e.g. a dev socket placed directly under /tmp), and chmod'ing a
-        // shared dir would both fail and be wrong. In production the dedicated
-        // /run/doord is created here (or by the unit's RuntimeDirectory) fresh.
-        if !dir.exists() {
+        let created = !dir.exists();
+        if created {
             fs::create_dir_all(dir)?;
-            fs::set_permissions(dir, fs::Permissions::from_mode(0o700))?;
+        }
+        // The greeter runs as a *different*, unprivileged user, so it must be able
+        // to traverse this directory to reach the socket inside it. The parent
+        // dir's mode gates the path *before* the socket's own 0660 is consulted:
+        // a 0700 root:root dir — which the unit's `RuntimeDirectory` pre-creates —
+        // makes the socket unreachable no matter how the socket itself is chmod'd.
+        // So when the greeter group is known (production) we group-own the dir to
+        // it with group-search (0750), applied whether or not we created it
+        // (RuntimeDirectory runs before us). In a dev run with no greeter group we
+        // keep a dir we created private and leave a pre-existing shared dir (e.g.
+        // /tmp) exactly as its owner set it.
+        match config.greeter_gid {
+            Some(gid) => {
+                chown_group(dir, gid).unwrap_or_else(|e| {
+                    eprintln!(
+                        "doord: warning: could not chgrp {} to gid {gid}: {e}",
+                        dir.display()
+                    );
+                });
+                fs::set_permissions(dir, fs::Permissions::from_mode(0o750))?;
+            }
+            None if created => {
+                fs::set_permissions(dir, fs::Permissions::from_mode(0o700))?;
+            }
+            None => {}
         }
     }
 

@@ -5,9 +5,19 @@ Documentation=https://github.com/satorisage/door
 # serves the local socket the unprivileged greeter connects to. It holds no UI.
 # It also owns the greeter lifecycle (D-0008): it launches the greeter on its VT,
 # so the getty on that VT must not run.
-After=systemd-user-sessions.service systemd-logind.service getty@tty1.service
+After=systemd-user-sessions.service systemd-logind.service getty@tty1.service display-manager.service
 Wants=systemd-logind.service
-Conflicts=getty@tty1.service
+# doord owns the greeter's seat/VT and the DRM master on it. It must not run
+# alongside another login manager (two compositors would fight for DRM master on
+# the same GPU) or tty1's getty. Conflicting display-manager.service means
+# enabling doord stops the previous DM; After= orders that stop before doord.
+Conflicts=getty@tty1.service display-manager.service
+# Fail safe at the process level: doord already self-stops a crash-looping
+# greeter (it exits cleanly, which does not respawn), but if doord *itself* dies
+# repeatedly, land in `failed` rather than respawn forever — a wedged login
+# manager must never thrash the GPU/console.
+StartLimitIntervalSec=60
+StartLimitBurst=5
 
 [Service]
 Type=simple

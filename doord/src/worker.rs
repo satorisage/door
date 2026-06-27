@@ -23,6 +23,7 @@ use std::io;
 use std::os::unix::io::FromRawFd;
 use std::os::unix::net::UnixStream;
 use std::process::ExitCode;
+use std::sync::atomic::{AtomicI32, Ordering};
 
 use pam_client::{Context, ConversationHandler, ErrorCode, Flag, SessionToken};
 use protocol::{read_frame, write_frame, Secret};
@@ -149,6 +150,42 @@ pub fn run_greeter() -> ExitCode {
     }
 }
 
+/// The compositor child's pid, published for the terminate-forwarding signal
+/// handler (a handler takes no arguments). `0` means "no compositor running yet".
+static GREETER_CHILD_PID: AtomicI32 = AtomicI32::new(0);
+
+/// SIGTERM/SIGINT handler for the greeter-worker: forward a clean terminate to the
+/// compositor. doord ends the greeter at handoff by signalling *this* worker, but
+/// the compositor is a separate session leader holding seat0's VT/DRM; unless it is
+/// told to exit it lingers and the user session cannot take the seat. Forwarding
+/// lets it release cleanly (`cage` answers SIGTERM by tearing the display down);
+/// the child's `PR_SET_PDEATHSIG=SIGKILL` is the backstop if this worker is itself
+/// SIGKILLed before it can forward.
+extern "C" fn forward_terminate(_sig: libc::c_int) {
+    let pid = GREETER_CHILD_PID.load(Ordering::SeqCst);
+    if pid > 0 {
+        // SAFETY: async-signal-safe — an atomic load and one kill(2). SIGTERM to the
+        // compositor is exactly what the daemon meant by terminating this worker.
+        unsafe {
+            libc::kill(pid, libc::SIGTERM);
+        }
+    }
+}
+
+/// Install [`forward_terminate`] for SIGTERM and SIGINT.
+fn install_terminate_forwarder() {
+    // SAFETY: a zeroed sigaction is a valid empty handler; we point it at our
+    // async-signal-safe handler and register it for the two terminate signals.
+    unsafe {
+        let mut action: libc::sigaction = std::mem::zeroed();
+        action.sa_sigaction = forward_terminate as *const () as usize;
+        libc::sigemptyset(&mut action.sa_mask);
+        action.sa_flags = 0;
+        libc::sigaction(libc::SIGTERM, &action, std::ptr::null_mut());
+        libc::sigaction(libc::SIGINT, &action, std::ptr::null_mut());
+    }
+}
+
 fn launch_greeter(config: &Config) -> io::Result<Option<std::process::ExitStatus>> {
     let user = config
         .greeter_user
@@ -190,8 +227,23 @@ fn launch_greeter(config: &Config) -> io::Result<Option<std::process::ExitStatus
 
     // Fork the greeter command (cage -- door-greeter) as the greeter user, on the
     // seat VT, with the privilege drop + VT/tty handoff (same path as a session).
-    let status = match spawn::launch(&config.greeter_cmd, &target, &pam_env, &config.seat) {
-        Ok(child) => child.wait()?,
+    let status = match spawn::launch(
+        &config.greeter_cmd,
+        &target,
+        &pam_env,
+        &config.seat,
+        Some(libc::SIGKILL),
+    ) {
+        Ok(child) => {
+            // Arm the terminate forwarder now that we have a compositor to forward
+            // to: at handoff doord signals this worker, and we relay it to the
+            // compositor so it releases seat0 before we close the session below.
+            if let Some(pid) = child.id() {
+                GREETER_CHILD_PID.store(pid as i32, Ordering::SeqCst);
+                install_terminate_forwarder();
+            }
+            child.wait()?
+        }
         Err(e) => {
             // Close the session we opened before bailing.
             let session = context.unleak_session(token);
@@ -397,7 +449,10 @@ fn start_session(
     let pam_env: Vec<(OsString, OsString)> = pam_session.envlist().into();
     txn.session = Some(pam_session.leak());
 
-    spawn::launch(&session.exec, &target, &pam_env, &seat_target)
+    // No parent-death signal for the user session: the worker is its session
+    // leader and is meant to outlive nothing — it lives exactly as long as the
+    // session it leads.
+    spawn::launch(&session.exec, &target, &pam_env, &seat_target, None)
         .map_err(|e| io::Error::other(format!("{e}")))
 }
 
