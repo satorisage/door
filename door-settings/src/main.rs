@@ -154,7 +154,8 @@ impl State {
             spinner_speed: night.spinner_speed,
             show_clock: night.show_clock,
             animate: night.animate,
-            editing_day: false,
+            // Dev: start on the day variant when DOOR_SETTINGS_DAY is set.
+            editing_day: std::env::var_os("DOOR_SETTINGS_DAY").is_some(),
             status: "Loaded night + day themes.".to_string(),
             anim: 0.0,
             started: Instant::now(),
