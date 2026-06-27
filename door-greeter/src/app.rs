@@ -240,7 +240,9 @@ impl State {
             password: String::new(),
             status: "Connecting to doord…".to_string(),
             cmd_tx: None,
-            theme: theme().clone(),
+            // Pick the day or night variant by the local clock — the greeter runs
+            // pre-login, so it can't read the user's color scheme; time is the trigger.
+            theme: Theme::load_at(now_minutes()),
             clock: now_hm(),
             date: now_date(),
             fade: 0.0,
@@ -386,6 +388,14 @@ fn now_hm() -> String {
     }
 }
 
+/// Local time as minutes since midnight (for the day/night window). Noon on failure.
+fn now_minutes() -> u32 {
+    match local_tm() {
+        Some(tm) => (tm.tm_hour.clamp(0, 23) as u32) * 60 + (tm.tm_min.clamp(0, 59) as u32),
+        None => 12 * 60,
+    }
+}
+
 /// Local date as `Weekday, Month D` (e.g. `Friday, June 27`).
 fn now_date() -> String {
     const DAYS: [&str; 7] = [
@@ -433,6 +443,7 @@ fn view(state: &State) -> Element<'_, Message> {
         None => canvas(sky::Spinner {
             anim: state.anim,
             fade: f,
+            day: t.is_day,
         })
         .width(Length::Fixed(52.0))
         .height(Length::Fixed(52.0))
@@ -515,6 +526,7 @@ fn view(state: &State) -> Element<'_, Message> {
             stars: state.stars.clone(),
             anim: state.anim,
             fade: f,
+            day: t.is_day,
         })
         .width(Length::Fill)
         .height(Length::Fill);

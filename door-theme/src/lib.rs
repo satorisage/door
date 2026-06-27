@@ -109,6 +109,9 @@ pub struct Theme {
     /// Whether to run the animated sky (twinkling stars + drifting comet). Off → a
     /// still wallpaper, like the battery half of the Plasma comet wallpaper.
     pub animate: bool,
+    /// True for the light (Tokyo Night Day) variant — the sky recolors for a light
+    /// background. Set by which built-in this resolved from, not from the file.
+    pub is_day: bool,
 }
 
 impl Default for Theme {
@@ -130,6 +133,32 @@ impl Default for Theme {
             card_width: 300.0,
             show_clock: true,
             animate: true,
+            is_day: false,
+        }
+    }
+}
+
+impl Theme {
+    /// The built-in **day** (Tokyo Night Day, light) palette — the light twin of
+    /// [`Theme::default`]. Structural keys (font, sizes, behavior) are taken from
+    /// the config at load time; colors and `is_day` come from here.
+    pub fn day() -> Self {
+        Theme {
+            wallpaper: None,
+            background: Color::rgb(0xe1, 0xe2, 0xe7),
+            // Light frosted card.
+            card: Color::rgba(0xed, 0xee, 0xf4, 0xe0),
+            accent: Color::rgb(0x2e, 0x7d, 0xe9),
+            foreground: Color::rgb(0x37, 0x60, 0xbf),
+            muted: Color::rgb(0x84, 0x8c, 0xb5),
+            field: Color::rgb(0xd5, 0xd6, 0xdb),
+            logo: None,
+            font: None,
+            corner_radius: 16.0,
+            card_width: 300.0,
+            show_clock: true,
+            animate: true,
+            is_day: true,
         }
     }
 }
@@ -152,6 +181,10 @@ struct ThemeFile {
     card_width: Option<f32>,
     show_clock: Option<bool>,
     animate: Option<bool>,
+    /// Local day window for the greeter's auto day/night, `"HH:MM"` (default
+    /// 07:00–19:00). Inside the window the greeter uses the day palette.
+    day_start: Option<String>,
+    day_end: Option<String>,
 }
 
 impl Theme {
@@ -227,6 +260,53 @@ impl Theme {
         self
     }
 
+    /// Apply only the *structural* keys (font, sizes, behavior) from a file —
+    /// shared across day/night. Colors and wallpaper are left to the variant.
+    fn merged_structural(mut self, file: &ThemeFile) -> Theme {
+        if file.font.is_some() {
+            self.font = file.font.clone();
+        }
+        if let Some(r) = file.corner_radius {
+            self.corner_radius = r;
+        }
+        if let Some(w) = file.card_width {
+            self.card_width = w;
+        }
+        if let Some(c) = file.show_clock {
+            self.show_clock = c;
+        }
+        if let Some(a) = file.animate {
+            self.animate = a;
+        }
+        self
+    }
+
+    /// Resolve the theme for a given local time (`now_minutes` = hour*60+min),
+    /// auto-selecting the day or night variant by the configured window. The
+    /// greeter calls this; it cannot read the user's color scheme (it runs before
+    /// login), so the clock is the trigger. Night = the config's top-level palette;
+    /// day = the built-in light palette with the config's structural keys.
+    pub fn load_at(now_minutes: u32) -> Theme {
+        let (file, have) = match Self::config_source() {
+            Some((path, contents)) => match toml::from_str::<ThemeFile>(&contents) {
+                Ok(file) => (file, true),
+                Err(e) => {
+                    eprintln!("door: ignoring malformed theme {}: {e}", path.display());
+                    (ThemeFile::default(), false)
+                }
+            },
+            None => (ThemeFile::default(), false),
+        };
+        let (start, end) = day_window(&file);
+        if in_window(now_minutes, start, end) {
+            Theme::day().merged_structural(&file)
+        } else if have {
+            Theme::default().merged(file)
+        } else {
+            Theme::default()
+        }
+    }
+
     /// Render this theme as a documented `greeter.toml` — what `door-settings`
     /// writes. Mirrors the packaged default's layout so a saved file stays readable
     /// and re-editable by hand.
@@ -258,6 +338,30 @@ impl Theme {
         out.push_str(&format!("show_clock    = {}\n", self.show_clock));
         out.push_str(&format!("animate       = {}\n", self.animate));
         out
+    }
+}
+
+/// Parse `"HH:MM"` to minutes-since-midnight; `None` if malformed.
+fn parse_hhmm(s: &str) -> Option<u32> {
+    let (h, m) = s.trim().split_once(':')?;
+    let h: u32 = h.parse().ok()?;
+    let m: u32 = m.parse().ok()?;
+    (h < 24 && m < 60).then_some(h * 60 + m)
+}
+
+/// The configured day window in minutes (default 07:00–19:00).
+fn day_window(file: &ThemeFile) -> (u32, u32) {
+    let start = file.day_start.as_deref().and_then(parse_hhmm).unwrap_or(7 * 60);
+    let end = file.day_end.as_deref().and_then(parse_hhmm).unwrap_or(19 * 60);
+    (start, end)
+}
+
+/// Is `now` within `[start, end)`? Handles a window that wraps past midnight.
+fn in_window(now: u32, start: u32, end: u32) -> bool {
+    if start <= end {
+        now >= start && now < end
+    } else {
+        now >= start || now < end
     }
 }
 
@@ -342,6 +446,31 @@ mod tests {
         assert!(theme.animate);
         assert!(theme.show_clock);
         assert_eq!(theme.accent, Color::rgb(0x7a, 0xa2, 0xf7));
+    }
+
+    #[test]
+    fn day_window_parsing_and_membership() {
+        assert_eq!(parse_hhmm("07:00"), Some(420));
+        assert_eq!(parse_hhmm("19:30"), Some(1170));
+        assert_eq!(parse_hhmm("nope"), None);
+        assert_eq!(parse_hhmm("24:00"), None);
+        // default 07:00–19:00
+        assert!(in_window(12 * 60, 420, 1140)); // noon = day
+        assert!(!in_window(6 * 60, 420, 1140)); // 06:00 = night
+        assert!(!in_window(20 * 60, 420, 1140)); // 20:00 = night
+        // a window that wraps midnight
+        assert!(in_window(23 * 60, 22 * 60, 5 * 60));
+        assert!(in_window(2 * 60, 22 * 60, 5 * 60));
+        assert!(!in_window(12 * 60, 22 * 60, 5 * 60));
+    }
+
+    #[test]
+    fn day_variant_is_light_and_flagged() {
+        let day = Theme::day();
+        assert!(day.is_day);
+        assert!(!Theme::default().is_day);
+        // Day background is light; night is dark.
+        assert!(day.background.r > Theme::default().background.r);
     }
 
     #[test]

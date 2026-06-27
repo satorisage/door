@@ -84,18 +84,35 @@ pub fn stars() -> Vec<Star> {
 }
 
 /// The animated sky canvas. `anim` is the continuously-advancing clock (seconds-ish);
-/// `fade` (0–1) ramps the whole thing in on launch.
+/// `fade` (0–1) ramps the whole thing in on launch; `day` recolors for the light
+/// (Tokyo Night Day) variant.
 pub struct Sky {
     pub stars: Vec<Star>,
     pub anim: f32,
     pub fade: f32,
+    pub day: bool,
 }
 
-fn tier_color(tier: u8) -> Color {
+/// (core, bright/blue, brightest/cyan, glow/indigo) for the night or day variant.
+/// Day uses vivid blues/teal that read on a light background.
+fn palette(day: bool) -> (Color, Color, Color, Color) {
+    if day {
+        (
+            rgb(0x37, 0x60, 0xbf),
+            rgb(0x2e, 0x7d, 0xe9),
+            rgb(0x00, 0x71, 0x97),
+            rgb(0x2e, 0x7d, 0xe9),
+        )
+    } else {
+        (CORE, BLUE, CYAN, INDIGO)
+    }
+}
+
+fn tier_color(tier: u8, core: Color, blue: Color, cyan: Color) -> Color {
     match tier {
-        2 => CYAN,
-        1 => BLUE,
-        _ => CORE,
+        2 => cyan,
+        1 => blue,
+        _ => core,
     }
 }
 
@@ -115,6 +132,7 @@ fn ease_in_out(x: f32) -> f32 {
 pub struct Spinner {
     pub anim: f32,
     pub fade: f32,
+    pub day: bool,
 }
 
 impl<Message> Program<Message> for Spinner {
@@ -134,12 +152,13 @@ impl<Message> Program<Message> for Spinner {
         let ring = size * 0.36;
         let dot = size * 0.075;
         let at = |angle: f32| Point::new(center.x + angle.cos() * ring, center.y + angle.sin() * ring);
+        let (core, blue, cyan, _) = palette(self.day);
 
         // A faint static track of dots.
         const TRACK: usize = 12;
         for i in 0..TRACK {
             let a = i as f32 / TRACK as f32 * std::f32::consts::TAU;
-            frame.fill(&Path::circle(at(a), dot * 0.5), with_alpha(BLUE, 0.12 * self.fade));
+            frame.fill(&Path::circle(at(a), dot * 0.5), with_alpha(blue, 0.12 * self.fade));
         }
 
         // The comet: a bright head + fading trail at a *continuous* angle, so it
@@ -153,18 +172,18 @@ impl<Message> Program<Message> for Spinner {
             let a = head - k * 2.6; // trail sweeps ~2.6 rad behind the head
             let r = dot * (1.0 - 0.5 * k);
             let col = if j == 0 {
-                CORE
+                core
             } else if k < 0.4 {
-                CYAN
+                cyan
             } else {
-                BLUE
+                blue
             };
             let alpha = (1.0 - k).powf(1.6) * self.fade;
             frame.fill(&Path::circle(at(a), r.max(0.6)), with_alpha(col, alpha));
         }
         // Soft layered glow on the head for a silky bloom.
         for &(rr, oo) in &[(2.2f32, 0.10f32), (1.6, 0.16), (1.05, 0.30)] {
-            frame.fill(&Path::circle(at(head), dot * rr), with_alpha(CYAN, oo * self.fade));
+            frame.fill(&Path::circle(at(head), dot * rr), with_alpha(cyan, oo * self.fade));
         }
 
         vec![frame.into_geometry()]
@@ -184,18 +203,21 @@ impl<Message> Program<Message> for Sky {
     ) -> Vec<Geometry> {
         let mut frame = Frame::new(renderer, bounds.size());
         let (w, h) = (bounds.width, bounds.height);
+        let (core, blue, cyan, indigo) = palette(self.day);
+        // Day stars sit a touch dimmer so they stay subtle on the light background.
+        let star_mul = if self.day { 0.7 } else { 0.9 };
 
-        // Soft indigo depth-glow (matches the desktop comet plugin), so the solid
+        // Soft depth-glow (matches the desktop comet plugin), so the solid
         // background has depth rather than reading flat. Stacked translucent circles
         // approximate a radial since canvas fills are flat.
         let glow_center = Point::new(w * 0.5, h * 0.42);
         let glow_r = w.min(h) * 0.6;
         for i in 0..16 {
-            let t = i as f32 / 15.0; // 0 = widest/faintest .. 1 = innermost
-            let radius = glow_r * (1.0 - 0.62 * t);
+            let _t = i as f32 / 15.0; // 0 = widest/faintest .. 1 = innermost
+            let radius = glow_r * (1.0 - 0.62 * _t);
             frame.fill(
                 &Path::circle(glow_center, radius),
-                with_alpha(INDIGO, 0.012 * self.fade),
+                with_alpha(indigo, 0.012 * self.fade),
             );
         }
 
@@ -211,7 +233,7 @@ impl<Message> Program<Message> for Sky {
             } else {
                 0.85
             };
-            let col = with_alpha(tier_color(s.tier), bright * self.fade);
+            let col = with_alpha(tier_color(s.tier, core, blue, cyan), bright * self.fade * star_mul);
             frame.fill(&Path::circle(Point::new(s.x * w + dx, s.y * h), s.r), col);
         }
 
@@ -230,7 +252,7 @@ impl<Message> Program<Message> for Sky {
                 let off = t * (0.16 * w.min(h)); // trail length scales with the screen
                 let sz = (2.0 + 13.0 * (1.0 - t)) * 0.5;
                 let alpha = (0.06 + 0.7 * (1.0 - t).powf(1.4)) * self.fade;
-                let col = if t < 0.5 { BLUE } else { CYAN };
+                let col = if t < 0.5 { blue } else { cyan };
                 frame.fill(
                     &Path::circle(Point::new(hx + tx * off, hy + ty * off), sz.max(0.6)),
                     with_alpha(col, alpha),
@@ -238,9 +260,9 @@ impl<Message> Program<Message> for Sky {
             }
             // Head glow (stacked translucent circles) + a bright core.
             for &(r, o) in &[(34.0f32, 0.16f32), (20.0, 0.28), (11.0, 0.5)] {
-                frame.fill(&Path::circle(Point::new(hx, hy), r), with_alpha(CYAN, o * self.fade));
+                frame.fill(&Path::circle(Point::new(hx, hy), r), with_alpha(cyan, o * self.fade));
             }
-            frame.fill(&Path::circle(Point::new(hx, hy), 5.0), with_alpha(CORE, self.fade));
+            frame.fill(&Path::circle(Point::new(hx, hy), 5.0), with_alpha(core, self.fade));
         }
 
         vec![frame.into_geometry()]

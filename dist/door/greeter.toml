@@ -32,4 +32,11 @@ show_clock    = true       # show the clock + date in the card
 # port of the com.genny.tokyonightcomet Plasma wallpaper). false → still wallpaper.
 animate       = true
 
+# Auto day/night: the greeter runs before login, so it can't read your KDE color
+# scheme — it picks by the local clock instead. The colors above are the NIGHT
+# palette; during the day window the built-in Tokyo Night Day (light) palette is
+# used, sharing the font/sizes/behavior above. Adjust the window here:
+# day_start = "07:00"
+# day_end   = "19:00"
+
 # logo = "/usr/share/door/logo.png"   # optional image shown above the fields

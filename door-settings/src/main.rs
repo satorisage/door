@@ -162,6 +162,7 @@ impl State {
             card_width: num("Card width", &self.card_width)?,
             show_clock: self.show_clock,
             animate: self.animate,
+            is_day: false,
         })
     }
 
@@ -259,6 +260,7 @@ fn view(state: &State) -> Element<'_, Message> {
             stars: state.stars.clone(),
             anim: state.anim,
             fade: 1.0,
+            day: false,
         })
         .width(Length::Fill)
         .height(Length::Fill)
@@ -509,7 +511,7 @@ fn preview_card(t: &Theme, anim: f32) -> Element<'static, Message> {
         Some(path) => image(image::Handle::from_path(path))
             .height(Length::Fixed(56.0))
             .into(),
-        None => canvas(sky::Spinner { anim, fade: 1.0 })
+        None => canvas(sky::Spinner { anim, fade: 1.0, day: false })
             .width(Length::Fixed(52.0))
             .height(Length::Fixed(52.0))
             .into(),
