@@ -68,7 +68,9 @@ common DM expectation that restarting the login manager ends the graphical sessi
   `loginctl terminate-seat` sweep was tried 2026-06-27 and reverted: fully ending
   the seat's sessions leaves the VT session-less, and logind's `autovt` then races
   a getty `login:` prompt onto the seat console before doord re-greets — a visible
-  flash, strictly worse than the invisible leftover.)
+  flash, strictly worse than the invisible leftover. Revert confirmed flash-free on
+  hardware 2026-06-27: a doord restart under a live session re-greets with no getty
+  prompt.)
 - Proven on hardware 2026-06-27 (postmortem RC9): doord seat-claimed a stuck
   compositor and greeted; `stop doord; start sddm` reached the sddm login with no
   flicker/respawn. 26 unit + 3 integration tests green, clippy clean.

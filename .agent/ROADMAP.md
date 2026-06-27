@@ -82,7 +82,7 @@ be exercised end to end. M4 beauty + M5 hardening follow.)*
       RC6): the greeter env (`worker.rs::launch_greeter`) now sets `XDG_CACHE_HOME`
       to the greeter's logind runtime dir (`XDG_RUNTIME_DIR`, 0700/writable), so
       Mesa stops logging `Failed to create //.cache` and its shader cache works.
-      Pending a hardware glance at the greeter log.
+      Proven on hardware 2026-06-27 (greeter log clean).
 - [x] **RC7 — greeter death pre-handshake must not wedge doord** (2026-06-27;
       material; see postmortem RC7): the serve loop now waits on the greeter via a
       non-blocking accept + bounded poll (`accept_with_greeter_watch`,
@@ -98,8 +98,8 @@ be exercised end to end. M4 beauty + M5 hardening follow.)*
       inherited streams (the service journal) instead of dup2'ing them onto the VT —
       so the compositor's startup warnings (kwin/xkbcomp "multiply defined", "Lost
       connection to Wayland compositor", etc.) go to the journal, not the framebuffer.
-      Pending a hardware glance at the console on login. `depends:` RC5 — reset the VT
-      on admin teardown
+      Proven on hardware 2026-06-27 (console clean on login). `depends:` RC5 — reset
+      the VT on admin teardown
 - [x] **RC9 — free the seat on teardown/re-greet** (2026-06-27; material; **proven
       on hardware**; see postmortem RC9): a door session's compositor runs under
       `user@1000` behind a self-respawning supervisor (`kwin_wayland_wrapper`) and

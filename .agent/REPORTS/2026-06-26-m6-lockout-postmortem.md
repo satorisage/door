@@ -361,8 +361,8 @@ the sddm#1200 dirty-seat dead end). Fix re-scoped accordingly — see Dispositio
 - RC6 (greeter shader-cache permission error from `HOME=/`) — **fixed 2026-06-27**
   (`worker.rs::launch_greeter`): the greeter env now sets `XDG_CACHE_HOME` to the
   greeter's logind runtime dir (`XDG_RUNTIME_DIR`, 0700/writable/ephemeral), so
-  Mesa stops trying `//.cache` and the shader cache works. Cosmetic; pending a
-  hardware glance at the greeter log.
+  Mesa stops trying `//.cache` and the shader cache works. **Proven on hardware
+  2026-06-27** (greeter log clean).
 - RC7 (greeter dies pre-handshake → doord hangs; surfaced by a live DM switch
   under occupied seat0) — **fixed (2026-06-27), not yet re-validated on
   hardware.** The serve loop now waits via a non-blocking accept + bounded poll
@@ -377,7 +377,7 @@ the sddm#1200 dirty-seat dead end). Fix re-scoped accordingly — see Dispositio
   the VT is still the session's controlling terminal and stdin, but stdout/stderr
   are left on the daemon's inherited streams (the service journal) instead of being
   dup2'd onto the VT — so the compositor's startup chatter goes to the journal, not
-  the framebuffer. Cosmetic; pending a hardware glance at the console on login.
+  the framebuffer. **Proven on hardware 2026-06-27** (console clean on login).
 - RC9 (revert/DM-switch under a live session squats the seat's DRM master → next
   login manager can't acquire the GPU → bare blinking cursor) — **fixed and proven
   on hardware 2026-06-27.** Lever proven on hardware: only killing the compositor
