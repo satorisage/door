@@ -31,6 +31,11 @@ show_clock    = true       # show the clock + date in the card
 # Animated sky: a twinkling Tokyo Night starfield + a drifting comet (a native
 # port of the com.genny.tokyonightcomet Plasma wallpaper). false → still wallpaper.
 animate       = true
+# Comet-spinner controls. glow = head bloom (0 = crisp; a bright bloom blends on a
+# dark card but bands on a light one, so the day variant below defaults to 0).
+# speed = rotation in rad/s. Both also have sliders in door-settings.
+spinner_glow  = 1.0
+spinner_speed = 2.5
 
 # Auto day/night: the greeter runs before login, so it can't read your KDE color
 # scheme — it picks by the local clock instead. The colors above are the NIGHT

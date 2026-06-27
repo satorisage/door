@@ -135,6 +135,10 @@ pub struct Spinner {
     pub anim: f32,
     pub fade: f32,
     pub day: bool,
+    /// Head-glow intensity (0 = crisp/no bloom). From `theme.spinner_glow`.
+    pub glow: f32,
+    /// Rotation speed (rad/s). From `theme.spinner_speed`.
+    pub speed: f32,
 }
 
 impl<Message> Program<Message> for Spinner {
@@ -168,7 +172,7 @@ impl<Message> Program<Message> for Spinner {
             (core, cyan, blue, cyan)
         };
         let track_alpha = if self.day { 0.16 } else { 0.12 };
-        let bloom_mul = if self.day { 0.30 } else { 1.0 };
+        let bloom_mul = self.glow;
 
         // A faint static track of dots.
         const TRACK: usize = 12;
@@ -179,7 +183,7 @@ impl<Message> Program<Message> for Spinner {
 
         // The comet: a bright head + fading trail at a *continuous* angle, so it
         // glides smoothly around the ring rather than snapping between track dots.
-        let head = self.anim * 2.5; // ~0.4 rev/s
+        let head = self.anim * self.speed;
         // A dense, overlapping trail reads as one continuous silk ribbon rather
         // than separate dots; a smooth taper in radius and alpha toward the tail.
         const TRAIL: usize = 40;

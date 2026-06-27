@@ -444,6 +444,8 @@ fn view(state: &State) -> Element<'_, Message> {
             anim: state.anim,
             fade: f,
             day: t.is_day,
+            glow: t.spinner_glow,
+            speed: t.spinner_speed,
         })
         .width(Length::Fixed(52.0))
         .height(Length::Fixed(52.0))

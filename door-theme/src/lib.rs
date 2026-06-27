@@ -112,6 +112,11 @@ pub struct Theme {
     /// True for the light (Tokyo Night Day) variant — the sky recolors for a light
     /// background. Set by which built-in this resolved from, not from the file.
     pub is_day: bool,
+    /// Comet-spinner head-glow intensity (0–1). Per variant: bright glow blends on a
+    /// dark card but bands on a light one, so day defaults low. 0 = crisp, no bloom.
+    pub spinner_glow: f32,
+    /// Comet-spinner rotation speed (rad/s). Shared across variants.
+    pub spinner_speed: f32,
 }
 
 impl Default for Theme {
@@ -134,6 +139,8 @@ impl Default for Theme {
             show_clock: true,
             animate: true,
             is_day: false,
+            spinner_glow: 1.0,
+            spinner_speed: 2.5,
         }
     }
 }
@@ -146,11 +153,11 @@ impl Theme {
         Theme {
             wallpaper: None,
             background: Color::rgb(0xe1, 0xe2, 0xe7),
-            // Near-solid clean white card (just a hair of glass).
-            card: Color::rgba(0xf4, 0xf6, 0xfb, 0xf7),
+            // Very translucent glass — the day sky reads strongly through it.
+            card: Color::rgba(0xf4, 0xf6, 0xfb, 0x26),
             accent: Color::rgb(0x2e, 0x7d, 0xe9),
             foreground: Color::rgb(0x34, 0x3b, 0x58),
-            muted: Color::rgb(0x6a, 0x73, 0x9e),
+            muted: Color::rgb(0x54, 0x5c, 0x7e),
             field: Color::rgba(0xff, 0xff, 0xff, 0x99),
             logo: None,
             font: None,
@@ -159,6 +166,9 @@ impl Theme {
             show_clock: true,
             animate: true,
             is_day: true,
+            // No head bloom on the bright card (the bloom bands on light); crisp.
+            spinner_glow: 0.0,
+            spinner_speed: 2.5,
         }
     }
 }
@@ -181,6 +191,8 @@ struct ThemeFile {
     card_width: Option<f32>,
     show_clock: Option<bool>,
     animate: Option<bool>,
+    spinner_glow: Option<f32>,
+    spinner_speed: Option<f32>,
     /// Local day window for the greeter's auto day/night, `"HH:MM"` (default
     /// 07:00–19:00). Inside the window the greeter uses the day palette.
     day_start: Option<String>,
@@ -202,6 +214,7 @@ struct DayFile {
     muted: Option<String>,
     field: Option<String>,
     logo: Option<String>,
+    spinner_glow: Option<f32>,
 }
 
 impl Theme {
@@ -274,6 +287,12 @@ impl Theme {
         if let Some(a) = file.animate {
             self.animate = a;
         }
+        if let Some(g) = file.spinner_glow {
+            self.spinner_glow = g;
+        }
+        if let Some(s) = file.spinner_speed {
+            self.spinner_speed = s;
+        }
         self
     }
 
@@ -294,6 +313,10 @@ impl Theme {
         }
         if let Some(a) = file.animate {
             self.animate = a;
+        }
+        // spinner_speed is shared across variants; spinner_glow is per-variant ([day]).
+        if let Some(s) = file.spinner_speed {
+            self.spinner_speed = s;
         }
         self
     }
@@ -348,6 +371,9 @@ impl Theme {
         if let Some(l) = d.logo {
             self.logo = Some(PathBuf::from(l));
         }
+        if let Some(g) = d.spinner_glow {
+            self.spinner_glow = g;
+        }
         self
     }
 
@@ -389,6 +415,7 @@ impl Theme {
             Some(l) => out.push_str(&format!("logo = {:?}\n", l.display().to_string())),
             None => out.push_str("# logo =\n"),
         }
+        out.push_str(&format!("spinner_glow = {}\n", day.spinner_glow));
         out
     }
 
@@ -422,6 +449,8 @@ impl Theme {
         out.push_str(&format!("card_width    = {}\n", self.card_width));
         out.push_str(&format!("show_clock    = {}\n", self.show_clock));
         out.push_str(&format!("animate       = {}\n", self.animate));
+        out.push_str(&format!("spinner_glow  = {}\n", self.spinner_glow));
+        out.push_str(&format!("spinner_speed = {}\n", self.spinner_speed));
         out
     }
 }

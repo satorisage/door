@@ -47,6 +47,8 @@ struct Palette {
     foreground: String,
     muted: String,
     logo: String,
+    /// Per-variant spinner head-glow (0–1).
+    glow: f32,
 }
 
 impl Palette {
@@ -63,6 +65,7 @@ impl Palette {
             foreground: t.foreground.to_hex(),
             muted: t.muted.to_hex(),
             logo: path(&t.logo),
+            glow: t.spinner_glow,
         }
     }
 }
@@ -90,6 +93,8 @@ enum Param {
 enum Message {
     Set(Param, String),
     CardAlpha(f32),
+    SpinnerGlow(f32),
+    SpinnerSpeed(f32),
     EditDay(bool),
     ToggleClock(bool),
     ToggleAnimate(bool),
@@ -108,6 +113,7 @@ struct State {
     card_width: String,
     day_start: String,
     day_end: String,
+    spinner_speed: f32,
     show_clock: bool,
     animate: bool,
     // Which variant is being edited / previewed.
@@ -133,6 +139,7 @@ impl State {
             card_width: night.card_width.to_string(),
             day_start: minutes_to_hhmm(start),
             day_end: minutes_to_hhmm(end),
+            spinner_speed: night.spinner_speed,
             show_clock: night.show_clock,
             animate: night.animate,
             editing_day: false,
@@ -199,6 +206,8 @@ impl State {
             show_clock: self.show_clock,
             animate: self.animate,
             is_day: day,
+            spinner_glow: pal.glow,
+            spinner_speed: self.spinner_speed,
         })
     }
 
@@ -235,6 +244,11 @@ fn update(state: &mut State, message: Message) -> Task<Message> {
                 pal.card = col.to_hex();
             }
         }
+        Message::SpinnerGlow(v) => {
+            let pal = if state.editing_day { &mut state.day } else { &mut state.night };
+            pal.glow = v.clamp(0.0, 1.0);
+        }
+        Message::SpinnerSpeed(v) => state.spinner_speed = v.clamp(0.0, 8.0),
         Message::EditDay(on) => state.editing_day = on,
         Message::ToggleClock(on) => state.show_clock = on,
         Message::ToggleAnimate(on) => state.animate = on,
@@ -381,6 +395,33 @@ fn controls(state: &State) -> Element<'_, Message> {
                 .color(c(LABEL.0, LABEL.1, LABEL.2)),
             slider(0.0..=1.0, card_a, Message::CardAlpha).step(0.01),
             text(format!("{}%", (card_a * 100.0).round() as u32))
+                .size(12)
+                .width(Length::Fixed(38.0))
+                .color(c(MUTED.0, MUTED.1, MUTED.2)),
+        ]
+        .spacing(10)
+        .align_y(Alignment::Center),
+        section("SPINNER"),
+        row![
+            text("Glow")
+                .size(13)
+                .width(Length::Fixed(92.0))
+                .color(c(LABEL.0, LABEL.1, LABEL.2)),
+            slider(0.0..=1.0, pal.glow, Message::SpinnerGlow).step(0.01),
+            text(format!("{}%", (pal.glow * 100.0).round() as u32))
+                .size(12)
+                .width(Length::Fixed(38.0))
+                .color(c(MUTED.0, MUTED.1, MUTED.2)),
+        ]
+        .spacing(10)
+        .align_y(Alignment::Center),
+        row![
+            text("Speed")
+                .size(13)
+                .width(Length::Fixed(92.0))
+                .color(c(LABEL.0, LABEL.1, LABEL.2)),
+            slider(0.0..=6.0, state.spinner_speed, Message::SpinnerSpeed).step(0.1),
+            text(format!("{:.1}", state.spinner_speed))
                 .size(12)
                 .width(Length::Fixed(38.0))
                 .color(c(MUTED.0, MUTED.1, MUTED.2)),
@@ -593,7 +634,13 @@ fn preview_card(t: &Theme, anim: f32) -> Element<'static, Message> {
         Some(path) => image(image::Handle::from_path(path))
             .height(Length::Fixed(56.0))
             .into(),
-        None => canvas(sky::Spinner { anim, fade: 1.0, day: t.is_day })
+        None => canvas(sky::Spinner {
+            anim,
+            fade: 1.0,
+            day: t.is_day,
+            glow: t.spinner_glow,
+            speed: t.spinner_speed,
+        })
             .width(Length::Fixed(52.0))
             .height(Length::Fixed(52.0))
             .into(),
