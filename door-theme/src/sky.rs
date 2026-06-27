@@ -144,12 +144,13 @@ impl<Message> Program<Message> for Spinner {
         // The comet: a bright head + fading trail at a *continuous* angle, so it
         // glides smoothly around the ring rather than snapping between track dots.
         let head = self.anim * 2.5; // ~0.4 rev/s
-        // A dense trail reads as a continuous streak rather than separate dots.
-        const TRAIL: usize = 20;
+        // A dense, overlapping trail reads as one continuous silk ribbon rather
+        // than separate dots; a smooth taper in radius and alpha toward the tail.
+        const TRAIL: usize = 40;
         for j in 0..TRAIL {
             let k = j as f32 / TRAIL as f32; // 0 head .. ~1 tail
             let a = head - k * 2.6; // trail sweeps ~2.6 rad behind the head
-            let r = dot * (1.0 - 0.55 * k);
+            let r = dot * (1.0 - 0.5 * k);
             let col = if j == 0 {
                 CORE
             } else if k < 0.4 {
@@ -157,11 +158,13 @@ impl<Message> Program<Message> for Spinner {
             } else {
                 BLUE
             };
-            let alpha = (1.0 - k).powf(1.3) * self.fade;
+            let alpha = (1.0 - k).powf(1.6) * self.fade;
             frame.fill(&Path::circle(at(a), r.max(0.6)), with_alpha(col, alpha));
         }
-        // A soft glow on the head.
-        frame.fill(&Path::circle(at(head), dot * 1.7), with_alpha(CYAN, 0.18 * self.fade));
+        // Soft layered glow on the head for a silky bloom.
+        for &(rr, oo) in &[(2.2f32, 0.10f32), (1.6, 0.16), (1.05, 0.30)] {
+            frame.fill(&Path::circle(at(head), dot * rr), with_alpha(CYAN, oo * self.fade));
+        }
 
         vec![frame.into_geometry()]
     }
