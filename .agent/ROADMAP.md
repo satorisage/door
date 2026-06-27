@@ -77,6 +77,13 @@ be exercised end to end. M4 beauty + M5 hardening follow.)*
 - [ ] **RC6 — greeter shader-cache home** (cosmetic; see postmortem RC6): give the
       `door-greeter` user a writable `XDG_CACHE_HOME`/home so Mesa stops logging
       `Failed to create //.cache`. Deferred to M4/M5 polish.
+- [ ] **RC7 — greeter death pre-handshake must not wedge doord** (material; see
+      postmortem RC7): the serve loop must wait on the greeter child concurrently
+      with `accept()`, so a greeter that dies before connecting is reaped, the VT
+      is reset, and the failure is counted toward give-up/backoff — instead of
+      doord blocking forever on `accept()` (black screen, no feedback). Surfaced
+      by a live `enable --now doord` under an occupied seat0; clean-boot switch is
+      unaffected. `depends:` RC5 — reset the VT on admin teardown
 
 **Done-when (M6):** door installs from a PKGBUILD (disabled by default), can be
 enabled to become the machine's login manager with the previous DM kept as

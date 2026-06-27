@@ -175,6 +175,34 @@ perf optimization for the *greeter only*; no functional, auth, or session
 impact. Fix: give the greeter a writable `XDG_CACHE_HOME` (e.g. under `/run`) or
 a real home.
 
+## Root cause 7 — doord hangs when the greeter dies before connecting (live-switch wedge)
+
+Found 2026-06-26 attempting a **live** DM switch: `disable --now sddm && enable
+--now doord` *while two Plasma sessions were still on seat0* (left in
+`State=closing` from earlier experimentation). Symptom: black screen + blinking
+cursor; doord `active` but no login, no journal beyond "launched greeter".
+
+Chain: doord launched the greeter-worker → cage tried to acquire the seat0 DRM
+master → the two `closing` sessions had **not** released it → cage failed and
+died → the greeter-worker went `<defunct>`. doord's log stops at "launched
+greeter" — **no connect, no give-up**: it neither reaped the dead worker nor
+tripped the RC2 give-up/backoff. It blocked (waiting to `accept()` the greeter
+connection) on a greeter that was already dead.
+
+Two distinct facts:
+
+1. **Operational (not a bug):** you cannot hot-swap a DM under live graphical
+   sessions — a DM owns the seat from boot, and cage cannot take a DRM master
+   another session holds. The supported switch is **clean-boot**: sddm disabled,
+   doord enabled, reboot — the path proven to work (the 22:22 boot).
+2. **Robustness gap (the actual bug):** doord must detect greeter-worker death
+   *before* the handshake and route it into the give-up/backoff path (reap the
+   child, restore the VT, count the failure) instead of blocking forever on
+   `accept()`. The RC2 give-up only catches rapid *connected-then-failed* loops;
+   a die-before-connect wedge slips past it. Fix: have the serve loop wait on
+   the greeter child concurrently with the accept, so a pre-handshake death is a
+   counted failure (→ VT reset + backoff), never a silent hang.
+
 ## Disposition
 
 - RC1 (socket dir perms) — **fixed** (`ipc.rs::bind`).
@@ -200,5 +228,10 @@ a real home.
   admin-teardown path + `enable --now` doc emphasis.
 - RC6 (greeter shader-cache permission error from `HOME=/`) — **found, not yet
   fixed.** Cosmetic; greeter `XDG_CACHE_HOME`/home. Deferred to M4/M5 polish.
+- RC7 (greeter dies pre-handshake → doord hangs; surfaced by a live DM switch
+  under occupied seat0) — **found, not yet fixed.** Material robustness gap:
+  serve loop must wait on the greeter child concurrently with `accept()` so a
+  die-before-connect routes to give-up/backoff + VT reset, not a silent wedge.
+  Operationally, the supported DM switch is clean-boot, not live `enable --now`.
 - Re-validation stays **revert-first on a spare VT/machine**, escape path
   confirmed working *before* `enable`.
