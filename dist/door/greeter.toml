@@ -8,9 +8,11 @@
 # glassy look over the wallpaper. An unknown key is a loud error, not silently
 # ignored. A missing asset (wallpaper/logo) degrades to the solid background.
 
-# Full-bleed background image behind the card. Comment out for a solid
-# `background` fill instead.
-wallpaper = "/usr/share/door/wallpaper.png"
+# Background image behind the card. Left unset by default: door draws the animated
+# sky (twinkling stars + drifting comet + indigo glow) over the solid `background`,
+# matching the desktop's animated comet plugin — cleaner than a static image.
+# Uncomment to use a static image instead (e.g. the stylized comet PNG):
+# wallpaper = "/usr/share/door/wallpaper.png"
 
 # Tokyo Night palette.
 background  = "#1a1b26"    # solid fill (wallpaper letterbox edges, or no wallpaper)

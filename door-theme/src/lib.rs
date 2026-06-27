@@ -337,7 +337,9 @@ mod tests {
         let raw = include_str!("../../dist/door/greeter.toml");
         let file: ThemeFile = toml::from_str(raw).expect("shipped greeter.toml must parse");
         let theme = Theme::default().merged(file);
-        assert!(theme.wallpaper.is_some(), "default ships a wallpaper");
+        // Default is the clean animated sky on a solid bg (no static wallpaper).
+        assert!(theme.wallpaper.is_none(), "default uses the animated sky, no image");
+        assert!(theme.animate);
         assert!(theme.show_clock);
         assert_eq!(theme.accent, Color::rgb(0x7a, 0xa2, 0xf7));
     }

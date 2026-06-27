@@ -22,6 +22,7 @@ const fn rgb(r: u8, g: u8, b: u8) -> Color {
 const CORE: Color = rgb(0xc0, 0xca, 0xf5);
 const BLUE: Color = rgb(0x7a, 0xa2, 0xf7);
 const CYAN: Color = rgb(0x7d, 0xcf, 0xff);
+const INDIGO: Color = rgb(0x3d, 0x59, 0xa1);
 
 /// Comet timing: a 7 s sweep then a 2.5 s pause, looping (matches the wallpaper).
 const SWEEP: f32 = 7.0;
@@ -183,6 +184,20 @@ impl<Message> Program<Message> for Sky {
     ) -> Vec<Geometry> {
         let mut frame = Frame::new(renderer, bounds.size());
         let (w, h) = (bounds.width, bounds.height);
+
+        // Soft indigo depth-glow (matches the desktop comet plugin), so the solid
+        // background has depth rather than reading flat. Stacked translucent circles
+        // approximate a radial since canvas fills are flat.
+        let glow_center = Point::new(w * 0.5, h * 0.42);
+        let glow_r = w.min(h) * 0.6;
+        for i in 0..16 {
+            let t = i as f32 / 15.0; // 0 = widest/faintest .. 1 = innermost
+            let radius = glow_r * (1.0 - 0.62 * t);
+            frame.fill(
+                &Path::circle(glow_center, radius),
+                with_alpha(INDIGO, 0.012 * self.fade),
+            );
+        }
 
         // Starfield: parallax drift + twinkle, colored by depth.
         for s in &self.stars {
