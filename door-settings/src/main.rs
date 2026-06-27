@@ -314,12 +314,21 @@ fn controls(state: &State) -> Element<'_, Message> {
         plain_row("Logo", &state.logo, Param::Logo),
         plain_row("Font", &state.font, Param::Font),
         section("COLORS"),
-        color_row("Background", &state.background, Param::Background),
-        color_row("Card", &state.card, Param::Card),
-        color_row("Field", &state.field, Param::Field),
-        color_row("Accent", &state.accent, Param::Accent),
-        color_row("Text", &state.foreground, Param::Foreground),
-        color_row("Muted", &state.muted, Param::Muted),
+        row![
+            color_cell("BG", &state.background, Param::Background),
+            color_cell("Card", &state.card, Param::Card),
+        ]
+        .spacing(10),
+        row![
+            color_cell("Field", &state.field, Param::Field),
+            color_cell("Accent", &state.accent, Param::Accent),
+        ]
+        .spacing(10),
+        row![
+            color_cell("Text", &state.foreground, Param::Foreground),
+            color_cell("Muted", &state.muted, Param::Muted),
+        ]
+        .spacing(10),
         section("LAYOUT"),
         plain_row("Corner radius", &state.corner_radius, Param::CornerRadius),
         plain_row("Card width", &state.card_width, Param::CardWidth),
@@ -375,22 +384,24 @@ fn plain_row<'a>(label: &'a str, value: &'a str, param: Param) -> Element<'a, Me
     .into()
 }
 
-/// A labeled color row: styled hex input + a live swatch of the current value.
-fn color_row<'a>(label: &'a str, value: &'a str, param: Param) -> Element<'a, Message> {
+/// A compact half-width color cell: short label, hex input, live swatch. Two of
+/// these sit side by side per row so the six colors take three rows, not six.
+fn color_cell<'a>(label: &'a str, value: &'a str, param: Param) -> Element<'a, Message> {
     row![
         text(label)
-            .size(13)
-            .width(Length::Fixed(92.0))
+            .size(12)
+            .width(Length::Fixed(44.0))
             .color(c(LABEL.0, LABEL.1, LABEL.2)),
         text_input("", value)
             .on_input(move |v| Message::Set(param, v))
-            .padding(6)
-            .size(14)
+            .padding(5)
+            .size(13)
             .style(input_style),
         swatch(value),
     ]
-    .spacing(10)
+    .spacing(6)
     .align_y(Alignment::Center)
+    .width(Length::Fill)
     .into()
 }
 
@@ -398,8 +409,8 @@ fn color_row<'a>(label: &'a str, value: &'a str, param: Param) -> Element<'a, Me
 fn swatch(value: &str) -> Element<'static, Message> {
     let fill = Color::parse(value.trim()).map(|col| Background::Color(col.iced()));
     container(Space::new())
-        .width(Length::Fixed(26.0))
-        .height(Length::Fixed(26.0))
+        .width(Length::Fixed(22.0))
+        .height(Length::Fixed(22.0))
         .style(move |_t| container::Style {
             background: fill,
             border: Border {
