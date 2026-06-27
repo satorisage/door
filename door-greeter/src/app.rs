@@ -444,16 +444,36 @@ fn generate_stars() -> Vec<Star> {
         .collect()
 }
 
-/// The ambient twinkle layer drawn over the wallpaper: each star oscillates in
-/// brightness on its own phase. Fades in with everything else via `fade`.
-struct Twinkle {
+/// One shooting-star lane: a trajectory across the screen (fractions of the
+/// bounds), how often it fires (`period`, seconds), a stagger `offset`, and the
+/// fraction of each cycle it actually streaks (`streak`).
+struct Comet {
+    sx: f32,
+    sy: f32,
+    ex: f32,
+    ey: f32,
+    period: f32,
+    offset: f32,
+    streak: f32,
+}
+
+/// Three staggered comet lanes — a shooting star crosses every few seconds.
+const COMETS: [Comet; 3] = [
+    Comet { sx: 0.12, sy: -0.05, ex: 0.78, ey: 0.58, period: 7.0, offset: 0.00, streak: 0.11 },
+    Comet { sx: 0.98, sy: 0.02, ex: 0.34, ey: 0.72, period: 9.0, offset: 0.45, streak: 0.10 },
+    Comet { sx: 0.50, sy: -0.06, ex: 1.06, ey: 0.50, period: 11.0, offset: 0.78, streak: 0.09 },
+];
+
+/// The animated sky over the wallpaper: twinkling stars *and* periodic shooting
+/// stars (dotted comet trails, echoing the wallpaper's comet). Fades in via `fade`.
+struct Sky {
     stars: Vec<Star>,
     phase: f32,
     fade: f32,
-    color: iced::Color,
+    star_color: iced::Color,
 }
 
-impl Program<Message> for Twinkle {
+impl Program<Message> for Sky {
     type State = ();
 
     fn draw(
@@ -465,13 +485,49 @@ impl Program<Message> for Twinkle {
         _cursor: mouse::Cursor,
     ) -> Vec<Geometry> {
         let mut frame = Frame::new(renderer, bounds.size());
+        let (w, h) = (bounds.width, bounds.height);
+
+        // Twinkling stars.
         for s in &self.stars {
             let tw = 0.35 + 0.65 * (0.5 + 0.5 * (self.phase * 1.6 + s.phase).sin());
-            let mut c = self.color;
+            let mut c = self.star_color;
             c.a = tw * self.fade * 0.9;
-            let center = Point::new(s.x * bounds.width, s.y * bounds.height);
-            frame.fill(&Path::circle(center, s.r), c);
+            frame.fill(&Path::circle(Point::new(s.x * w, s.y * h), s.r), c);
         }
+
+        // Shooting stars: a bright dotted trail (head leading), eased in/out so it
+        // streaks in and fades rather than popping.
+        let head = iced::Color::from_rgb8(0xd6, 0xe6, 0xff);
+        let tail = iced::Color::from_rgb8(0x7a, 0xa2, 0xf7);
+        const DOTS: usize = 16;
+        for comet in COMETS.iter() {
+            let cycle = (self.phase / comet.period + comet.offset).fract();
+            if cycle >= comet.streak {
+                continue;
+            }
+            let p = cycle / comet.streak; // 0..1 along the trajectory
+            let edge = (p * (1.0 - p) * 4.0).clamp(0.0, 1.0); // 0 at ends, 1 mid-streak
+            for i in 0..DOTS {
+                let k = i as f32 / DOTS as f32; // 0 = head, →1 = tail end
+                let tp = p - k * 0.06;
+                if tp < 0.0 {
+                    break;
+                }
+                let x = (comet.sx + (comet.ex - comet.sx) * tp) * w;
+                let y = (comet.sy + (comet.ey - comet.sy) * tp) * h;
+                let radius = (2.6 * (1.0 - k * 0.7)).max(0.6);
+                let mut col = if i == 0 { head } else { tail };
+                col.a = (1.0 - k) * self.fade * edge * if i == 0 { 1.0 } else { 0.8 };
+                frame.fill(&Path::circle(Point::new(x, y), radius), col);
+            }
+            // A soft glow at the head.
+            let hx = (comet.sx + (comet.ex - comet.sx) * p) * w;
+            let hy = (comet.sy + (comet.ey - comet.sy) * p) * h;
+            let mut glow = head;
+            glow.a = 0.20 * self.fade * edge;
+            frame.fill(&Path::circle(Point::new(hx, hy), 7.0), glow);
+        }
+
         vec![frame.into_geometry()]
     }
 }
@@ -572,11 +628,11 @@ fn view(state: &State) -> Element<'_, Message> {
     let overlay = stack![centered, power];
 
     // Ambient twinkle layer, drawn over the wallpaper / solid background.
-    let stars = canvas(Twinkle {
+    let sky = canvas(Sky {
         stars: state.stars.clone(),
         phase: state.anim,
         fade: f,
-        color: t.foreground.iced(),
+        star_color: t.foreground.iced(),
     })
     .width(Length::Fill)
     .height(Length::Fill);
@@ -589,9 +645,9 @@ fn view(state: &State) -> Element<'_, Message> {
                 .width(Length::Fill)
                 .height(Length::Fill)
                 .content_fit(ContentFit::Cover);
-            stack![background, stars, overlay].into()
+            stack![background, sky, overlay].into()
         }
-        None => stack![stars, overlay].into(),
+        None => stack![sky, overlay].into(),
     }
 }
 
