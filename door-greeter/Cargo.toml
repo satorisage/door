@@ -10,8 +10,8 @@ path = "src/main.rs"
 
 [dependencies]
 futures = "0.3"
-# `image` enables the wallpaper background widget.
-iced = { version = "0.14", features = ["image"] }
+# `image` enables the wallpaper widget; `canvas` the ambient twinkle layer.
+iced = { version = "0.14", features = ["image", "canvas"] }
 iced_futures = "0.14"
 protocol = { workspace = true }
 # M4 theming: a config-driven look loaded from a TOML file (admin-controlled,

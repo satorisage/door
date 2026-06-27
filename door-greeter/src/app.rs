@@ -16,12 +16,13 @@ use std::sync::OnceLock;
 use std::time::Duration;
 
 use futures::SinkExt;
+use iced::widget::canvas::{Frame, Geometry, Path, Program};
 use iced::widget::{
-    button, column, container, image, pick_list, row, stack, text, text_input, Space,
+    button, canvas, column, container, image, pick_list, row, stack, text, text_input, Space,
 };
 use iced::{
-    window, Alignment, Background, Border, ContentFit, Element, Font, Length, Shadow, Subscription,
-    Task, Vector,
+    keyboard, mouse, window, Alignment, Background, Border, ContentFit, Element, Font, Length,
+    Point, Rectangle, Renderer, Shadow, Subscription, Task, Vector,
 };
 
 use protocol::{PowerAction, Secret, Session};
@@ -82,6 +83,20 @@ fn subscription(_state: &State) -> Subscription<Message> {
         Subscription::run(daemon_worker),
         Subscription::run(clock_ticker),
         Subscription::run(fade_ticker),
+        Subscription::run(anim_ticker),
+        // Tab / Shift-Tab cycle focus through the fields and the sign-in button.
+        iced::event::listen_with(|event, _status, _window| match event {
+            iced::Event::Keyboard(keyboard::Event::KeyPressed {
+                key: keyboard::Key::Named(keyboard::key::Named::Tab),
+                modifiers,
+                ..
+            }) => Some(if modifiers.shift() {
+                Message::FocusPrev
+            } else {
+                Message::FocusNext
+            }),
+            _ => None,
+        }),
     ])
 }
 
@@ -113,6 +128,23 @@ fn fade_ticker() -> impl futures::Stream<Item = Message> {
                 std::thread::sleep(Duration::from_millis(16));
                 if futures::executor::block_on(output.send(Message::Fade)).is_err() {
                     return;
+                }
+            }
+        });
+        std::future::pending::<()>().await;
+    })
+}
+
+/// Continuous ~30 fps tick driving the ambient twinkle + the breathing card edge
+/// while the greeter idles at the prompt.
+fn anim_ticker() -> impl futures::Stream<Item = Message> {
+    iced_futures::stream::channel(4, |output: futures::channel::mpsc::Sender<Message>| async move {
+        std::thread::spawn(move || {
+            let mut output = output;
+            loop {
+                std::thread::sleep(Duration::from_millis(33));
+                if futures::executor::block_on(output.send(Message::AnimTick)).is_err() {
+                    break;
                 }
             }
         });
@@ -172,6 +204,11 @@ pub enum Message {
     Tick,
     /// One step of the launch fade-in.
     Fade,
+    /// Continuous ambient animation tick (twinkle + breathing card edge).
+    AnimTick,
+    /// Tab / Shift-Tab focus traversal across the fields and sign-in.
+    FocusNext,
+    FocusPrev,
     // From the UI:
     UsernameChanged(String),
     PasswordChanged(String),
@@ -196,6 +233,11 @@ struct State {
     date: String,
     /// Launch fade-in progress, 0.0 → 1.0 (driven by [`Message::Fade`]).
     fade: f32,
+    /// Continuously advancing animation clock (seconds-ish), driving the ambient
+    /// twinkle and the breathing card edge.
+    anim: f32,
+    /// Fixed ambient starfield positions (generated once so they don't jump).
+    stars: Vec<Star>,
 }
 
 impl State {
@@ -212,6 +254,8 @@ impl State {
             clock: now_hm(),
             date: now_date(),
             fade: 0.0,
+            anim: 0.0,
+            stars: generate_stars(),
         }
     }
 
@@ -318,6 +362,10 @@ fn update(state: &mut State, message: Message) -> Task<Message> {
             state.date = now_date();
         }
         Message::Fade => state.fade = (state.fade + 1.0 / 24.0).min(1.0),
+        // Advance the ambient clock; wrap well before f32 precision degrades.
+        Message::AnimTick => state.anim = (state.anim + 0.033) % 10_000.0,
+        Message::FocusNext => task = iced::widget::operation::focus_next(),
+        Message::FocusPrev => task = iced::widget::operation::focus_previous(),
     }
     task
 }
@@ -363,6 +411,68 @@ fn now_date() -> String {
             format!("{day}, {month} {}", tm.tm_mday)
         }
         None => String::new(),
+    }
+}
+
+/// A single ambient star: position as a fraction of the screen, a radius, and a
+/// per-star phase offset so they don't twinkle in unison.
+#[derive(Clone, Copy)]
+struct Star {
+    x: f32,
+    y: f32,
+    r: f32,
+    phase: f32,
+}
+
+/// ~80 stars at deterministic positions (a tiny seeded LCG — no `rand` on the
+/// pre-auth surface, and fixed so they never jump between frames).
+fn generate_stars() -> Vec<Star> {
+    let mut seed: u64 = 0x9E37_79B9_7F4A_7C15;
+    let mut next = || {
+        seed = seed
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
+        (seed >> 33) as f32 / (1u64 << 31) as f32 // 0.0..1.0
+    };
+    (0..80)
+        .map(|_| Star {
+            x: next(),
+            y: next(),
+            r: 0.5 + next() * 1.3,
+            phase: next() * std::f32::consts::TAU,
+        })
+        .collect()
+}
+
+/// The ambient twinkle layer drawn over the wallpaper: each star oscillates in
+/// brightness on its own phase. Fades in with everything else via `fade`.
+struct Twinkle {
+    stars: Vec<Star>,
+    phase: f32,
+    fade: f32,
+    color: iced::Color,
+}
+
+impl Program<Message> for Twinkle {
+    type State = ();
+
+    fn draw(
+        &self,
+        _state: &(),
+        renderer: &Renderer,
+        _theme: &iced::Theme,
+        bounds: Rectangle,
+        _cursor: mouse::Cursor,
+    ) -> Vec<Geometry> {
+        let mut frame = Frame::new(renderer, bounds.size());
+        for s in &self.stars {
+            let tw = 0.35 + 0.65 * (0.5 + 0.5 * (self.phase * 1.6 + s.phase).sin());
+            let mut c = self.color;
+            c.a = tw * self.fade * 0.9;
+            let center = Point::new(s.x * bounds.width, s.y * bounds.height);
+            frame.fill(&Path::circle(center, s.r), c);
+        }
+        vec![frame.into_geometry()]
     }
 }
 
@@ -442,7 +552,7 @@ fn view(state: &State) -> Element<'_, Message> {
     let card = container(form)
         .padding(26)
         .width(Length::Fixed(t.card_width))
-        .style(card_style(t, f));
+        .style(card_style(t, f, state.anim));
 
     let centered = container(card).center_x(Length::Fill).center_y(Length::Fill);
 
@@ -461,6 +571,16 @@ fn view(state: &State) -> Element<'_, Message> {
 
     let overlay = stack![centered, power];
 
+    // Ambient twinkle layer, drawn over the wallpaper / solid background.
+    let stars = canvas(Twinkle {
+        stars: state.stars.clone(),
+        phase: state.anim,
+        fade: f,
+        color: t.foreground.iced(),
+    })
+    .width(Length::Fill)
+    .height(Length::Fill);
+
     // Wallpaper behind everything, if configured (a missing file just leaves the
     // solid window background from `app_style`).
     match &t.wallpaper {
@@ -469,9 +589,9 @@ fn view(state: &State) -> Element<'_, Message> {
                 .width(Length::Fill)
                 .height(Length::Fill)
                 .content_fit(ContentFit::Cover);
-            stack![background, overlay].into()
+            stack![background, stars, overlay].into()
         }
-        None => overlay.into(),
+        None => stack![stars, overlay].into(),
     }
 }
 
@@ -539,17 +659,20 @@ fn button_style(t: &Theme, fade: f32) -> impl Fn(&iced::Theme, button::Status) -
     }
 }
 
-/// The glassy card: translucent fill, thin accent hairline, soft drop shadow.
-fn card_style(t: &Theme, fade: f32) -> impl Fn(&iced::Theme) -> container::Style {
+/// The glassy card: translucent fill, a gently breathing accent hairline, soft
+/// drop shadow.
+fn card_style(t: &Theme, fade: f32, phase: f32) -> impl Fn(&iced::Theme) -> container::Style {
     let card = t.card.iced_alpha(fade);
     let accent = t.accent;
     let radius = t.corner_radius;
+    // The accent hairline breathes between ~0.18 and ~0.34 alpha.
+    let breathe = 0.18 + 0.16 * (0.5 + 0.5 * (phase * 1.1).sin());
     move |_theme| container::Style {
         background: Some(Background::Color(card)),
         border: Border {
             radius: radius.into(),
             width: 1.0,
-            color: accent.iced_alpha(fade * 0.25),
+            color: accent.iced_alpha(fade * breathe),
         },
         shadow: Shadow {
             color: iced::Color::from_rgba(0.0, 0.0, 0.0, 0.45 * fade),
