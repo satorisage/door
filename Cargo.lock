@@ -864,11 +864,27 @@ dependencies = [
 name = "door-greeter"
 version = "0.0.0"
 dependencies = [
+ "door-theme",
  "futures",
  "iced",
  "iced_futures",
  "libc",
  "protocol",
+]
+
+[[package]]
+name = "door-settings"
+version = "0.0.0"
+dependencies = [
+ "door-theme",
+ "iced",
+]
+
+[[package]]
+name = "door-theme"
+version = "0.0.0"
+dependencies = [
+ "iced",
  "serde",
  "toml",
 ]

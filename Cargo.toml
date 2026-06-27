@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["protocol", "doord", "door-greeter"]
+members = ["protocol", "doord", "door-theme", "door-greeter", "door-settings"]
 
 [workspace.package]
 version = "0.0.0"
@@ -10,6 +10,7 @@ repository = "https://github.com/satorisage/door"
 
 [workspace.dependencies]
 protocol = { path = "protocol" }
+door-theme = { path = "door-theme" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 zeroize = { version = "1", features = ["derive"] }

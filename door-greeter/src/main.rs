@@ -15,7 +15,6 @@
 
 mod app;
 mod client;
-mod theme;
 
 fn main() -> iced::Result {
     // The greeter is the Wayland UI built on `client` (the protocol-facing half):

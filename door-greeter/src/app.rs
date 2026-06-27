@@ -28,7 +28,7 @@ use iced::{
 use protocol::{PowerAction, Secret, Session};
 
 use crate::client::{AuthStep, Client, StartOutcome, DEFAULT_SOCKET};
-use crate::theme::{Color, Theme};
+use door_theme::{Color, Theme};
 
 /// The resolved theme, loaded once. `run` needs it for the default font before the
 /// app state exists, and the UI reads it every frame — so it lives here, not in

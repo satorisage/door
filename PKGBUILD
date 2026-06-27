@@ -37,9 +37,11 @@ check() {
 package() {
     cd "$startdir"
 
-    # Binaries: the privileged daemon and the unprivileged greeter.
-    install -Dm755 target/release/doord        "$pkgdir/usr/bin/doord"
-    install -Dm755 target/release/door-greeter "$pkgdir/usr/bin/door-greeter"
+    # Binaries: the privileged daemon, the unprivileged greeter, and the (also
+    # unprivileged) settings editor.
+    install -Dm755 target/release/doord         "$pkgdir/usr/bin/doord"
+    install -Dm755 target/release/door-greeter  "$pkgdir/usr/bin/door-greeter"
+    install -Dm755 target/release/door-settings "$pkgdir/usr/bin/door-settings"
 
     # PAM: the login service (doord) and the passwordless greeter session service.
     install -Dm644 dist/pam.d/doord            "$pkgdir/etc/pam.d/doord"
@@ -54,6 +56,10 @@ package() {
     # /usr/share/door/. Admins customize by copying greeter.toml to /etc/door/.
     install -Dm644 dist/door/greeter.toml  "$pkgdir/usr/share/door/greeter.toml"
     install -Dm644 dist/door/wallpaper.png "$pkgdir/usr/share/door/wallpaper.png"
+
+    # Settings editor launcher (appears under Settings in the app menu).
+    install -Dm644 dist/door/door-settings.desktop \
+        "$pkgdir/usr/share/applications/door-settings.desktop"
 
     install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE" 2>/dev/null || true
 }

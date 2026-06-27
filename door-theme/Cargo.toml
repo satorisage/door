@@ -1,0 +1,17 @@
+[package]
+name = "door-theme"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "door_theme"
+path = "src/lib.rs"
+
+# The shared greeter theme: schema, parse/merge/load, and color helpers. Used by
+# both door-greeter (renders it) and door-settings (edits it) — one source of
+# truth for the look. Depends on iced only for the Color conversions both UIs need.
+[dependencies]
+iced = "0.14"
+serde = { workspace = true }
+toml = "0.8"

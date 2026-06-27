@@ -1,0 +1,17 @@
+[package]
+name = "door-settings"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "door-settings"
+path = "src/main.rs"
+
+# A standalone (pure-Rust, iced) editor for the greeter theme. Loads the resolved
+# config, previews by launching the real greeter in dev mode with a draft, and
+# saves to /etc/door/greeter.toml via pkexec. Shares the schema with the greeter
+# through door-theme — one source of truth.
+[dependencies]
+iced = "0.14"
+door-theme = { workspace = true }

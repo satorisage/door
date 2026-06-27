@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=door Greeter Settings
+GenericName=Login Screen Settings
+Comment=Configure the door greeter theme — wallpaper, colors, font, clock
+Exec=door-settings
+Icon=preferences-desktop-display
+Terminal=false
+Categories=Settings;DesktopSettings;
+Keywords=login;greeter;door;theme;wallpaper;tokyonight;

@@ -1,9 +1,11 @@
 //! The greeter's look (M4): a config-driven theme with a built-in beautiful
-//! default. The greeter is the pre-auth surface, so the config is admin-controlled
-//! and world-readable — never user-supplied at login time.
+//! default. Shared by `door-greeter` (which renders it) and `door-settings` (which
+//! edits it) — one source of truth for the schema and the colors.
 //!
-//! Loaded at startup from the first file that exists, each merged *over* the
-//! built-in [`Theme::default`] so a partial file (just an `accent`, say) works:
+//! The greeter is the pre-auth surface, so the config is admin-controlled and
+//! world-readable — never user-supplied at login time. It is loaded from the first
+//! file that exists, each merged *over* the built-in [`Theme::default`] so a partial
+//! file (just an `accent`, say) works:
 //!
 //! 1. `$DOORD_GREETER_CONFIG` — explicit path, for dev/testing
 //! 2. `/etc/door/greeter.toml` — admin override
@@ -18,9 +20,11 @@ use serde::Deserialize;
 use std::path::PathBuf;
 
 /// Explicit config path override (dev/testing). Checked before the system paths.
-const ENV_CONFIG: &str = "DOORD_GREETER_CONFIG";
+pub const ENV_CONFIG: &str = "DOORD_GREETER_CONFIG";
+/// The admin override path — where `door-settings` saves.
+pub const ETC_CONFIG: &str = "/etc/door/greeter.toml";
 /// Admin override, then the packaged default. First readable wins.
-const SYSTEM_CONFIG_PATHS: [&str; 2] = ["/etc/door/greeter.toml", "/usr/share/door/greeter.toml"];
+const SYSTEM_CONFIG_PATHS: [&str; 2] = [ETC_CONFIG, "/usr/share/door/greeter.toml"];
 
 /// An 8-bit RGBA color, parsed from `#rrggbb` or `#rrggbbaa`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -41,13 +45,23 @@ impl Color {
 
     /// Parse `#rrggbb` or `#rrggbbaa` (case-insensitive). Returns `None` on any
     /// malformed input so the caller can keep the default and warn.
-    fn parse(s: &str) -> Option<Color> {
+    pub fn parse(s: &str) -> Option<Color> {
         let hex = s.strip_prefix('#')?;
         let byte = |i: usize| u8::from_str_radix(hex.get(i..i + 2)?, 16).ok();
         match hex.len() {
             6 => Some(Color::rgba(byte(0)?, byte(2)?, byte(4)?, 0xff)),
             8 => Some(Color::rgba(byte(0)?, byte(2)?, byte(4)?, byte(6)?)),
             _ => None,
+        }
+    }
+
+    /// Render as `#rrggbb` (opaque) or `#rrggbbaa` (with alpha) — the inverse of
+    /// [`parse`](Self::parse), used when writing a config.
+    pub fn to_hex(self) -> String {
+        if self.a == 0xff {
+            format!("#{:02x}{:02x}{:02x}", self.r, self.g, self.b)
+        } else {
+            format!("#{:02x}{:02x}{:02x}{:02x}", self.r, self.g, self.b, self.a)
         }
     }
 
@@ -93,7 +107,7 @@ pub struct Theme {
 }
 
 impl Default for Theme {
-    /// The built-in beautiful default: a dark, Tokyo-Night-ish palette with a
+    /// The built-in beautiful default: a dark, Tokyo-Night palette with a
     /// translucent card and a soft blue accent. Renders fully even with no assets.
     fn default() -> Self {
         Theme {
@@ -142,7 +156,7 @@ impl Theme {
             Some((path, contents)) => match toml::from_str::<ThemeFile>(&contents) {
                 Ok(file) => Theme::default().merged(file),
                 Err(e) => {
-                    eprintln!("door-greeter: ignoring malformed theme {}: {e}", path.display());
+                    eprintln!("door: ignoring malformed theme {}: {e}", path.display());
                     Theme::default()
                 }
             },
@@ -170,7 +184,7 @@ impl Theme {
         let color = |field: &str, raw: Option<String>, current: Color| -> Color {
             match raw {
                 Some(s) => Color::parse(&s).unwrap_or_else(|| {
-                    eprintln!("door-greeter: theme '{field}' is not #rrggbb[aa]: {s:?}; keeping default");
+                    eprintln!("door: theme '{field}' is not #rrggbb[aa]: {s:?}; keeping default");
                     current
                 }),
                 None => current,
@@ -202,6 +216,38 @@ impl Theme {
         }
         self
     }
+
+    /// Render this theme as a documented `greeter.toml` — what `door-settings`
+    /// writes. Mirrors the packaged default's layout so a saved file stays readable
+    /// and re-editable by hand.
+    pub fn to_config_string(&self) -> String {
+        let mut out = String::new();
+        out.push_str("# door greeter theme — written by door-settings. Edit here or in\n");
+        out.push_str("# door-settings; keys are documented in the packaged default at\n");
+        out.push_str("# /usr/share/door/greeter.toml. Colors are \"#rrggbb\" or \"#rrggbbaa\".\n\n");
+        match &self.wallpaper {
+            Some(w) => out.push_str(&format!("wallpaper = {:?}\n", w.display().to_string())),
+            None => out.push_str("# wallpaper =   # (none — solid background)\n"),
+        }
+        out.push_str(&format!("background  = {:?}\n", self.background.to_hex()));
+        out.push_str(&format!("card        = {:?}\n", self.card.to_hex()));
+        out.push_str(&format!("field       = {:?}\n", self.field.to_hex()));
+        out.push_str(&format!("accent      = {:?}\n", self.accent.to_hex()));
+        out.push_str(&format!("foreground  = {:?}\n", self.foreground.to_hex()));
+        out.push_str(&format!("muted       = {:?}\n", self.muted.to_hex()));
+        match &self.font {
+            Some(f) => out.push_str(&format!("font = {f:?}\n")),
+            None => out.push_str("# font =   # (stock)\n"),
+        }
+        match &self.logo {
+            Some(l) => out.push_str(&format!("logo = {:?}\n", l.display().to_string())),
+            None => out.push_str("# logo =\n"),
+        }
+        out.push_str(&format!("corner_radius = {}\n", self.corner_radius));
+        out.push_str(&format!("card_width    = {}\n", self.card_width));
+        out.push_str(&format!("show_clock    = {}\n", self.show_clock));
+        out
+    }
 }
 
 #[cfg(test)]
@@ -213,6 +259,13 @@ mod tests {
         assert_eq!(Color::parse("#7aa2f7"), Some(Color::rgba(0x7a, 0xa2, 0xf7, 0xff)));
         assert_eq!(Color::parse("#24283bd0"), Some(Color::rgba(0x24, 0x28, 0x3b, 0xd0)));
         assert_eq!(Color::parse("#FFFFFF"), Some(Color::rgb(255, 255, 255)));
+    }
+
+    #[test]
+    fn hex_round_trips() {
+        for s in ["#7aa2f7", "#24283bd0", "#16161e"] {
+            assert_eq!(Color::parse(s).unwrap().to_hex(), s);
+        }
     }
 
     #[test]
@@ -244,7 +297,6 @@ mod tests {
         assert_eq!(merged.card_width, 420.0);
         assert!(!merged.show_clock);
         assert_eq!(merged.wallpaper, Some(PathBuf::from("/usr/share/door/bg.png")));
-        // Untouched fields keep the default.
         assert_eq!(merged.background, Theme::default().background);
         assert_eq!(merged.foreground, Theme::default().foreground);
     }
@@ -257,9 +309,20 @@ mod tests {
     }
 
     #[test]
+    fn written_config_round_trips_through_parsing() {
+        // What door-settings writes must parse back to the same theme.
+        let mut t = Theme::default();
+        t.accent = Color::rgb(0xbb, 0x9a, 0xf7);
+        t.wallpaper = Some(PathBuf::from("/usr/share/door/wallpaper.png"));
+        t.font = Some("MesloLGS Nerd Font".to_string());
+        t.show_clock = false;
+        let rendered = t.to_config_string();
+        let file: ThemeFile = toml::from_str(&rendered).expect("written config must parse");
+        assert_eq!(Theme::default().merged(file), t);
+    }
+
+    #[test]
     fn shipped_default_config_parses_and_is_complete() {
-        // Guards the packaged default against drift: it must parse (deny_unknown_fields
-        // catches a typo'd key) and produce a usable theme.
         let raw = include_str!("../../dist/door/greeter.toml");
         let file: ThemeFile = toml::from_str(raw).expect("shipped greeter.toml must parse");
         let theme = Theme::default().merged(file);
@@ -270,7 +333,6 @@ mod tests {
 
     #[test]
     fn unknown_keys_are_a_parse_error() {
-        // Strict parsing: a typo'd key must fail loudly, not be silently ignored.
         let result = toml::from_str::<ThemeFile>(r##"acent = "#ff0000""##);
         assert!(result.is_err());
     }
