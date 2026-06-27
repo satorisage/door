@@ -165,7 +165,7 @@ impl Theme {
 
 /// The on-disk form: every field optional, merged over [`Theme::default`]. Strict
 /// (`deny_unknown_fields`) so a typo'd key is a loud parse error, not silent stock.
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Deserialize, Clone)]
 #[serde(deny_unknown_fields)]
 struct ThemeFile {
     wallpaper: Option<String>,
@@ -185,6 +185,23 @@ struct ThemeFile {
     /// 07:00–19:00). Inside the window the greeter uses the day palette.
     day_start: Option<String>,
     day_end: Option<String>,
+    /// `[day]` table — color/wallpaper/logo overrides for the day variant (over the
+    /// built-in Tokyo Night Day palette). Structural keys are shared from top level.
+    day: Option<DayFile>,
+}
+
+/// The `[day]` override table: the visual (per-variant) keys only.
+#[derive(Debug, Default, Deserialize, Clone)]
+#[serde(deny_unknown_fields)]
+struct DayFile {
+    wallpaper: Option<String>,
+    background: Option<String>,
+    card: Option<String>,
+    accent: Option<String>,
+    foreground: Option<String>,
+    muted: Option<String>,
+    field: Option<String>,
+    logo: Option<String>,
 }
 
 impl Theme {
@@ -299,12 +316,80 @@ impl Theme {
         };
         let (start, end) = day_window(&file);
         if in_window(now_minutes, start, end) {
-            Theme::day().merged_structural(&file)
+            Theme::day().merged_structural(&file).merged_day(file.day)
         } else if have {
             Theme::default().merged(file)
         } else {
             Theme::default()
         }
+    }
+
+    /// Apply the `[day]` color/wallpaper/logo overrides over the built-in day palette.
+    fn merged_day(mut self, day: Option<DayFile>) -> Theme {
+        let Some(d) = day else {
+            return self;
+        };
+        let color = |field: &str, raw: Option<String>, current: Color| match raw {
+            Some(s) => Color::parse(&s).unwrap_or_else(|| {
+                eprintln!("door: [day].{field} is not #rrggbb[aa]: {s:?}; keeping default");
+                current
+            }),
+            None => current,
+        };
+        self.background = color("background", d.background, self.background);
+        self.card = color("card", d.card, self.card);
+        self.accent = color("accent", d.accent, self.accent);
+        self.foreground = color("foreground", d.foreground, self.foreground);
+        self.muted = color("muted", d.muted, self.muted);
+        self.field = color("field", d.field, self.field);
+        if let Some(w) = d.wallpaper {
+            self.wallpaper = Some(PathBuf::from(w));
+        }
+        if let Some(l) = d.logo {
+            self.logo = Some(PathBuf::from(l));
+        }
+        self
+    }
+
+    /// Load both variants + the day window — for `door-settings`, which edits both.
+    pub fn load_pair() -> (Theme, Theme, (u32, u32)) {
+        let file = match Self::config_source() {
+            Some((path, contents)) => toml::from_str::<ThemeFile>(&contents).unwrap_or_else(|e| {
+                eprintln!("door: ignoring malformed theme {}: {e}", path.display());
+                ThemeFile::default()
+            }),
+            None => ThemeFile::default(),
+        };
+        let window = day_window(&file);
+        let night = Theme::default().merged(file.clone());
+        let day = Theme::day().merged_structural(&file).merged_day(file.day.clone());
+        (night, day, window)
+    }
+
+    /// Render a full `greeter.toml` with both palettes — the night top-level, the
+    /// day window, and a `[day]` table. What `door-settings` saves.
+    pub fn render_pair(night: &Theme, day: &Theme, day_start: &str, day_end: &str) -> String {
+        let mut out = night.to_config_string();
+        out.push_str(&format!("day_start  = {day_start:?}\n"));
+        out.push_str(&format!("day_end    = {day_end:?}\n"));
+        out.push_str("\n# Day variant overrides (light). Structural keys (font, sizes,\n");
+        out.push_str("# behaviour) are shared from above; only colors/assets differ.\n");
+        out.push_str("[day]\n");
+        out.push_str(&format!("background  = {:?}\n", day.background.to_hex()));
+        out.push_str(&format!("card        = {:?}\n", day.card.to_hex()));
+        out.push_str(&format!("field       = {:?}\n", day.field.to_hex()));
+        out.push_str(&format!("accent      = {:?}\n", day.accent.to_hex()));
+        out.push_str(&format!("foreground  = {:?}\n", day.foreground.to_hex()));
+        out.push_str(&format!("muted       = {:?}\n", day.muted.to_hex()));
+        match &day.wallpaper {
+            Some(w) => out.push_str(&format!("wallpaper = {:?}\n", w.display().to_string())),
+            None => out.push_str("# wallpaper =\n"),
+        }
+        match &day.logo {
+            Some(l) => out.push_str(&format!("logo = {:?}\n", l.display().to_string())),
+            None => out.push_str("# logo =\n"),
+        }
+        out
     }
 
     /// Render this theme as a documented `greeter.toml` — what `door-settings`
@@ -462,6 +547,25 @@ mod tests {
         assert!(in_window(23 * 60, 22 * 60, 5 * 60));
         assert!(in_window(2 * 60, 22 * 60, 5 * 60));
         assert!(!in_window(12 * 60, 22 * 60, 5 * 60));
+    }
+
+    #[test]
+    fn render_pair_round_trips_both_palettes_and_window() {
+        let mut night = Theme::default();
+        night.accent = Color::rgb(0xbb, 0x9a, 0xf7);
+        let mut day = Theme::day();
+        day.accent = Color::rgb(0x12, 0x34, 0x56);
+        day.background = Color::rgb(0xff, 0xff, 0xff);
+        let s = Theme::render_pair(&night, &day, "06:30", "18:45");
+        let file: ThemeFile = toml::from_str(&s).expect("render_pair must parse");
+        let n2 = Theme::default().merged(file.clone());
+        let d2 = Theme::day()
+            .merged_structural(&file)
+            .merged_day(file.day.clone());
+        assert_eq!(n2.accent, night.accent);
+        assert_eq!(d2.accent, day.accent);
+        assert_eq!(d2.background, day.background);
+        assert_eq!(day_window(&file), (6 * 60 + 30, 18 * 60 + 45));
     }
 
     #[test]

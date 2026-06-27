@@ -1,11 +1,10 @@
-//! door-settings — a standalone editor for the greeter theme.
+//! door-settings — a standalone editor for the greeter theme (night + day).
 //!
-//! Not the greeter and holds no authority: it loads the resolved theme
-//! ([`door_theme::Theme::load`]), edits it with a **live in-window preview** (the
-//! real wallpaper + the shared animated sky + a mock card, rendered from the
-//! current draft), and saves to `/etc/door/greeter.toml` via `pkexec` (the file is
-//! root-owned because the greeter is pre-login). Sharing `door-theme` with the
-//! greeter keeps one source of truth for both the schema and the look.
+//! Loads both palettes ([`door_theme::Theme::load_pair`]), edits either via a
+//! night/day toggle with a live in-window preview (real wallpaper + animated sky +
+//! a themed mock card from the current draft), and saves both to
+//! `/etc/door/greeter.toml` via `pkexec` (root-owned — the greeter is pre-login).
+//! Sharing `door-theme` keeps one source of truth for the schema and the look.
 
 use std::path::PathBuf;
 use std::time::Instant;
@@ -36,7 +35,39 @@ fn app_style(_state: &State, _theme: &iced::Theme) -> iced::theme::Style {
     }
 }
 
-/// Which text field changed.
+/// A per-variant palette (the visual fields that differ between night and day).
+#[derive(Default)]
+struct Palette {
+    wallpaper: String,
+    background: String,
+    card: String,
+    field: String,
+    accent: String,
+    foreground: String,
+    muted: String,
+    logo: String,
+}
+
+impl Palette {
+    fn from_theme(t: &Theme) -> Self {
+        let path = |p: &Option<PathBuf>| {
+            p.as_ref().map(|p| p.display().to_string()).unwrap_or_default()
+        };
+        Palette {
+            wallpaper: path(&t.wallpaper),
+            background: t.background.to_hex(),
+            card: t.card.to_hex(),
+            field: t.field.to_hex(),
+            accent: t.accent.to_hex(),
+            foreground: t.foreground.to_hex(),
+            muted: t.muted.to_hex(),
+            logo: path(&t.logo),
+        }
+    }
+}
+
+/// Which field changed (palette fields route to the active variant; the rest are
+/// shared across both).
 #[derive(Debug, Clone, Copy)]
 enum Param {
     Wallpaper,
@@ -46,15 +77,18 @@ enum Param {
     Accent,
     Foreground,
     Muted,
-    Font,
     Logo,
+    Font,
     CornerRadius,
     CardWidth,
+    DayStart,
+    DayEnd,
 }
 
 #[derive(Debug, Clone)]
 enum Message {
     Set(Param, String),
+    EditDay(bool),
     ToggleClock(bool),
     ToggleAnimate(bool),
     Tick,
@@ -64,75 +98,75 @@ enum Message {
 }
 
 struct State {
-    wallpaper: String,
-    background: String,
-    card: String,
-    field: String,
-    accent: String,
-    foreground: String,
-    muted: String,
+    night: Palette,
+    day: Palette,
+    // Shared structural keys.
     font: String,
-    logo: String,
     corner_radius: String,
     card_width: String,
+    day_start: String,
+    day_end: String,
     show_clock: bool,
     animate: bool,
+    // Which variant is being edited / previewed.
+    editing_day: bool,
     status: String,
-    // Live-preview animation (clock recomputed from `started` each frame).
     anim: f32,
     started: Instant,
     stars: Vec<sky::Star>,
 }
 
+fn minutes_to_hhmm(m: u32) -> String {
+    format!("{:02}:{:02}", m / 60, m % 60)
+}
+
 impl State {
     fn new() -> Self {
-        let mut s = State::from_theme(&Theme::load());
-        s.status = "Loaded the current theme.".to_string();
-        s
-    }
-
-    fn from_theme(t: &Theme) -> Self {
-        let path =
-            |p: &Option<PathBuf>| p.as_ref().map(|p| p.display().to_string()).unwrap_or_default();
+        let (night, day, (start, end)) = Theme::load_pair();
         State {
-            wallpaper: path(&t.wallpaper),
-            background: t.background.to_hex(),
-            card: t.card.to_hex(),
-            field: t.field.to_hex(),
-            accent: t.accent.to_hex(),
-            foreground: t.foreground.to_hex(),
-            muted: t.muted.to_hex(),
-            font: t.font.clone().unwrap_or_default(),
-            logo: path(&t.logo),
-            corner_radius: t.corner_radius.to_string(),
-            card_width: t.card_width.to_string(),
-            show_clock: t.show_clock,
-            animate: t.animate,
-            status: String::new(),
+            night: Palette::from_theme(&night),
+            day: Palette::from_theme(&day),
+            font: night.font.clone().unwrap_or_default(),
+            corner_radius: night.corner_radius.to_string(),
+            card_width: night.card_width.to_string(),
+            day_start: minutes_to_hhmm(start),
+            day_end: minutes_to_hhmm(end),
+            show_clock: night.show_clock,
+            animate: night.animate,
+            editing_day: false,
+            status: "Loaded night + day themes.".to_string(),
             anim: 0.0,
             started: Instant::now(),
             stars: sky::stars(),
         }
     }
 
+    fn active(&self) -> &Palette {
+        if self.editing_day { &self.day } else { &self.night }
+    }
+
     fn set(&mut self, param: Param, value: String) {
+        let pal = if self.editing_day { &mut self.day } else { &mut self.night };
         match param {
-            Param::Wallpaper => self.wallpaper = value,
-            Param::Background => self.background = value,
-            Param::Card => self.card = value,
-            Param::Field => self.field = value,
-            Param::Accent => self.accent = value,
-            Param::Foreground => self.foreground = value,
-            Param::Muted => self.muted = value,
+            Param::Wallpaper => pal.wallpaper = value,
+            Param::Background => pal.background = value,
+            Param::Card => pal.card = value,
+            Param::Field => pal.field = value,
+            Param::Accent => pal.accent = value,
+            Param::Foreground => pal.foreground = value,
+            Param::Muted => pal.muted = value,
+            Param::Logo => pal.logo = value,
             Param::Font => self.font = value,
-            Param::Logo => self.logo = value,
             Param::CornerRadius => self.corner_radius = value,
             Param::CardWidth => self.card_width = value,
+            Param::DayStart => self.day_start = value,
+            Param::DayEnd => self.day_end = value,
         }
     }
 
-    /// Build a [`Theme`] from the edited fields, or the first invalid-input error.
-    fn build(&self) -> Result<Theme, String> {
+    /// Build one variant's [`Theme`] from its palette + the shared structural keys.
+    fn build(&self, day: bool) -> Result<Theme, String> {
+        let pal = if day { &self.day } else { &self.night };
         let color = |label: &str, v: &str| {
             Color::parse(v.trim()).ok_or_else(|| format!("{label}: '{v}' is not #rrggbb[aa]"))
         };
@@ -146,14 +180,14 @@ impl State {
                 .map_err(|_| format!("{label}: '{v}' is not a number"))
         };
         Ok(Theme {
-            wallpaper: opt_path(&self.wallpaper),
-            background: color("Background", &self.background)?,
-            card: color("Card", &self.card)?,
-            field: color("Field", &self.field)?,
-            accent: color("Accent", &self.accent)?,
-            foreground: color("Foreground", &self.foreground)?,
-            muted: color("Muted", &self.muted)?,
-            logo: opt_path(&self.logo),
+            wallpaper: opt_path(&pal.wallpaper),
+            background: color("Background", &pal.background)?,
+            card: color("Card", &pal.card)?,
+            field: color("Field", &pal.field)?,
+            accent: color("Accent", &pal.accent)?,
+            foreground: color("Foreground", &pal.foreground)?,
+            muted: color("Muted", &pal.muted)?,
+            logo: opt_path(&pal.logo),
             font: {
                 let t = self.font.trim();
                 (!t.is_empty()).then(|| t.to_string())
@@ -162,34 +196,45 @@ impl State {
             card_width: num("Card width", &self.card_width)?,
             show_clock: self.show_clock,
             animate: self.animate,
-            is_day: false,
+            is_day: day,
         })
     }
 
-    /// The theme to render the preview with — the draft if valid, else the default
-    /// (the status line still shows the parse error so nothing is silently wrong).
+    /// The theme to render the preview with — the active variant, or the default if
+    /// a field doesn't parse yet (the status line shows the error).
     fn preview_theme(&self) -> Theme {
-        self.build().unwrap_or_default()
+        self.build(self.editing_day).unwrap_or_else(|_| {
+            if self.editing_day {
+                Theme::day()
+            } else {
+                Theme::default()
+            }
+        })
     }
 }
 
-/// Write the current draft to a temp `greeter.toml`, returning its path.
+/// Render both palettes to a full `greeter.toml`, returning the temp path.
 fn write_draft(state: &State) -> Result<PathBuf, String> {
-    let theme = state.build()?;
+    let night = state.build(false)?;
+    let day = state.build(true)?;
+    let toml = Theme::render_pair(&night, &day, state.day_start.trim(), state.day_end.trim());
     let path = std::env::temp_dir().join("door-settings-draft.toml");
-    std::fs::write(&path, theme.to_config_string()).map_err(|e| format!("writing draft: {e}"))?;
+    std::fs::write(&path, toml).map_err(|e| format!("writing draft: {e}"))?;
     Ok(path)
 }
 
 fn update(state: &mut State, message: Message) -> Task<Message> {
     match message {
         Message::Set(param, value) => state.set(param, value),
+        Message::EditDay(on) => state.editing_day = on,
         Message::ToggleClock(on) => state.show_clock = on,
         Message::ToggleAnimate(on) => state.animate = on,
         Message::Tick => state.anim = state.started.elapsed().as_secs_f32() % 10_000.0,
         Message::Reset => {
-            *state = State::from_theme(&Theme::default());
-            state.status = "Reset to the built-in default (not saved).".to_string();
+            let keep = state.editing_day;
+            *state = State::new();
+            state.editing_day = keep;
+            state.status = "Reloaded the saved themes.".to_string();
         }
         Message::OpenInGreeter => match write_draft(state) {
             Ok(path) => {
@@ -214,7 +259,7 @@ fn update(state: &mut State, message: Message) -> Task<Message> {
                 .status()
             {
                 Ok(s) if s.success() => {
-                    state.status = format!("Saved to {} ✓", door_theme::ETC_CONFIG)
+                    state.status = format!("Saved night + day to {} ✓", door_theme::ETC_CONFIG)
                 }
                 Ok(_) => state.status = "Save cancelled or failed at the pkexec prompt.".into(),
                 Err(e) => state.status = format!("Could not run pkexec: {e}"),
@@ -227,7 +272,6 @@ fn update(state: &mut State, message: Message) -> Task<Message> {
 
 fn subscription(state: &State) -> Subscription<Message> {
     if state.animate {
-        // Compositor frame clock (vsync) — smooth, not a fixed-rate thread tick.
         iced::window::frames().map(|_| Message::Tick)
     } else {
         Subscription::none()
@@ -239,9 +283,8 @@ fn subscription(state: &State) -> Subscription<Message> {
 fn view(state: &State) -> Element<'_, Message> {
     let theme = state.preview_theme();
 
-    // Left: a floating frosted glass control card. Right: the live greeter preview.
     let panel = container(scrollable(controls(state)))
-        .width(Length::Fixed(360.0))
+        .width(Length::Fixed(372.0))
         .height(Length::Fill)
         .padding(16)
         .style(glass_panel);
@@ -253,14 +296,12 @@ fn view(state: &State) -> Element<'_, Message> {
 
     let content = row![left, preview].height(Length::Fill);
 
-    // The whole window is a live preview: wallpaper + animated sky behind the
-    // control panel and the card — "what you're editing, live".
     let sky_layer: Element<Message> = if theme.animate {
         canvas(Sky {
             stars: state.stars.clone(),
             anim: state.anim,
             fade: 1.0,
-            day: false,
+            day: theme.is_day,
         })
         .width(Length::Fill)
         .height(Length::Fill)
@@ -281,7 +322,6 @@ fn view(state: &State) -> Element<'_, Message> {
     }
 }
 
-// Panel chrome palette (fixed Tokyo Night — independent of the theme being edited).
 fn c(r: u8, g: u8, b: u8) -> IColor {
     IColor::from_rgb8(r, g, b)
 }
@@ -290,37 +330,58 @@ const ACCENT: (u8, u8, u8) = (0x7a, 0xa2, 0xf7);
 const FG: (u8, u8, u8) = (0xc0, 0xca, 0xf5);
 const MUTED: (u8, u8, u8) = (0x56, 0x5f, 0x89);
 
-/// The editable control list inside the glass panel.
 fn controls(state: &State) -> Element<'_, Message> {
+    let pal = state.active();
     column![
         text("Greeter").size(26).color(c(FG.0, FG.1, FG.2)),
         text("Edits preview live · Save asks for your password")
             .size(12)
             .color(c(MUTED.0, MUTED.1, MUTED.2)),
+        // Night / Day editor toggle.
+        toggler(state.editing_day)
+            .label(if state.editing_day { "Editing: Day" } else { "Editing: Night" })
+            .on_toggle(Message::EditDay)
+            .size(18)
+            .text_size(14),
         section("WALLPAPER & ASSETS"),
-        plain_row("Wallpaper", &state.wallpaper, "(animated sky)", Param::Wallpaper),
-        plain_row("Logo", &state.logo, "(comet spinner)", Param::Logo),
-        plain_row("Font", &state.font, "(stock font)", Param::Font),
+        plain_row("Wallpaper", &pal.wallpaper, "(animated sky)", Param::Wallpaper),
+        plain_row("Logo", &pal.logo, "(comet spinner)", Param::Logo),
         section("COLORS"),
         row![
-            color_cell("BG", &state.background, Param::Background),
-            color_cell("Card", &state.card, Param::Card),
+            color_cell("BG", &pal.background, Param::Background),
+            color_cell("Card", &pal.card, Param::Card),
         ]
         .spacing(10),
         row![
-            color_cell("Field", &state.field, Param::Field),
-            color_cell("Accent", &state.accent, Param::Accent),
+            color_cell("Field", &pal.field, Param::Field),
+            color_cell("Accent", &pal.accent, Param::Accent),
         ]
         .spacing(10),
         row![
-            color_cell("Text", &state.foreground, Param::Foreground),
-            color_cell("Muted", &state.muted, Param::Muted),
+            color_cell("Text", &pal.foreground, Param::Foreground),
+            color_cell("Muted", &pal.muted, Param::Muted),
         ]
         .spacing(10),
-        section("LAYOUT"),
+        section("SHARED (font, layout, behavior)"),
+        plain_row("Font", &state.font, "(stock font)", Param::Font),
         plain_row("Corner radius", &state.corner_radius, "", Param::CornerRadius),
         plain_row("Card width", &state.card_width, "", Param::CardWidth),
-        section("BEHAVIOR"),
+        row![
+            color_label("Day from"),
+            text_input("07:00", &state.day_start)
+                .on_input(|v| Message::Set(Param::DayStart, v))
+                .padding(6)
+                .size(14)
+                .style(input_style),
+            color_label("to"),
+            text_input("19:00", &state.day_end)
+                .on_input(|v| Message::Set(Param::DayEnd, v))
+                .padding(6)
+                .size(14)
+                .style(input_style),
+        ]
+        .spacing(8)
+        .align_y(Alignment::Center),
         toggler(state.show_clock)
             .label("Clock + date")
             .on_toggle(Message::ToggleClock)
@@ -331,7 +392,6 @@ fn controls(state: &State) -> Element<'_, Message> {
             .on_toggle(Message::ToggleAnimate)
             .size(18)
             .text_size(14),
-        Space::new(),
         row![
             primary_button("Save", Message::Save),
             ghost_button("Open in greeter", Message::OpenInGreeter),
@@ -346,7 +406,6 @@ fn controls(state: &State) -> Element<'_, Message> {
     .into()
 }
 
-/// A small uppercase section header.
 fn section(title: &str) -> Element<'static, Message> {
     text(title.to_string())
         .size(11)
@@ -354,8 +413,13 @@ fn section(title: &str) -> Element<'static, Message> {
         .into()
 }
 
-/// A labeled row with a styled input (no swatch). `placeholder` shows what an empty
-/// field falls back to (e.g. the comet spinner for Logo).
+fn color_label(label: &str) -> Element<'static, Message> {
+    text(label.to_string())
+        .size(13)
+        .color(c(LABEL.0, LABEL.1, LABEL.2))
+        .into()
+}
+
 fn plain_row<'a>(
     label: &'a str,
     value: &'a str,
@@ -378,8 +442,6 @@ fn plain_row<'a>(
     .into()
 }
 
-/// A compact half-width color cell: short label, hex input, live swatch. Two of
-/// these sit side by side per row so the six colors take three rows, not six.
 fn color_cell<'a>(label: &'a str, value: &'a str, param: Param) -> Element<'a, Message> {
     row![
         text(label)
@@ -399,7 +461,6 @@ fn color_cell<'a>(label: &'a str, value: &'a str, param: Param) -> Element<'a, M
     .into()
 }
 
-/// A 26px rounded color chip of the current hex (empty border if it doesn't parse).
 fn swatch(value: &str) -> Element<'static, Message> {
     let fill = Color::parse(value.trim()).map(|col| Background::Color(col.iced()));
     container(Space::new())
@@ -417,7 +478,6 @@ fn swatch(value: &str) -> Element<'static, Message> {
         .into()
 }
 
-/// Slim rounded input styling, accent border on focus.
 fn input_style(_t: &iced::Theme, status: text_input::Status) -> text_input::Style {
     let focused = matches!(status, text_input::Status::Focused { .. });
     let mut selection = c(ACCENT.0, ACCENT.1, ACCENT.2);
@@ -440,7 +500,6 @@ fn input_style(_t: &iced::Theme, status: text_input::Status) -> text_input::Styl
     }
 }
 
-/// The accent primary button (Save).
 fn primary_button(label: &str, msg: Message) -> Element<'_, Message> {
     button(text(label.to_string()).size(14).color(c(0x16, 0x16, 0x1e)))
         .padding(9)
@@ -464,7 +523,6 @@ fn primary_button(label: &str, msg: Message) -> Element<'_, Message> {
         .into()
 }
 
-/// A subtle ghost button (Open / Reset).
 fn ghost_button(label: &str, msg: Message) -> Element<'_, Message> {
     button(text(label.to_string()).size(14))
         .padding(9)
@@ -506,12 +564,11 @@ fn preview_card(t: &Theme, anim: f32) -> Element<'static, Message> {
         Space::new().into()
     };
 
-    // Logo: user image override, else the native animated comet spinner.
     let logo: Element<Message> = match &t.logo {
         Some(path) => image(image::Handle::from_path(path))
             .height(Length::Fixed(56.0))
             .into(),
-        None => canvas(sky::Spinner { anim, fade: 1.0, day: false })
+        None => canvas(sky::Spinner { anim, fade: 1.0, day: t.is_day })
             .width(Length::Fixed(52.0))
             .height(Length::Fixed(52.0))
             .into(),
@@ -552,15 +609,9 @@ fn preview_card(t: &Theme, anim: f32) -> Element<'static, Message> {
         ..Default::default()
     });
 
-    let body = column![
-        header,
-        logo,
-        field("user", t),
-        field("password", t),
-        sign_in,
-    ]
-    .spacing(12)
-    .align_x(Alignment::Center);
+    let body = column![header, logo, field("user", t), field("password", t), sign_in]
+        .spacing(12)
+        .align_x(Alignment::Center);
 
     let card = t.card;
     let accent = t.accent;
@@ -585,7 +636,7 @@ fn preview_card(t: &Theme, anim: f32) -> Element<'static, Message> {
         .into()
 }
 
-/// The frosted control panel: a translucent dark glass with a soft edge + shadow.
+/// The frosted control panel.
 fn glass_panel(_theme: &iced::Theme) -> container::Style {
     container::Style {
         background: Some(Background::Color(iced::Color::from_rgba8(0x0e, 0x0f, 0x16, 0.74))),
