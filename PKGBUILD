@@ -8,7 +8,9 @@
 # fallback.
 pkgname=door
 pkgver=0.0.0
-pkgrel=1
+# rel 2 (2026-06-27): ships the live-enable lockout fixes — reversible enable
+# plus a tested two-command TTY revert, proven on hardware.
+pkgrel=2
 pkgdesc="Self-contained reversible Wayland login manager (privileged doord + unprivileged greeter)"
 arch=('x86_64')
 url="https://github.com/satorisage/door"

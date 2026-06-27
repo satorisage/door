@@ -1,6 +1,6 @@
 # Project State
 
-**Last updated:** 2026-06-26
+**Last updated:** 2026-06-27
 **Active focus:** **M2 is COMPLETE and live-confirmed (2026-06-26).** The full
 logind handoff works: pam_systemd registration (D-0004) with a **per-login session
 worker as the logind leader** (D-0005) — the daemon re-execs itself (`worker.rs`)
@@ -19,32 +19,21 @@ verified live against a wlroots compositor: connect → list → render → auth
 `Start`. In `## Shipped`. 34 tests green workspace-wide; M2 + M3 merged to `master`
 (`cc43654`, not yet pushed).
 
-**Now active: M6 — packaging + reversible install. Criticality: Critical**
-(lockout domain — revert-first; install disabled-by-default, never clobber the
-existing DM, tested TTY revert before enabling). Gating decision **resolved
-(D-0007): cage + plain-`iced` fullscreen toplevel** (greeter reworked). **Handoff /
-re-greet orchestration built (D-0008):** doord owns the greeter lifecycle — a new
-greeter worker (`worker::run_greeter`) opens a passwordless greeter-class logind
-session (PAM `door-greeter`) for seat access and forks `cage -- door-greeter`;
-`ipc::serve` is the login loop (greet → serve → on `Start` terminate the greeter
-and wait for the VT to free **before** the session takes it (S14) → wait session →
-re-greet, with crash-loop backoff). `door-greeter.service` removed (doord owns the
-greeter); packaging is now `doord.service` + `dist/pam.d/{doord,door-greeter}` +
-`dist/sysusers.d/door.conf` + `PKGBUILD`/`door.install` (installs disabled). 34
-tests green, clippy clean. **The only remaining M6 work is the live install
-validation** (Critical, hardware, revert-first): `makepkg -si` → enable on a spare
-machine/VT → real login + logout + re-greet, tested TTY revert in hand. The handoff
-is built but unproven on hardware. See ROADMAP `## Active`.
+**M6 COMPLETE (2026-06-27) — packaging + reversible install, proven on hardware.**
+door installs from a `PKGBUILD` (`door 0.0.0-2`) **disabled by default**, never
+clobbering the active DM; doord owns the greeter lifecycle (D-0008), sessions are
+tied to doord's lifetime, and the seat is freed by killing the compositor's process
+group (D-0009). Full done-when met live: package install → `enable --now` → real
+greeter login into Plasma → **two-command TTY revert** (`disable --now doord` +
+`enable --now sddm`) restores the previous DM cleanly. The live-enable lockout
+postmortem found and fixed **nine** root causes (RC1–RC9), all proven on hardware —
+the last, RC9, is what made the revert actually work (the compositor was squatting
+the seat's DRM master behind a self-respawning supervisor; doord now kills its
+process group). Full detail in `.agent/REPORTS/2026-06-26-m6-lockout-postmortem.md`;
+condensed in ROADMAP `## Shipped`; 26 unit + 3 integration tests green, clippy clean.
 
-**Lockout postmortem (2026-06-26):** the first live `enable --now` locked the
-machine — greeter couldn't reach the socket and `Ctrl+Alt+F3` was dead (chroot to
-recover). Two root causes fixed (`.agent/REPORTS/2026-06-26-m6-lockout-postmortem.md`):
-**RC1** `/run/doord` was `0700 root:root`, unreachable by the greeter user —
-`ipc::bind` now group-owns it `0750`; **RC2** recoverability — `doord.service`
-conflicts the DM + `StartLimit*`, and `ipc::serve` now *gives up* after a short
-greeter crash-streak (restores the VT to `VT_AUTO`/`KD_TEXT` and exits cleanly so
-it can't thrash the GPU/console). 34 tests green. Still unproven on hardware —
-re-test stays revert-first with the escape path confirmed *before* enabling.
+**No active milestone.** Next to promote from ROADMAP `## Backlog`: M4 (beautiful
+greeter), then M5 (hardening pass).
 
 ---
 

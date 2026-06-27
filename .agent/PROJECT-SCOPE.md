@@ -166,13 +166,15 @@ to hard-stop until a TTY revert is in hand, even if otherwise Material.
 
 ## Active milestone
 
-**Milestone:** M1 — Privileged core skeleton (see ROADMAP `## Active`). M0 is
-done: scope committed; D-0001 (no greetd, bespoke protocol) and D-0002 (Rust)
-ratified Binding; Cargo workspace scaffolded.
-**Definition of done (M1):** `doord` runs a PAM auth conversation over a
-peer-cred-checked Unix socket, drops privileges, and a threat model for the auth
-path is written.
-**Active blockers:** none — M1 is unblocked.
+**Milestone:** none active (updated 2026-06-27). **M0–M6 shipped** — through M6
+(packaging + reversible install: door installs disabled-by-default, enables as the
+DM with a tested two-command TTY revert, all proven on hardware; RC1–RC9 lockout
+postmortem closed). The canonical milestone state lives in ROADMAP `## Active` /
+`## Shipped` and PROJECT-STATE; this pointer defers to them rather than duplicating
+the task tree.
+**Next:** promote M4 (beautiful greeter) or M5 (hardening pass) from ROADMAP
+`## Backlog`.
+**Active blockers:** none.
 
 ## Project-specific glossary
 
