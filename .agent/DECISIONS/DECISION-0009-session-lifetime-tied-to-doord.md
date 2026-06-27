@@ -61,10 +61,14 @@ common DM expectation that restarting the login manager ends the graphical sessi
   wedging on a held GPU.
 - Tradeoff: unsaved desktop work is lost on a doord stop/restart/crash.
 - Residual gap: a `SIGKILL`/power-loss of doord runs no cleanup, but the next
-  start's seat-claim (point 1) clears the orphan. (Update 2026-06-27: after killing
-  the compositor, `free_seat` also runs a best-effort `loginctl terminate-seat` to
-  sweep session-bound user units like `plasmashell` so they stop cleanly instead of
-  restart-looping with no compositor — no longer a leftover.)
+  start's seat-claim (point 1) clears the orphan. A session-bound leftover like
+  `plasmashell` (`PartOf=graphical-session.target`, `Restart=on-failure`) has no
+  compositor to draw to, holds no GPU, and is stopped by its own StartLimit —
+  invisible and harmless, so `free_seat` does **not** try to sweep it. (A
+  `loginctl terminate-seat` sweep was tried 2026-06-27 and reverted: fully ending
+  the seat's sessions leaves the VT session-less, and logind's `autovt` then races
+  a getty `login:` prompt onto the seat console before doord re-greets — a visible
+  flash, strictly worse than the invisible leftover.)
 - Proven on hardware 2026-06-27 (postmortem RC9): doord seat-claimed a stuck
   compositor and greeted; `stop doord; start sddm` reached the sddm login with no
   flicker/respawn. 26 unit + 3 integration tests green, clippy clean.

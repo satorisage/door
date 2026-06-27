@@ -398,11 +398,13 @@ the sddm#1200 dirty-seat dead end). Fix re-scoped accordingly — see Dispositio
   die with doord (every exit incl. crash); the desktop is not preserved across a
   doord stop/restart/crash — accepted, since the compositor is the squatter and
   can't be cleanly preserved. Residual gap: a `SIGKILL`/power-loss of doord runs no
-  cleanup, but the next start's seat-claim (point 1) clears the orphan. (After
-  killing the compositor, `free_seat` also runs a best-effort `loginctl
-  terminate-seat` to sweep session-bound user units — e.g. `plasmashell`,
-  `PartOf=graphical-session.target Restart=on-failure` — so they stop cleanly
-  instead of restart-looping.) **Validated
+  cleanup, but the next start's seat-claim (point 1) clears the orphan. A
+  session-bound leftover like `plasmashell` is invisible/harmless (no compositor to
+  draw to, holds no GPU, StartLimit stops it), so `free_seat` does not sweep it: a
+  `loginctl terminate-seat` sweep was tried and reverted because fully ending the
+  seat's sessions let logind `autovt` race a getty `login:` prompt onto the console
+  before the re-greet (a visible flash, worse than the invisible leftover).
+  **Validated
   live: step 1 — doord seat-claimed a stuck compositor and greeted; step 2 —
   `stop doord; start sddm` reached the sddm login with no flicker/respawn.** 26 unit
   + 3 integration tests green, clippy clean. Distinct from RC5/RC7
