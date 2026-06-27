@@ -108,6 +108,56 @@ fn ease_in_out(x: f32) -> f32 {
     0.5 * (1.0 - (std::f32::consts::PI * x).cos())
 }
 
+/// The comet spinner — a rotating ring of dots with a bright comet head trailing
+/// off into dimmer dots, a native port of the boot throbber. Used as the card's
+/// default logo emblem. `anim` is the shared animation clock; `fade` ramps it in.
+pub struct Spinner {
+    pub anim: f32,
+    pub fade: f32,
+}
+
+impl<Message> Program<Message> for Spinner {
+    type State = ();
+
+    fn draw(
+        &self,
+        _state: &(),
+        renderer: &Renderer,
+        _theme: &iced::Theme,
+        bounds: Rectangle,
+        _cursor: mouse::Cursor,
+    ) -> Vec<Geometry> {
+        let mut frame = Frame::new(renderer, bounds.size());
+        let size = bounds.width.min(bounds.height);
+        let center = Point::new(bounds.width / 2.0, bounds.height / 2.0);
+        let ring = size * 0.36;
+        let dot = size * 0.075;
+        const N: usize = 12;
+        // The bright head rotates around the ring; each dot dims with angular
+        // distance behind it — a comet head with a trailing tail.
+        let head = self.anim * 2.2;
+        for i in 0..N {
+            let a = i as f32 / N as f32 * std::f32::consts::TAU;
+            let behind = (a - head).rem_euclid(std::f32::consts::TAU) / std::f32::consts::TAU;
+            let bright = (1.0 - behind).powf(1.6);
+            let col = if bright > 0.6 {
+                CYAN
+            } else if bright > 0.3 {
+                BLUE
+            } else {
+                CORE
+            };
+            let x = center.x + a.cos() * ring;
+            let y = center.y + a.sin() * ring;
+            frame.fill(
+                &Path::circle(Point::new(x, y), dot * (0.55 + 0.45 * bright)),
+                with_alpha(col, (0.12 + 0.88 * bright) * self.fade),
+            );
+        }
+        vec![frame.into_geometry()]
+    }
+}
+
 impl<Message> Program<Message> for Sky {
     type State = ();
 

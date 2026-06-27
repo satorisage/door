@@ -260,7 +260,7 @@ fn view(state: &State) -> Element<'_, Message> {
         .style(glass_panel);
     let left = container(panel).padding(16);
 
-    let preview = container(preview_card(&theme))
+    let preview = container(preview_card(&theme, state.anim))
         .center_x(Length::Fill)
         .center_y(Length::Fill);
 
@@ -496,7 +496,7 @@ fn ghost_button(label: &str, msg: Message) -> Element<'_, Message> {
 }
 
 /// A non-interactive mock of the greeter card, themed from the draft.
-fn preview_card(t: &Theme) -> Element<'static, Message> {
+fn preview_card(t: &Theme, anim: f32) -> Element<'static, Message> {
     let fg = t.foreground.iced();
     let muted = t.muted.iced();
 
@@ -510,6 +510,17 @@ fn preview_card(t: &Theme) -> Element<'static, Message> {
         .into()
     } else {
         Space::new().into()
+    };
+
+    // Logo: user image override, else the native animated comet spinner.
+    let logo: Element<Message> = match &t.logo {
+        Some(path) => image(image::Handle::from_path(path))
+            .height(Length::Fixed(56.0))
+            .into(),
+        None => canvas(sky::Spinner { anim, fade: 1.0 })
+            .width(Length::Fixed(52.0))
+            .height(Length::Fixed(52.0))
+            .into(),
     };
 
     let field = |placeholder: &'static str, t: &Theme| {
@@ -549,6 +560,7 @@ fn preview_card(t: &Theme) -> Element<'static, Message> {
 
     let body = column![
         header,
+        logo,
         field("user", t),
         field("password", t),
         sign_in,

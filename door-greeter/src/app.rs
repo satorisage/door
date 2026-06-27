@@ -437,11 +437,19 @@ fn view(state: &State) -> Element<'_, Message> {
         Space::new().into()
     };
 
+    // Logo: a user-set image overrides; otherwise the native animated comet
+    // spinner (the boot throbber's sibling) is the default card emblem.
     let logo: Element<Message> = match &t.logo {
         Some(path) => image(image::Handle::from_path(path))
             .height(Length::Fixed(56.0))
             .into(),
-        None => Space::new().into(),
+        None => canvas(sky::Spinner {
+            anim: state.anim,
+            fade: f,
+        })
+        .width(Length::Fixed(52.0))
+        .height(Length::Fixed(52.0))
+        .into(),
     };
 
     let username = text_input("user", &state.username)
