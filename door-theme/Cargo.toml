@@ -19,3 +19,8 @@ serde = { workspace = true }
 toml = "0.8"
 # Plain-old-data → bytes for the shader's uniform buffer (already in the tree via wgpu).
 bytemuck = { version = "1", features = ["derive"] }
+
+[dev-dependencies]
+# Validate the WGSL shaders at test time (parse + type-check) — no GPU needed. Pinned
+# to the version wgpu pulls in so the grammar matches what the app actually compiles.
+naga = { version = "27", features = ["wgsl-in"] }

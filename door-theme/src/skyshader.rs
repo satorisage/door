@@ -37,6 +37,10 @@ struct Uniforms {
     star: [f32; 4],
     /// x = day flag (0/1), y = comet intensity, z = star intensity, w = glow strength.
     params: [f32; 4],
+    /// x = star threshold, y = twinkle-speed mult, z = comet period (s), w = cloud amount.
+    params2: [f32; 4],
+    /// x = cloud speed, y = glow falloff, z = nebula amount, w = comet tail decay.
+    params3: [f32; 4],
 }
 
 fn srgb8(r: u8, g: u8, b: u8) -> Color {
@@ -93,10 +97,17 @@ impl SkyShader {
             star: star.into_linear(),
             params: [
                 if day { 1.0 } else { 0.0 },
-                1.0,
+                if t.comet_enabled { 1.0 } else { 0.0 },
                 if day { 0.45 } else { 0.95 },
-                if day { 0.55 } else { 0.50 },
+                t.sky_glow,
             ],
+            params2: [
+                0.97 - 0.14 * t.star_density, // density 0–1 → twinkle threshold
+                t.star_twinkle,
+                t.comet_interval.max(3.0), // guard: period must exceed the 2.5s pause
+                t.cloud_amount,
+            ],
+            params3: [t.cloud_speed, t.glow_falloff, t.nebula_amount, t.comet_tail_decay],
         };
         Self { uniforms }
     }
@@ -279,8 +290,10 @@ struct SpinUniforms {
     fade: f32,
     comet: [f32; 4],
     track: [f32; 4],
-    /// x = glow, y = trail length, z = speed (rad/s), w = unused.
+    /// x = glow, y = trail length, z = speed (rad/s), w = pulse-speed mult.
     params: [f32; 4],
+    /// x = orbit-ring intensity, y/z/w = unused.
+    params2: [f32; 4],
 }
 
 impl SpinnerShader {
@@ -293,7 +306,8 @@ impl SpinnerShader {
             fade,
             comet: t.spinner_comet.iced().into_linear(),
             track: t.spinner_track.iced().into_linear(),
-            params: [t.spinner_glow, t.spinner_trail, t.spinner_speed, 0.0],
+            params: [t.spinner_glow, t.spinner_trail, t.spinner_speed, t.spinner_pulse],
+            params2: [t.spinner_ring, 0.0, 0.0, 0.0],
         };
         Self { uniforms }
     }
@@ -477,6 +491,7 @@ struct U {
   comet: vec4<f32>,
   track: vec4<f32>,
   params: vec4<f32>,
+  params2: vec4<f32>,
 };
 @group(0) @binding(0) var<uniform> u: U;
 
@@ -509,7 +524,7 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
   let hot = clamp(glow, 0.0, 1.0);
   let white = vec3(1.0, 1.0, 1.0);
   let cometc = u.comet.rgb;
-  let pulse = 0.86 + 0.14 * sin(u.time * 3.0);
+  let pulse = 0.86 + 0.14 * sin(u.time * 3.0 * u.params.w);
 
   let R = 0.36;                       // orbit radius (matches the canvas spinner)
   let r = length(p);
@@ -523,7 +538,7 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
   var cov = 0.0;                      // coverage / alpha
 
   // Faint orbit ring the comet rides.
-  let ringI = exp(-(r - R) * (r - R) * 1400.0) * 0.10;
+  let ringI = exp(-(r - R) * (r - R) * 1400.0) * u.params2.x;
   acc += u.track.rgb * ringI;
   cov += ringI;
 
@@ -585,6 +600,8 @@ struct U {
   comet: vec4<f32>,
   star: vec4<f32>,
   params: vec4<f32>,
+  params2: vec4<f32>,
+  params3: vec4<f32>,
 };
 @group(0) @binding(0) var<uniform> u: U;
 
@@ -670,8 +687,10 @@ fn day_sky(uv: vec2<f32>, p: vec2<f32>, aspect: f32) -> vec3<f32> {
   // Two parallax cloud layers, far/soft then near/detailed.
   let lit = vec3(1.0, 1.0, 1.0);
   let sh = vec3(0.706, 0.761, 0.859);
-  col = cloud_layer(col, p, sundir, 3.0, 1.5, 0.013, 0.65, 0.40, 0.74, lit, sh);
-  col = cloud_layer(col, p, sundir, 5.4, 2.4, 0.027, 0.50, 0.46, 0.82, lit, sh);
+  let cspd = u.params3.x;       // cloud speed mult
+  let camt = u.params2.w;       // cloud amount mult
+  col = cloud_layer(col, p, sundir, 3.0, 1.5, 0.013 * cspd, 0.65 * camt, 0.40, 0.74, lit, sh);
+  col = cloud_layer(col, p, sundir, 5.4, 2.4, 0.027 * cspd, 0.50 * camt, 0.46, 0.82, lit, sh);
 
   // Soft haze thickening toward the horizon.
   col = mix(col, horizon, smoothstep(0.35, 0.0, height) * 0.25);
@@ -696,11 +715,11 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     // True radial glow / sun-haze.
     let gc = vec2(0.0, -0.06);
     let gd = length(p - gc);
-    col = col + u.glow.rgb * exp(-gd * gd * 3.2) * u.params.w;
+    col = col + u.glow.rgb * exp(-gd * gd * u.params3.y) * u.params.w;
 
     // fbm nebula for depth, concentrated near the glow.
     let neb = fbm(p * 2.2 + vec2(u.time * 0.015, u.time * -0.010));
-    col = col + u.glow.rgb * neb * 0.12 * smoothstep(0.95, 0.0, gd);
+    col = col + u.glow.rgb * neb * u.params3.z * smoothstep(0.95, 0.0, gd);
 
     // Twinkling stars across three scaled layers — denser, each with its own pulse
     // rate and a sharp (cubed) twinkle so they sparkle rather than throb, and the
@@ -711,13 +730,14 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
       let scale = 8.0 * pow(1.9, f32(l));
       let gp = uv * vec2(aspect, 1.0) * scale;
       let cell = floor(gp);
+      let thr = u.params2.x;
       let h = hash21(cell + f32(l) * 17.0);
-      if (h > 0.90) {
+      if (h > thr) {
         let h2 = hash21(cell + f32(l) * 17.0 + 5.0);
         let cp = fract(gp) - vec2(0.5, 0.5);
-        var tw = 0.5 + 0.5 * sin(u.time * (0.8 + h2 * 3.6) + h * 40.0);
+        var tw = 0.5 + 0.5 * sin(u.time * (0.8 + h2 * 3.6) * u.params2.y + h * 40.0);
         tw = tw * tw * tw;
-        let bright = (h - 0.90) / 0.10;
+        let bright = (h - thr) / max(1.0 - thr, 0.01);
         stars = stars + exp(-dot(cp, cp) * 70.0) * tw * bright;
         let cross = exp(-abs(cp.x) * 55.0) * exp(-cp.y * cp.y * 900.0)
                   + exp(-abs(cp.y) * 55.0) * exp(-cp.x * cp.x * 900.0);
@@ -729,8 +749,9 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
   }
 
   // Drifting comet: upper-right -> lower-left on an InOutSine ease, then pause.
-  let cu = fract(u.time / 9.5);
-  let sf = 7.0 / 9.5;
+  let period = u.params2.z;
+  let cu = fract(u.time / period);
+  let sf = (period - 2.5) / period;   // a fixed ~2.5s pause after each sweep
   if (cu < sf) {
     let pp = ease(cu / sf);
     var head = vec2(mix(1.08, -0.22, pp), mix(0.10, 0.65, pp));
@@ -744,7 +765,7 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     // not a constant-width straight beam.
     let t = max(along, 0.0);
     let width = 0.010 + t * 0.10;
-    let tail = exp(-(perp * perp) / (width * width)) * exp(-t * 9.0) * step(0.0, along);
+    let tail = exp(-(perp * perp) / (width * width)) * exp(-t * u.params3.w) * step(0.0, along);
     let nuc = exp(-dot(rel, rel) * 3000.0);   // white-hot nucleus
     let coma = exp(-dot(rel, rel) * 300.0);   // soft round coma
     let ccol = mix(u.comet.rgb, vec3(1.0, 1.0, 1.0), nuc * 0.7);
@@ -758,3 +779,32 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
   return vec4(col, 1.0);
 }
 "#;
+
+#[cfg(test)]
+mod wgsl_tests {
+    use super::{SPIN_WGSL, WGSL};
+
+    /// Parse + validate both shaders through naga (the same front-end wgpu uses), so a
+    /// WGSL typo is a failed test, not a runtime pipeline panic on the login screen.
+    fn check(label: &str, src: &str) {
+        let module = naga::front::wgsl::parse_str(src)
+            .unwrap_or_else(|e| panic!("{label} WGSL failed to parse: {e}"));
+        let mut validator = naga::valid::Validator::new(
+            naga::valid::ValidationFlags::all(),
+            naga::valid::Capabilities::all(),
+        );
+        validator
+            .validate(&module)
+            .unwrap_or_else(|e| panic!("{label} WGSL failed to validate: {e}"));
+    }
+
+    #[test]
+    fn sky_shader_is_valid_wgsl() {
+        check("sky", WGSL);
+    }
+
+    #[test]
+    fn spinner_shader_is_valid_wgsl() {
+        check("spinner", SPIN_WGSL);
+    }
+}

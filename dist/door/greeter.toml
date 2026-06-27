@@ -40,6 +40,36 @@ spinner_comet = "#7dcfff"   # the rotating comet's color (head + trail)
 spinner_track = "#7aa2f7"   # the static ring of dots it passes over
 spinner_trail = 1.0         # trail length 0.15–1.0 (shorter = crisper on a light card)
 
+# ── Expanded controls (all optional; defaults shown). Every one of these also has
+# a widget in door-settings — run it with `--expert` to reveal the "Advanced" ones.
+#
+# Sky
+# comet_color    = "#7dcfff"  # the background-sky comet (separate from the spinner)
+# sky_glow       = 0.5        # night indigo haze / daytime sun-halo strength (0–1)
+# star_density   = 0.47       # how many stars (0–1)
+# star_twinkle   = 1.0        # twinkle-speed multiplier
+# comet_enabled  = true       # the drifting background comet
+# comet_interval = 9.5        # seconds between comet sweeps
+# cloud_amount   = 1.0        # daytime cloud cover multiplier (day theme only)
+# cloud_speed    = 1.0        # daytime cloud drift multiplier
+#
+# Spinner / card / behavior
+# spinner_size   = 52.0       # card spinner diameter (px)
+# spinner_pulse  = 1.0        # spinner head breathing speed (0 = steady)
+# card_shadow_blur    = 34.0  # card drop-shadow blur (px)
+# card_shadow_opacity = 0.45  # card drop-shadow darkness (0–1)
+# accent_breathing    = 1.0   # card accent-edge pulse speed (0 = steady)
+# field_radius   = 10.0       # input/button corner radius (px)
+# error_color    = "#f7768e"  # status-line color on a failed login
+# clock_24h      = true       # 24-hour clock vs 12-hour AM/PM
+# fade_ms        = 384.0      # launch fade-in duration (ms)
+#
+# Expert (Advanced)
+# glow_falloff     = 3.2      # night sky-glow tightness (higher = smaller)
+# nebula_amount    = 0.12     # night nebula haze (0–0.5)
+# comet_tail_decay = 9.0      # sky-comet tail fade rate (higher = shorter)
+# spinner_ring     = 0.10     # spinner orbit-ring brightness (0–0.5)
+
 # Auto day/night: the greeter runs before login, so it can't read your KDE color
 # scheme — it picks by the local clock instead. The colors above are the NIGHT
 # palette; during the day window the built-in Tokyo Night Day (light) palette is

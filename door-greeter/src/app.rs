@@ -127,10 +127,12 @@ fn clock_ticker() -> impl futures::Stream<Item = Message> {
 /// Drive the launch fade-in: ~24 [`Message::Fade`] ticks over ~380 ms, then the
 /// stream ends (bounded — no perpetual repaint on the idle greeter).
 fn fade_ticker() -> impl futures::Stream<Item = Message> {
-    iced_futures::stream::channel(4, |output: futures::channel::mpsc::Sender<Message>| async move {
+    // ~16 ms steps over the configured fade duration (one extra step lands fade at 1.0).
+    let ticks = (theme().fade_ms / 16.0).ceil() as usize + 1;
+    iced_futures::stream::channel(4, move |output: futures::channel::mpsc::Sender<Message>| async move {
         std::thread::spawn(move || {
             let mut output = output;
-            for _ in 0..24 {
+            for _ in 0..ticks {
                 std::thread::sleep(Duration::from_millis(16));
                 if futures::executor::block_on(output.send(Message::Fade)).is_err() {
                     return;
@@ -213,6 +215,9 @@ struct State {
     username: String,
     password: String,
     status: String,
+    /// Whether `status` is an error (login failed, daemon unreachable) — colored with
+    /// the theme's `error_color` rather than the muted tone.
+    status_error: bool,
     cmd_tx: Option<mpsc::Sender<Command>>,
     /// The resolved look (a clone of the process-wide [`theme`]).
     theme: Theme,
@@ -231,6 +236,10 @@ struct State {
 
 impl State {
     fn new() -> Self {
+        // Pick the day or night variant by the local clock — the greeter runs
+        // pre-login, so it can't read the user's color scheme; time is the trigger.
+        let theme = Theme::load_at(now_minutes());
+        let clock = now_hm(theme.clock_24h);
         State {
             phase: Phase::Connecting,
             sessions: Vec::new(),
@@ -238,11 +247,10 @@ impl State {
             username: String::new(),
             password: String::new(),
             status: "Connecting to doord…".to_string(),
+            status_error: false,
             cmd_tx: None,
-            // Pick the day or night variant by the local clock — the greeter runs
-            // pre-login, so it can't read the user's color scheme; time is the trigger.
-            theme: Theme::load_at(now_minutes()),
-            clock: now_hm(),
+            theme,
+            clock,
             date: now_date(),
             fade: 0.0,
             anim: 0.0,
@@ -314,6 +322,7 @@ fn update(state: &mut State, message: Message) -> Task<Message> {
         Message::AuthFailed(reason) => {
             state.password.clear();
             state.status = reason;
+            state.status_error = true;
             state.phase = Phase::Ready;
         }
         Message::SessionStarted => {
@@ -326,16 +335,19 @@ fn update(state: &mut State, message: Message) -> Task<Message> {
         Message::DaemonError(message) => {
             state.password.clear();
             state.status = message;
+            state.status_error = true;
             state.phase = Phase::Ready;
         }
         Message::Fatal(message) => {
             state.status = format!("Cannot reach doord: {message}");
+            state.status_error = true;
             state.phase = Phase::Connecting;
         }
         Message::UsernameChanged(value) => state.username = value,
         Message::PasswordChanged(value) => state.password = value,
         Message::SessionPicked(choice) => state.selected = Some(choice),
         Message::LoginPressed => {
+            state.status_error = false;
             if state.username.is_empty() {
                 state.status = "Enter a username.".to_string();
             } else if state.selected.is_none() {
@@ -349,10 +361,12 @@ fn update(state: &mut State, message: Message) -> Task<Message> {
         }
         Message::PowerPressed(action) => state.send(Command::Power(action)),
         Message::Tick => {
-            state.clock = now_hm();
+            state.clock = now_hm(state.theme.clock_24h);
             state.date = now_date();
         }
-        Message::Fade => state.fade = (state.fade + 1.0 / 24.0).min(1.0),
+        Message::Fade => {
+            state.fade = (state.fade + 16.0 / state.theme.fade_ms.max(16.0)).min(1.0)
+        }
         // Recompute the clock from real elapsed time each frame — smooth, jitter-free.
         Message::AnimTick => state.anim = state.started.elapsed().as_secs_f32() % 10_000.0,
         Message::FocusNext => task = iced::widget::operation::focus_next(),
@@ -378,10 +392,18 @@ fn local_tm() -> Option<libc::tm> {
     }
 }
 
-/// Local wall-clock time as `HH:MM`.
-fn now_hm() -> String {
+/// Local wall-clock time — `HH:MM` (24-hour) or `H:MM AM/PM` (12-hour).
+fn now_hm(clock_24h: bool) -> String {
     match local_tm() {
-        Some(tm) => format!("{:02}:{:02}", tm.tm_hour, tm.tm_min),
+        Some(tm) if clock_24h => format!("{:02}:{:02}", tm.tm_hour, tm.tm_min),
+        Some(tm) => {
+            let h12 = match tm.tm_hour % 12 {
+                0 => 12,
+                h => h,
+            };
+            let meridiem = if tm.tm_hour < 12 { "AM" } else { "PM" };
+            format!("{}:{:02} {}", h12, tm.tm_min, meridiem)
+        }
         None => String::new(),
     }
 }
@@ -439,8 +461,8 @@ fn view(state: &State) -> Element<'_, Message> {
             .height(Length::Fixed(56.0))
             .into(),
         None => shader(SpinnerShader::from_theme(t, state.anim, f))
-            .width(Length::Fixed(52.0))
-            .height(Length::Fixed(52.0))
+            .width(Length::Fixed(t.spinner_size))
+            .height(Length::Fixed(t.spinner_size))
             .into(),
     };
 
@@ -484,7 +506,8 @@ fn view(state: &State) -> Element<'_, Message> {
     let status: Element<Message> = if state.status.is_empty() {
         Space::new().into()
     } else {
-        text(state.status.clone()).size(12).color(muted).into()
+        let tone = if state.status_error { t.error_color.iced_alpha(f) } else { muted };
+        text(state.status.clone()).size(12).color(tone).into()
     };
 
     let form = column![header, logo, username, password, login, picker, status]
@@ -555,12 +578,13 @@ fn field_style(t: &Theme, fade: f32) -> impl Fn(&iced::Theme, text_input::Status
     let fg = t.foreground.iced_alpha(fade);
     let muted = t.muted.iced_alpha(fade);
     let accent = t.accent.iced_alpha(fade);
+    let radius = t.field_radius;
     move |_theme, status| {
         let focused = matches!(status, text_input::Status::Focused { .. });
         text_input::Style {
             background: Background::Color(field),
             border: Border {
-                radius: 10.0.into(),
+                radius: radius.into(),
                 width: 1.0,
                 color: if focused {
                     accent
@@ -579,6 +603,7 @@ fn field_style(t: &Theme, fade: f32) -> impl Fn(&iced::Theme, text_input::Status
 /// The accent sign-in button, brighter on hover, with dark text.
 fn button_style(t: &Theme, fade: f32) -> impl Fn(&iced::Theme, button::Status) -> button::Style {
     let accent = t.accent;
+    let radius = t.field_radius;
     let on_accent = Color {
         r: 0x16,
         g: 0x16,
@@ -594,7 +619,7 @@ fn button_style(t: &Theme, fade: f32) -> impl Fn(&iced::Theme, button::Status) -
             background: Some(Background::Color(bg.iced_alpha(fade))),
             text_color: on_accent.iced_alpha(fade),
             border: Border {
-                radius: 10.0.into(),
+                radius: radius.into(),
                 ..Default::default()
             },
             ..Default::default()
@@ -608,8 +633,10 @@ fn card_style(t: &Theme, fade: f32, phase: f32) -> impl Fn(&iced::Theme) -> cont
     let card = t.card.iced_alpha(fade);
     let accent = t.accent;
     let radius = t.corner_radius;
-    // The accent hairline breathes between ~0.18 and ~0.34 alpha.
-    let breathe = 0.18 + 0.16 * (0.5 + 0.5 * (phase * 1.1).sin());
+    let shadow_opacity = t.card_shadow_opacity;
+    let shadow_blur = t.card_shadow_blur;
+    // The accent hairline breathes between ~0.18 and ~0.34 alpha (speed × control).
+    let breathe = 0.18 + 0.16 * (0.5 + 0.5 * (phase * 1.1 * t.accent_breathing).sin());
     move |_theme| container::Style {
         background: Some(Background::Color(card)),
         border: Border {
@@ -618,9 +645,9 @@ fn card_style(t: &Theme, fade: f32, phase: f32) -> impl Fn(&iced::Theme) -> cont
             color: accent.iced_alpha(fade * breathe),
         },
         shadow: Shadow {
-            color: iced::Color::from_rgba(0.0, 0.0, 0.0, 0.45 * fade),
+            color: iced::Color::from_rgba(0.0, 0.0, 0.0, shadow_opacity * fade),
             offset: Vector::new(0.0, 10.0),
-            blur_radius: 34.0,
+            blur_radius: shadow_blur,
         },
         ..Default::default()
     }
@@ -632,6 +659,7 @@ fn picker_style(t: &Theme, fade: f32) -> impl Fn(&iced::Theme, pick_list::Status
     let fg = t.foreground.iced_alpha(fade);
     let muted = t.muted.iced_alpha(fade);
     let accent = t.accent.iced_alpha(fade);
+    let radius = t.field_radius;
     move |_theme, status| {
         let focused = matches!(status, pick_list::Status::Hovered | pick_list::Status::Opened { .. });
         pick_list::Style {
@@ -640,7 +668,7 @@ fn picker_style(t: &Theme, fade: f32) -> impl Fn(&iced::Theme, pick_list::Status
             handle_color: muted,
             background: Background::Color(field),
             border: Border {
-                radius: 10.0.into(),
+                radius: radius.into(),
                 width: 1.0,
                 color: if focused {
                     accent

@@ -886,6 +886,7 @@ version = "0.0.0"
 dependencies = [
  "bytemuck",
  "iced",
+ "naga",
  "serde",
  "toml",
 ]

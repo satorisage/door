@@ -128,6 +128,54 @@ pub struct Theme {
     /// The drifting *background-sky* comet's color — distinct from `spinner_comet`
     /// (which is tuned for the card emblem; the sky comet sits on the sky). Per variant.
     pub comet_color: Color,
+
+    // ── Sky controls ──
+    /// Sky glow strength: the indigo haze at night, the sun-halo by day (0–1). Per variant.
+    pub sky_glow: f32,
+    /// Star field density, 0–1 (higher = more stars). Shared.
+    pub star_density: f32,
+    /// Star twinkle-speed multiplier (1 = default). Shared.
+    pub star_twinkle: f32,
+    /// Whether the drifting background comet runs. Shared.
+    pub comet_enabled: bool,
+    /// Seconds between background-comet sweeps (lower = more frequent). Shared.
+    pub comet_interval: f32,
+    /// Daytime cloud coverage multiplier (1 = default; 0 = clear sky). Shared.
+    pub cloud_amount: f32,
+    /// Daytime cloud drift-speed multiplier (1 = default). Shared.
+    pub cloud_speed: f32,
+
+    // ── Spinner controls ──
+    /// Card spinner size in px. Shared.
+    pub spinner_size: f32,
+    /// Spinner head pulse/breathing speed (1 = default). Shared.
+    pub spinner_pulse: f32,
+
+    // ── Card / behavior controls ──
+    /// Card drop-shadow blur radius (px). Shared.
+    pub card_shadow_blur: f32,
+    /// Card drop-shadow opacity, 0–1. Shared.
+    pub card_shadow_opacity: f32,
+    /// Card accent-hairline breathing speed (1 = default). Shared.
+    pub accent_breathing: f32,
+    /// Input/button corner radius (px). Shared.
+    pub field_radius: f32,
+    /// Status-line color when a login fails (a warm red by default). Per variant.
+    pub error_color: Color,
+    /// 24-hour clock (`true`) vs 12-hour. Shared.
+    pub clock_24h: bool,
+    /// Launch fade-in duration (ms). Shared.
+    pub fade_ms: f32,
+
+    // ── Expert (advanced) ──
+    /// Night sky-glow falloff (higher = tighter halo). Shared.
+    pub glow_falloff: f32,
+    /// Night nebula cloud amount, 0–1. Shared.
+    pub nebula_amount: f32,
+    /// Background-comet tail fade rate (higher = shorter tail). Shared.
+    pub comet_tail_decay: f32,
+    /// Spinner orbit-ring intensity, 0–1. Shared.
+    pub spinner_ring: f32,
 }
 
 impl Default for Theme {
@@ -156,6 +204,26 @@ impl Default for Theme {
             spinner_track: Color::rgb(0x7a, 0xa2, 0xf7),
             spinner_trail: 1.0,
             comet_color: Color::rgb(0x7d, 0xcf, 0xff),
+            sky_glow: 0.50,
+            star_density: 0.47,
+            star_twinkle: 1.0,
+            comet_enabled: true,
+            comet_interval: 9.5,
+            cloud_amount: 1.0,
+            cloud_speed: 1.0,
+            spinner_size: 52.0,
+            spinner_pulse: 1.0,
+            card_shadow_blur: 34.0,
+            card_shadow_opacity: 0.45,
+            accent_breathing: 1.0,
+            field_radius: 10.0,
+            error_color: Color::rgb(0xf7, 0x76, 0x8e),
+            clock_24h: true,
+            fade_ms: 384.0,
+            glow_falloff: 3.2,
+            nebula_amount: 0.12,
+            comet_tail_decay: 9.0,
+            spinner_ring: 0.10,
         }
     }
 }
@@ -190,6 +258,28 @@ impl Theme {
             spinner_trail: 0.55,
             // A brighter sky comet so it reads against the luminous day sky.
             comet_color: Color::rgb(0x6f, 0x9f, 0xe0),
+            // Per-variant: a touch more sun-halo by day; a darker red on the light card.
+            sky_glow: 0.55,
+            error_color: Color::rgb(0xc0, 0x33, 0x4d),
+            // Shared keys: same defaults (the config's top-level values win at load).
+            star_density: 0.47,
+            star_twinkle: 1.0,
+            comet_enabled: true,
+            comet_interval: 9.5,
+            cloud_amount: 1.0,
+            cloud_speed: 1.0,
+            spinner_size: 52.0,
+            spinner_pulse: 1.0,
+            card_shadow_blur: 34.0,
+            card_shadow_opacity: 0.45,
+            accent_breathing: 1.0,
+            field_radius: 10.0,
+            clock_24h: true,
+            fade_ms: 384.0,
+            glow_falloff: 3.2,
+            nebula_amount: 0.12,
+            comet_tail_decay: 9.0,
+            spinner_ring: 0.10,
         }
     }
 }
@@ -218,6 +308,26 @@ struct ThemeFile {
     spinner_track: Option<String>,
     spinner_trail: Option<f32>,
     comet_color: Option<String>,
+    sky_glow: Option<f32>,
+    star_density: Option<f32>,
+    star_twinkle: Option<f32>,
+    comet_enabled: Option<bool>,
+    comet_interval: Option<f32>,
+    cloud_amount: Option<f32>,
+    cloud_speed: Option<f32>,
+    spinner_size: Option<f32>,
+    spinner_pulse: Option<f32>,
+    card_shadow_blur: Option<f32>,
+    card_shadow_opacity: Option<f32>,
+    accent_breathing: Option<f32>,
+    field_radius: Option<f32>,
+    error_color: Option<String>,
+    clock_24h: Option<bool>,
+    fade_ms: Option<f32>,
+    glow_falloff: Option<f32>,
+    nebula_amount: Option<f32>,
+    comet_tail_decay: Option<f32>,
+    spinner_ring: Option<f32>,
     /// Local day window for the greeter's auto day/night, `"HH:MM"` (default
     /// 07:00–19:00). Inside the window the greeter uses the day palette.
     day_start: Option<String>,
@@ -244,6 +354,22 @@ struct DayFile {
     spinner_track: Option<String>,
     spinner_trail: Option<f32>,
     comet_color: Option<String>,
+    // Per-variant sky/behavior overrides.
+    sky_glow: Option<f32>,
+    error_color: Option<String>,
+}
+
+/// Overwrite `slot` with `v` if the file provided one (the merge idiom for every
+/// scalar/bool key — keeps the merge functions terse as the schema grows).
+fn merge_f32(slot: &mut f32, v: Option<f32>) {
+    if let Some(x) = v {
+        *slot = x;
+    }
+}
+fn merge_bool(slot: &mut bool, v: Option<bool>) {
+    if let Some(x) = v {
+        *slot = x;
+    }
 }
 
 impl Theme {
@@ -328,6 +454,27 @@ impl Theme {
             self.spinner_trail = tr;
         }
         self.comet_color = color("comet_color", file.comet_color, self.comet_color);
+        // New control surface (night values from the top level).
+        merge_f32(&mut self.sky_glow, file.sky_glow);
+        merge_f32(&mut self.star_density, file.star_density);
+        merge_f32(&mut self.star_twinkle, file.star_twinkle);
+        merge_bool(&mut self.comet_enabled, file.comet_enabled);
+        merge_f32(&mut self.comet_interval, file.comet_interval);
+        merge_f32(&mut self.cloud_amount, file.cloud_amount);
+        merge_f32(&mut self.cloud_speed, file.cloud_speed);
+        merge_f32(&mut self.spinner_size, file.spinner_size);
+        merge_f32(&mut self.spinner_pulse, file.spinner_pulse);
+        merge_f32(&mut self.card_shadow_blur, file.card_shadow_blur);
+        merge_f32(&mut self.card_shadow_opacity, file.card_shadow_opacity);
+        merge_f32(&mut self.accent_breathing, file.accent_breathing);
+        merge_f32(&mut self.field_radius, file.field_radius);
+        self.error_color = color("error_color", file.error_color, self.error_color);
+        merge_bool(&mut self.clock_24h, file.clock_24h);
+        merge_f32(&mut self.fade_ms, file.fade_ms);
+        merge_f32(&mut self.glow_falloff, file.glow_falloff);
+        merge_f32(&mut self.nebula_amount, file.nebula_amount);
+        merge_f32(&mut self.comet_tail_decay, file.comet_tail_decay);
+        merge_f32(&mut self.spinner_ring, file.spinner_ring);
         self
     }
 
@@ -353,6 +500,26 @@ impl Theme {
         if let Some(s) = file.spinner_speed {
             self.spinner_speed = s;
         }
+        // The shared half of the new control surface (the day variant inherits these
+        // from the top level; the per-variant keys come from [day] in `merged_day`).
+        merge_f32(&mut self.star_density, file.star_density);
+        merge_f32(&mut self.star_twinkle, file.star_twinkle);
+        merge_bool(&mut self.comet_enabled, file.comet_enabled);
+        merge_f32(&mut self.comet_interval, file.comet_interval);
+        merge_f32(&mut self.cloud_amount, file.cloud_amount);
+        merge_f32(&mut self.cloud_speed, file.cloud_speed);
+        merge_f32(&mut self.spinner_size, file.spinner_size);
+        merge_f32(&mut self.spinner_pulse, file.spinner_pulse);
+        merge_f32(&mut self.card_shadow_blur, file.card_shadow_blur);
+        merge_f32(&mut self.card_shadow_opacity, file.card_shadow_opacity);
+        merge_f32(&mut self.accent_breathing, file.accent_breathing);
+        merge_f32(&mut self.field_radius, file.field_radius);
+        merge_bool(&mut self.clock_24h, file.clock_24h);
+        merge_f32(&mut self.fade_ms, file.fade_ms);
+        merge_f32(&mut self.glow_falloff, file.glow_falloff);
+        merge_f32(&mut self.nebula_amount, file.nebula_amount);
+        merge_f32(&mut self.comet_tail_decay, file.comet_tail_decay);
+        merge_f32(&mut self.spinner_ring, file.spinner_ring);
         self
     }
 
@@ -415,6 +582,8 @@ impl Theme {
             self.spinner_trail = tr;
         }
         self.comet_color = color("comet_color", d.comet_color, self.comet_color);
+        merge_f32(&mut self.sky_glow, d.sky_glow);
+        self.error_color = color("error_color", d.error_color, self.error_color);
         self
     }
 
@@ -461,6 +630,8 @@ impl Theme {
         out.push_str(&format!("spinner_track = {:?}\n", day.spinner_track.to_hex()));
         out.push_str(&format!("spinner_trail = {}\n", day.spinner_trail));
         out.push_str(&format!("comet_color = {:?}\n", day.comet_color.to_hex()));
+        out.push_str(&format!("sky_glow = {}\n", day.sky_glow));
+        out.push_str(&format!("error_color = {:?}\n", day.error_color.to_hex()));
         out
     }
 
@@ -500,6 +671,30 @@ impl Theme {
         out.push_str(&format!("spinner_track = {:?}\n", self.spinner_track.to_hex()));
         out.push_str(&format!("spinner_trail = {}\n", self.spinner_trail));
         out.push_str(&format!("comet_color   = {:?}\n", self.comet_color.to_hex()));
+        out.push('\n');
+        out.push_str("# Sky\n");
+        out.push_str(&format!("sky_glow      = {}\n", self.sky_glow));
+        out.push_str(&format!("star_density  = {}\n", self.star_density));
+        out.push_str(&format!("star_twinkle  = {}\n", self.star_twinkle));
+        out.push_str(&format!("comet_enabled = {}\n", self.comet_enabled));
+        out.push_str(&format!("comet_interval = {}\n", self.comet_interval));
+        out.push_str(&format!("cloud_amount  = {}\n", self.cloud_amount));
+        out.push_str(&format!("cloud_speed   = {}\n", self.cloud_speed));
+        out.push_str("# Spinner / card / behavior\n");
+        out.push_str(&format!("spinner_size  = {}\n", self.spinner_size));
+        out.push_str(&format!("spinner_pulse = {}\n", self.spinner_pulse));
+        out.push_str(&format!("card_shadow_blur    = {}\n", self.card_shadow_blur));
+        out.push_str(&format!("card_shadow_opacity = {}\n", self.card_shadow_opacity));
+        out.push_str(&format!("accent_breathing = {}\n", self.accent_breathing));
+        out.push_str(&format!("field_radius  = {}\n", self.field_radius));
+        out.push_str(&format!("error_color   = {:?}\n", self.error_color.to_hex()));
+        out.push_str(&format!("clock_24h     = {}\n", self.clock_24h));
+        out.push_str(&format!("fade_ms       = {}\n", self.fade_ms));
+        out.push_str("# Expert\n");
+        out.push_str(&format!("glow_falloff  = {}\n", self.glow_falloff));
+        out.push_str(&format!("nebula_amount = {}\n", self.nebula_amount));
+        out.push_str(&format!("comet_tail_decay = {}\n", self.comet_tail_decay));
+        out.push_str(&format!("spinner_ring  = {}\n", self.spinner_ring));
         out
     }
 }
