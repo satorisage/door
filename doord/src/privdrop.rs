@@ -97,15 +97,43 @@ fn verify_dropped(target: &TargetUser) -> io::Result<()> {
     Ok(())
 }
 
+/// The locale variables a graphical session needs to render correctly. A session
+/// with none of these falls back to the `C` locale (`ANSI_X3.4-1968`, not UTF-8);
+/// Qt/GTK toolkits detect that and refuse to run properly (Plasma black-screens),
+/// so the login completes but the desktop never appears. This is the glibc set.
+const LOCALE_VARS: &[&str] = &[
+    "LANG",
+    "LANGUAGE",
+    "LC_ALL",
+    "LC_CTYPE",
+    "LC_NUMERIC",
+    "LC_TIME",
+    "LC_COLLATE",
+    "LC_MONETARY",
+    "LC_MESSAGES",
+    "LC_PAPER",
+    "LC_NAME",
+    "LC_ADDRESS",
+    "LC_TELEPHONE",
+    "LC_MEASUREMENT",
+    "LC_IDENTIFICATION",
+];
+
 /// Build the child session's environment from scratch — an explicit allowlist,
-/// never the daemon's own environment. The daemon runs as root with whatever
-/// the init system handed it; none of that should leak into a user session.
+/// never a blanket copy of the daemon's own environment. The daemon runs as root
+/// with whatever the init system handed it; none of that should leak into a user
+/// session.
 ///
 /// Only variables a fresh login legitimately needs are set; everything else
 /// (the daemon's `PATH`, any inherited secrets, `LD_*` injection vectors) is
-/// simply absent because we start from an empty set.
+/// simply absent because we start from an empty set. The one inherited family is
+/// locale ([`locale_env`]) — system configuration from `/etc/locale.conf`, which
+/// systemd imports into the service-manager environment doord inherits. Passing it
+/// through (by an explicit name list, not a blanket copy) is what a display manager
+/// does; it goes into the user's *own* session at their own uid and is not a code
+/// path, so it carries none of the escalation risk the allowlist exists to block.
 pub fn sanitized_env(target: &TargetUser) -> Vec<(String, String)> {
-    vec![
+    let mut env = vec![
         ("HOME".to_string(), target.home.clone()),
         ("USER".to_string(), target.name.clone()),
         ("LOGNAME".to_string(), target.name.clone()),
@@ -114,7 +142,33 @@ pub fn sanitized_env(target: &TargetUser) -> Vec<(String, String)> {
             "PATH".to_string(),
             "/usr/local/sbin:/usr/local/bin:/usr/bin".to_string(),
         ),
-    ]
+    ];
+    env.extend(locale_env(|k| std::env::var(k).ok()));
+    env
+}
+
+/// Locale variables for the session, drawn from `lookup` (the daemon's own
+/// environment in production). Any [`LOCALE_VARS`] entry that is set and non-empty
+/// is passed through. If none of the three that determine the character type
+/// (`LC_ALL`, `LC_CTYPE`, `LANG`) is set, `LANG=C.UTF-8` is added so the session
+/// always has a UTF-8 locale — a non-UTF-8 desktop session must never be the
+/// failure mode of a misconfigured or empty locale, so this fails safe.
+fn locale_env(lookup: impl Fn(&str) -> Option<String>) -> Vec<(String, String)> {
+    let mut env: Vec<(String, String)> = LOCALE_VARS
+        .iter()
+        .filter_map(|&k| {
+            lookup(k)
+                .filter(|v| !v.is_empty())
+                .map(|v| (k.to_string(), v))
+        })
+        .collect();
+    let has_ctype = env
+        .iter()
+        .any(|(k, _)| k == "LC_ALL" || k == "LC_CTYPE" || k == "LANG");
+    if !has_ctype {
+        env.push(("LANG".to_string(), "C.UTF-8".to_string()));
+    }
+    env
 }
 
 #[cfg(test)]
@@ -132,10 +186,48 @@ mod tests {
     }
 
     #[test]
-    fn sanitized_env_starts_from_empty_and_sets_only_the_allowlist() {
+    fn sanitized_env_starts_from_empty_and_sets_the_allowlist_then_locale() {
         let env = sanitized_env(&target());
-        let keys: Vec<&str> = env.iter().map(|(k, _)| k.as_str()).collect();
-        assert_eq!(keys, ["HOME", "USER", "LOGNAME", "SHELL", "PATH"]);
+        // The identity/PATH allowlist comes first, verbatim and in order.
+        let head: Vec<&str> = env.iter().take(5).map(|(k, _)| k.as_str()).collect();
+        assert_eq!(head, ["HOME", "USER", "LOGNAME", "SHELL", "PATH"]);
+        // Anything after it is locale, and only locale — no other inherited var
+        // is admitted (the allowlist's whole job).
+        for (k, _) in env.iter().skip(5) {
+            assert!(LOCALE_VARS.contains(&k.as_str()), "unexpected non-locale key: {k}");
+        }
+    }
+
+    #[test]
+    fn locale_env_passes_through_set_vars() {
+        let src = |k: &str| match k {
+            "LANG" => Some("en_US.UTF-8".to_string()),
+            "LC_TIME" => Some("de_DE.UTF-8".to_string()),
+            "LC_ALL" => Some(String::new()), // empty is treated as unset
+            _ => None,
+        };
+        let env = locale_env(src);
+        let get = |key: &str| env.iter().find(|(k, _)| k == key).map(|(_, v)| v.clone());
+        assert_eq!(get("LANG").as_deref(), Some("en_US.UTF-8"));
+        assert_eq!(get("LC_TIME").as_deref(), Some("de_DE.UTF-8"));
+        assert!(get("LC_ALL").is_none(), "empty value must not be passed through");
+    }
+
+    #[test]
+    fn locale_env_falls_back_to_utf8_when_unset() {
+        // No locale configured anywhere → the session must still get a UTF-8 ctype,
+        // or a Qt/GTK desktop refuses to render (the lockout-domain failure).
+        let env = locale_env(|_| None);
+        let get = |key: &str| env.iter().find(|(k, _)| k == key).map(|(_, v)| v.clone());
+        assert_eq!(get("LANG").as_deref(), Some("C.UTF-8"));
+    }
+
+    #[test]
+    fn locale_env_does_not_override_an_existing_ctype() {
+        // LANG present → no fallback appended (we honor the configured locale).
+        let env = locale_env(|k| (k == "LANG").then(|| "fr_FR.UTF-8".to_string()));
+        let langs: Vec<&str> = env.iter().filter(|(k, _)| k == "LANG").map(|(_, v)| v.as_str()).collect();
+        assert_eq!(langs, ["fr_FR.UTF-8"], "must not duplicate or override LANG");
     }
 
     #[test]

@@ -43,11 +43,22 @@ be exercised end to end. M4 beauty + M5 hardening follow.)*
       the active DM; `door.install` prints the reversible enable + two-command TTY
       revert.
       `depends:` handoff / re-greet orchestration
+- [x] **lockout hardening — first live-enable postmortem** (2026-06-26; see
+      `.agent/REPORTS/2026-06-26-m6-lockout-postmortem.md`). First `enable --now`
+      locked the machine (greeter couldn't reach the socket; `Ctrl+Alt+F3` dead;
+      chroot to recover). Two root causes fixed: **(RC1)** `/run/doord` was
+      `0700 root:root` (RuntimeDirectory), unreachable by the greeter user —
+      `ipc::bind` now group-owns it `0750 root:<greeter>`; **(RC2)** recoverability
+      — `doord.service` now `Conflicts=display-manager.service` + `StartLimit*`;
+      `ipc::serve` gives up after `GREETER_MAX_RAPID_FAILURES` (restores VT to
+      `VT_AUTO`/`KD_TEXT` and exits cleanly = no respawn) instead of thrashing the
+      GPU forever. 34 tests green, clippy clean. **Still unproven on hardware.**
+      `depends:` systemd unit + packaging
 - [ ] **reversible enable + TTY revert (validated)**: the enable/revert *commands*
       ship in `door.install` (keep previous DM as fallback). Remaining: **test the
-      revert live** — the handoff is built but unproven on hardware. Critical —
-      revert proven before door is ever enabled.
-      `depends:` systemd unit + packaging
+      revert live** — the handoff + lockout hardening are built but unproven on
+      hardware. Critical — revert proven before door is ever enabled.
+      `depends:` lockout hardening — first live-enable postmortem
 - [ ] **live install test**: `makepkg -si`, run the enable step, log in for real
       through the greeter on the VT — tested revert in hand.
       `depends:` Arch PKGBUILD, reversible enable + TTY revert (validated)

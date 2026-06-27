@@ -36,6 +36,16 @@ validation** (Critical, hardware, revert-first): `makepkg -si` → enable on a s
 machine/VT → real login + logout + re-greet, tested TTY revert in hand. The handoff
 is built but unproven on hardware. See ROADMAP `## Active`.
 
+**Lockout postmortem (2026-06-26):** the first live `enable --now` locked the
+machine — greeter couldn't reach the socket and `Ctrl+Alt+F3` was dead (chroot to
+recover). Two root causes fixed (`.agent/REPORTS/2026-06-26-m6-lockout-postmortem.md`):
+**RC1** `/run/doord` was `0700 root:root`, unreachable by the greeter user —
+`ipc::bind` now group-owns it `0750`; **RC2** recoverability — `doord.service`
+conflicts the DM + `StartLimit*`, and `ipc::serve` now *gives up* after a short
+greeter crash-streak (restores the VT to `VT_AUTO`/`KD_TEXT` and exits cleanly so
+it can't thrash the GPU/console). 34 tests green. Still unproven on hardware —
+re-test stays revert-first with the escape path confirmed *before* enabling.
+
 ---
 
 ## 1. Authority surface — where to look for X
