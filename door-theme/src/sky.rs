@@ -132,28 +132,36 @@ impl<Message> Program<Message> for Spinner {
         let center = Point::new(bounds.width / 2.0, bounds.height / 2.0);
         let ring = size * 0.36;
         let dot = size * 0.075;
-        const N: usize = 12;
-        // The bright head rotates around the ring; each dot dims with angular
-        // distance behind it — a comet head with a trailing tail.
-        let head = self.anim * 2.2;
-        for i in 0..N {
-            let a = i as f32 / N as f32 * std::f32::consts::TAU;
-            let behind = (a - head).rem_euclid(std::f32::consts::TAU) / std::f32::consts::TAU;
-            let bright = (1.0 - behind).powf(1.6);
-            let col = if bright > 0.6 {
-                CYAN
-            } else if bright > 0.3 {
-                BLUE
-            } else {
-                CORE
-            };
-            let x = center.x + a.cos() * ring;
-            let y = center.y + a.sin() * ring;
-            frame.fill(
-                &Path::circle(Point::new(x, y), dot * (0.55 + 0.45 * bright)),
-                with_alpha(col, (0.12 + 0.88 * bright) * self.fade),
-            );
+        let at = |angle: f32| Point::new(center.x + angle.cos() * ring, center.y + angle.sin() * ring);
+
+        // A faint static track of dots.
+        const TRACK: usize = 12;
+        for i in 0..TRACK {
+            let a = i as f32 / TRACK as f32 * std::f32::consts::TAU;
+            frame.fill(&Path::circle(at(a), dot * 0.5), with_alpha(BLUE, 0.12 * self.fade));
         }
+
+        // The comet: a bright head + fading trail at a *continuous* angle, so it
+        // glides smoothly around the ring rather than snapping between track dots.
+        let head = self.anim * 2.0; // ~0.32 rev/s
+        const TRAIL: usize = 12;
+        for j in 0..TRAIL {
+            let k = j as f32 / TRAIL as f32; // 0 head .. ~1 tail
+            let a = head - k * 2.6; // trail sweeps ~2.6 rad behind the head
+            let r = dot * (1.0 - 0.55 * k);
+            let col = if j == 0 {
+                CORE
+            } else if k < 0.4 {
+                CYAN
+            } else {
+                BLUE
+            };
+            let alpha = (1.0 - k).powf(1.3) * self.fade;
+            frame.fill(&Path::circle(at(a), r.max(0.6)), with_alpha(col, alpha));
+        }
+        // A soft glow on the head.
+        frame.fill(&Path::circle(at(head), dot * 1.7), with_alpha(CYAN, 0.18 * self.fade));
+
         vec![frame.into_geometry()]
     }
 }
