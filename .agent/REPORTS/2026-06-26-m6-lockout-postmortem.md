@@ -175,6 +175,29 @@ perf optimization for the *greeter only*; no functional, auth, or session
 impact. Fix: give the greeter a writable `XDG_CACHE_HOME` (e.g. under `/run`) or
 a real home.
 
+## Root cause 8 (cosmetic) — session stdio paints the VT console
+
+Observed 2026-06-27 on a clean boot into Plasma: tty1 briefly showed scary-looking
+error text before the desktop appeared. It was **not an error and not door** —
+stock `kwin_wayland`/xkbcomp keymap warnings (`Virtual modifier Hyper multiply
+defined`, `Multiple symbols for level 1/group 1 on key <FK23>`, closing with
+`Errors from xkbcomp are not fatal`), plus a benign `xdg-desktop-portal-gtk: Lost
+connection to Wayland compositor` at the greeter→session handoff instant.
+
+The reason it is *visible on the console* is door's own design:
+`spawn.rs::take_controlling_tty` dup2's the session child's `stdin`/`stdout`/`stderr`
+onto the seat VT (so the session owns the seat rather than the daemon's pipes).
+A side effect is that the compositor's startup `stderr` lands on the VT
+framebuffer, then the compositor sets the KMS mode and paints the desktop over it.
+A conventional DM (sddm) hides the equivalent by routing the session log to a file
+(`~/.local/share/sddm/wayland-session.log`) or the journal; door points it at the VT.
+
+**Harmless** — purely cosmetic; the session is fine. Fix: keep the VT as the
+session's controlling terminal (needed for input/DRM/VT-switch) but redirect
+`stdout`/`stderr` to the journal or a per-session logfile instead of dup2'ing them
+onto the VT, so the console stays clean and the logs are still captured. Deferred
+to M4 (beauty) / M5 (hardening) polish.
+
 ## Root cause 7 — doord hangs when the greeter dies before connecting (live-switch wedge)
 
 Found 2026-06-26 attempting a **live** DM switch: `disable --now sddm && enable
@@ -203,6 +226,108 @@ Two distinct facts:
    the greeter child concurrently with the accept, so a pre-handshake death is a
    counted failure (→ VT reset + backoff), never a silent hang.
 
+## Root cause 9 — revert to another DM under a live session squats tty1 (the "bare blinking cursor" on `stop doord` + `start sddm`)
+
+Found 2026-06-27 reproducing the user's repeated revert failure: booted into door,
+logged into Plasma, then `systemctl stop doord && systemctl start sddm`. Physical
+screen lands on a **bare blinking cursor**; sddm never appears; restarting sddm
+does not help. Diagnosed live over SSH (`scratch/revert-seat-diag.sh`,
+`scratch/revert-lockout-diag.sh`).
+
+This is **not** a wedged VT (RC5/RC7). Captured facts:
+
+- The Plasma session **survives** `stop doord` — it lives in
+  `user.slice/user-1000.slice` (session-3.scope + `user@1000.service`), wholly
+  independent of `doord.service`'s cgroup, so stopping doord cannot and does not
+  kill it. RC5's "the session survives a doord restart" assumption is *correct*.
+- After the stop, `fuser /dev/dri/card1` shows **`kwin_wayland` still holds
+  `[MASTER]`** and `loginctl seat-status seat0` shows session-3 still owns the
+  seat on **tty1**. tty1 is `KD_TEXT` — an *empty* text console, which is the
+  "bare blinking cursor."
+- sddm is hard-wired to **VT 1**. Its greeter helper tries to take tty1, fails
+  with `SDDM::Auth::HELPER_TTY_ERROR` (`sddm-helper exited with 5`), and the
+  display add/remove loop spins forever — because the live Plasma session still
+  owns that VT and the DRM master.
+
+Root cause: **door runs the user session on the seat VT (tty1, `DOORD_VTNR=1`) —
+the same VT every login manager wants.** A conventional DM (sddm/gdm) runs its
+*greeter* on tty1 but each *user session* on a fresh logind-allocated VT (tty2+),
+so a DM restart or DM switch only ever contends for the greeter VT and never
+touches live sessions. door's single-VT handoff (D-0008: greeter→session on the
+same VT) means a surviving session squats tty1, blocking any new login manager —
+sddm here, and also doord's *own* re-greet: the journal shows a paired event at
+00:30 where **restarting** doord under live Plasma made the new cage greeter fail
+to take tty1 (Plasma holds DRM) → die pre-connect → RC7 give-up → doord reset
+tty1 to text and exited. Same root, two surfaces.
+
+Severity: **not a lockout.** SSH stayed live throughout and a reboot recovers
+cleanly (the proven clean-boot revert). It *looks* like a hard lockout but isn't
+— it is seat/VT contention from switching login managers under a live session,
+which is unsupported for DMs generally; door is merely more visibly fragile
+because its session shares the greeter VT.
+
+Fix is an architecture decision (pending, see Disposition): (1) run sessions on
+their own VT like a conventional DM — removes the whole contention class incl.
+doord-restart-under-session — but is a substantial change to the D-0008 handoff;
+(2) make `stop`/`disable` doord tear down the session it spawned to free the seat
+— cheap, but kills the desktop on any stop and diverges from DM convention; or
+(3) keep clean-boot/log-out-first as the supported revert and document it (+ an
+optional revert helper that `loginctl terminate-session`s the seat first) —
+near-zero cost, matches the already-proven path, leaves the naive command looking
+broken.
+
+**Web research (2026-06-27) — the "clean" separate-VT fix is the unsolved DM
+frontier, not a quick win.** Verified at source before relying on it:
+
+- SDDM does *not* reliably put a wayland session on its own VT, and **does not
+  free the VT** when a wayland session ends → VT exhaustion, and eventually loss
+  of Fn-key VT switching (sddm#1200, sddm#1409). The session-on-separate-VT design
+  is "supposed to" happen but is inconsistent/buggy in practice.
+- The **blank-screen-with-cursor symptom is itself a known SDDM failure** — SDDM
+  "frequently fails to reactivate the greeter after the compositor exits," and
+  "Removing a Display causes a VT switch" (sddm#1803, arch BBS #284449). RC9's
+  symptom is the generic wayland DM/VT-contention failure, not a door-only defect.
+- greetd (door's nearest analogue: greetd+cage) uses the **same single-VT model**
+  (`vt = 1`); cage's `-s` VT-switch flag exists precisely because this area
+  locks people out (ArchWiki: greetd).
+
+Implication: option (1) buys "desktop survives a doord *restart*" at the cost of
+entering SDDM's unsolved VT-leak/reactivation bug class. For the *revert* use case
+(leaving door), preserving the session has no value. Recommendation shifted to a
+variant of (2): **doord ends its own logind session on teardown via
+`terminate-session`** (the lever that actually reaches the decoupled
+`user@1000.service` compositor — a parent-death signal on the session child does
+not, since kwin is not doord's child). Sub-decision: fire on every doord exit
+(incl. crash; most consistent, no residual wedge) vs only clean stop/disable.
+Sources: sddm#1200, sddm#1409, sddm#1803, arch BBS #284449, ArchWiki Greetd/SDDM.
+
+**Hardware finding (2026-06-27) — `terminate-session` is insufficient; the
+compositor escapes the session scope.** Tested `loginctl terminate-session` on the
+live seat0 session (`scratch/post-terminate-state.sh`): logind dropped the session
+(`seat0 Sessions=` empty, `startplasma` pid gone) **but kwin/plasmashell/Xwayland
+stayed alive under `user@1000.service` and kwin kept `[MASTER]` on card1.** The
+graphical units live in the per-user systemd manager, not the logind session
+scope; because other sessions (SSH/pts) keep `user@1000` running and door's
+session is not bound tightly enough for the graphical target to stop with the seat
+session, the compositor **outlives the logind session, doord, *and*
+`terminate-session`** — permanently squatting seat0's DRM master. This also defeats
+doord's own re-greet (cage can't take a held master → dies pre-connect → RC7
+give-up → doord `inactive`). Consequence: the committed "doord ends its logind
+session on teardown" plan does **not** free the seat. The real lever must target
+the **DRM-master holder / graphical-session.target under `user@1000`** (kill the
+compositor, or stop the user graphical target), not the logind session. Clean
+in-session logout (Plasma stops its own graphical target) is expected to free the
+seat normally — the un-tested supported revert; external teardown is the broken
+path.
+
+**Lever confirmed on hardware (2026-06-27, `scratch/recover-kill-compositor.sh`):**
+`SIGTERM`→`SIGKILL` of the compositor processes freed card1's DRM master (fuser:
+no holder), and `systemctl start sddm` then took VT1 cleanly — "Greeter session
+started successfully", GPU re-acquired by sddm's own kwin. So (a) the only
+effective lever is **killing the DRM-master holder**, not terminating the logind
+session, and (b) the seat **re-acquires cleanly** once the GPU is free (rules out
+the sddm#1200 dirty-seat dead end). Fix re-scoped accordingly — see Disposition.
+
 ## Disposition
 
 - RC1 (socket dir perms) — **fixed** (`ipc.rs::bind`).
@@ -223,15 +348,56 @@ Two distinct facts:
   (no `EPERM`) → `started session 'plasma'`, and Plasma rendered. SSH safety
   net held throughout. All four root causes now demonstrated on real hardware.
 - RC5 (clean stop/disable doesn't reset the VT → revert looks like a lockout)
-  — **found, not yet fixed.** Material: the revert path leaves tty1 frozen
-  (getty@tty2 + SSH kept it recoverable). Fix is the symmetric VT-reset on the
-  admin-teardown path + `enable --now` doc emphasis.
+  — **fixed (2026-06-27), not yet re-validated on hardware.** A SIGTERM/SIGINT
+  teardown handler (`ipc.rs::install_teardown_handler`/`handle_teardown`) resets
+  `VT_AUTO`/`KD_TEXT` **only while doord holds the VT at the greeter** (the
+  `GREETING` flag), then re-raises with the default disposition. A live session
+  owns its own VT and has no parent-death signal, so it is left untouched and
+  survives a doord restart — only the *greeter-held* VT is reset on admin
+  teardown, extending the RC2 crash-path guarantee to the admin-stop path. The
+  handler does only async-signal-safe work (atomics + open/ioctl/close via
+  `restore_text_vt_raw`, then `signal`/`raise`). `enable --now` doc emphasis
+  already landed in `door.install`.
 - RC6 (greeter shader-cache permission error from `HOME=/`) — **found, not yet
   fixed.** Cosmetic; greeter `XDG_CACHE_HOME`/home. Deferred to M4/M5 polish.
 - RC7 (greeter dies pre-handshake → doord hangs; surfaced by a live DM switch
-  under occupied seat0) — **found, not yet fixed.** Material robustness gap:
-  serve loop must wait on the greeter child concurrently with `accept()` so a
-  die-before-connect routes to give-up/backoff + VT reset, not a silent wedge.
-  Operationally, the supported DM switch is clean-boot, not live `enable --now`.
+  under occupied seat0) — **fixed (2026-06-27), not yet re-validated on
+  hardware.** The serve loop now waits via a non-blocking accept + bounded poll
+  (`ipc.rs::accept_with_greeter_watch` + `GreeterHandle::reap_if_exited`): a
+  greeter that dies before connecting is reaped, the VT is reset, and the failure
+  counts toward give-up/backoff instead of blocking forever on `accept()`. The
+  teardown handler (RC5) is also a backstop — a `systemctl stop` now escapes even
+  a wedged accept. Operationally, the supported DM switch remains clean-boot, not
+  live `enable --now`.
+- RC8 (session stdio paints the VT console → scary-but-harmless compositor
+  warnings flash on tty1) — **found, not yet fixed.** Cosmetic: redirect the
+  session's `stdout`/`stderr` to the journal/logfile instead of dup2'ing onto the
+  VT. Deferred to M4/M5 polish.
+- RC9 (revert/DM-switch under a live session squats the seat's DRM master → next
+  login manager can't acquire the GPU → bare blinking cursor) — **fixed and proven
+  on hardware 2026-06-27.** Lever proven on hardware: only killing the compositor
+  frees the seat (`terminate-session` leaves it orphaned under `user@1000`), and —
+  the decisive subtlety — the compositor runs under a **supervisor**
+  (`kwin_wayland_wrapper`) that *respawns* it, so killing the bare DRM-holder pid
+  just bounces DRM (desktop sees a monitor unplug/replug) and never frees the seat.
+  The whole compositor subtree shares one process group, so the fix kills the
+  **process group** of each DRM-card holder — taking the supervisor down with it,
+  no respawn. Fix (`ipc.rs`): `free_seat()` scans `/proc` for holders of the seat's
+  `/dev/dri/card*`, maps them to process groups, and `SIGTERM`→`SIGKILL`s the
+  groups (skipping doord's own); wired to three points — (1) **before each greet**
+  (seat-claim: cage always gets a clean GPU — also kills the RC7
+  restart/crash-respawn wedge at its source), (2) **on teardown** (a
+  `SIGTERM`/`SIGINT` during a live session sets a flag the new interruptible
+  session-wait loop acts on — free the seat, restore the VT, exit — so `stop doord;
+  start sddm` reverts cleanly), and (3) a **panic hook**. Owner decision: sessions
+  die with doord (every exit incl. crash); the desktop is not preserved across a
+  doord stop/restart/crash — accepted, since the compositor is the squatter and
+  can't be cleanly preserved. Residual gap: a `SIGKILL`/power-loss of doord runs no
+  cleanup, but the next start's seat-claim (point 1) clears the orphan. **Validated
+  live: step 1 — doord seat-claimed a stuck compositor and greeted; step 2 —
+  `stop doord; start sddm` reached the sddm login with no flicker/respawn.** 26 unit
+  + 3 integration tests green, clippy clean. Distinct from RC5/RC7
+  (VT-left-in-graphics); this is a healthy text VT whose GPU a survived,
+  self-respawning compositor held.
 - Re-validation stays **revert-first on a spare VT/machine**, escape path
   confirmed working *before* `enable`.

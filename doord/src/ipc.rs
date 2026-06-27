@@ -29,8 +29,9 @@ use std::io;
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::io::AsRawFd;
 use std::os::unix::net::{UnixListener, UnixStream};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
+use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -38,6 +39,7 @@ use protocol::{read_frame, write_frame, FrameError, Request, Response, PROTOCOL_
 
 use crate::config::Config;
 use crate::pam::{AuthOutcome, Login, LoginFactory};
+use crate::spawn::SessionChild;
 use crate::worker;
 
 /// How long to wait for the greeter to exit after `SIGTERM` before `SIGKILL`.
@@ -60,6 +62,26 @@ const GREETER_RESPAWN_BACKOFF: Duration = Duration::from_secs(2);
 /// sustained failure must fail *safe* — leave a usable text console — not spin.
 const GREETER_MAX_RAPID_FAILURES: u32 = 3;
 
+/// Poll cadence for the live-session wait: short enough that an admin teardown
+/// (`SIGTERM`/`SIGINT`) is noticed promptly so the seat is freed for the next
+/// login manager, long enough not to busy-spin while a desktop runs for hours.
+const SESSION_WAIT_POLL: Duration = Duration::from_millis(250);
+
+/// Grace after `SIGTERM`ing the seat's GPU holder before escalating to `SIGKILL`,
+/// so a compositor can release DRM and exit cleanly first.
+const SEAT_FREE_GRACE: Duration = Duration::from_secs(2);
+
+/// Brief settle after a `SIGKILL` round before re-checking whether the seat's GPU
+/// is actually free.
+const SEAT_FREE_KILL_SETTLE: Duration = Duration::from_millis(500);
+
+/// How often the greeter-watch poll wakes to re-check the greeter process while
+/// waiting for it to connect. Short enough that a greeter which dies *before*
+/// connecting (cage couldn't take the seat's DRM master, say) is noticed
+/// promptly and routed to the backoff/give-up path instead of hanging the daemon
+/// on `accept()` forever; long enough not to busy-spin.
+const GREETER_WATCH_INTERVAL: Duration = Duration::from_millis(250);
+
 /// How long the daemon waits on a stalled read before dropping the peer.
 const READ_TIMEOUT: Duration = Duration::from_secs(30);
 
@@ -68,6 +90,268 @@ const READ_TIMEOUT: Duration = Duration::from_secs(30);
 /// leaks which accounts exist. Only the failure path is padded — success is not
 /// slowed. Lockout/backoff proper is left to the PAM stack (`pam_faillock`).
 const MIN_AUTH_FAILURE: Duration = Duration::from_secs(1);
+
+/// The seat VT doord owns, or `-1` for none — read by the teardown signal
+/// handler, which runs in async-signal context and so cannot consult [`Config`].
+static OWNED_VTNR: AtomicI32 = AtomicI32::new(-1);
+
+/// True only while doord holds the VT *at the greeter* (no live session). The
+/// teardown handler resets the VT only in this state: during a live session the
+/// user's compositor owns the VT and must not be disturbed (and that session has
+/// no parent-death signal, so it rightly survives an admin restart of doord).
+static GREETING: AtomicBool = AtomicBool::new(false);
+
+/// Set by the teardown handler so the live-session wait loop notices an admin
+/// `systemctl stop`/`disable` (`SIGTERM`/`SIGINT`) and, in normal code, frees the
+/// seat for the next login manager before exiting. The handler cannot do that
+/// itself: freeing the seat means scanning `/proc` and killing the compositor,
+/// which is not async-signal-safe.
+static TEARDOWN: AtomicBool = AtomicBool::new(false);
+
+/// Install the teardown signal handler so an admin `systemctl stop`/`disable`
+/// (`SIGTERM`, or `SIGINT` under a foreground run) leaves a usable text console.
+/// Without it, stopping doord while it sits at the greeter kills the managed
+/// compositor (via its parent-death signal) but never restores the VT it left in
+/// graphics mode — the console looks frozen until a fallback DM starts. The
+/// handler restores the VT (only when [`GREETING`]) and re-raises the signal with
+/// the default disposition so the process still dies with the right semantics.
+///
+/// Registered only when doord owns a real VT; tests drive `handle_connection`
+/// directly and never reach here, so the process signal disposition is untouched
+/// under test.
+fn install_teardown_handler(vtnr: u32) {
+    OWNED_VTNR.store(vtnr as i32, Ordering::SeqCst);
+    // SAFETY: `sigaction` installs `handle_teardown` (a plain `extern "C"`
+    // function with no captured state) for SIGTERM/SIGINT. `sa_flags` omits
+    // SA_RESTART so a pending teardown interrupts a blocked `accept`/`poll`; the
+    // handler does only async-signal-safe work (atomics + open/ioctl/close +
+    // signal/raise). The sigaction struct is zeroed then fully initialized.
+    unsafe {
+        let mut sa: libc::sigaction = std::mem::zeroed();
+        sa.sa_sigaction = handle_teardown as *const () as usize;
+        sa.sa_flags = 0;
+        libc::sigemptyset(&mut sa.sa_mask);
+        libc::sigaction(libc::SIGTERM, &sa, std::ptr::null_mut());
+        libc::sigaction(libc::SIGINT, &sa, std::ptr::null_mut());
+    }
+}
+
+/// Async-signal-safe teardown handler (see [`install_teardown_handler`]). Resets
+/// the owned VT to a usable text console when doord is caught at the greeter,
+/// then restores the default disposition and re-raises so the process terminates
+/// with normal signal semantics. Uses only async-signal-safe operations: atomic
+/// loads, [`restore_text_vt_raw`] (open/ioctl/close, no allocation), `signal`,
+/// and `raise`.
+extern "C" fn handle_teardown(sig: libc::c_int) {
+    TEARDOWN.store(true, Ordering::SeqCst);
+    if GREETING.load(Ordering::SeqCst) {
+        // At the greeter: no live session owns the seat. Reset the VT and die now
+        // — the managed compositor dies with doord via its parent-death signal, so
+        // nothing is left squatting the seat. Async-signal-safe throughout.
+        let vtnr = OWNED_VTNR.load(Ordering::SeqCst);
+        if vtnr >= 0 {
+            restore_text_vt_raw(vtnr as u32);
+        }
+        // SAFETY: restore the default disposition and re-raise; both are
+        // async-signal-safe. The process dies here without returning to the
+        // interrupted syscall.
+        unsafe {
+            libc::signal(sig, libc::SIG_DFL);
+            libc::raise(sig);
+        }
+    }
+    // During a live session the compositor escapes into the per-user systemd
+    // manager and holds the seat's DRM master; freeing it (scan /proc, kill the
+    // holder) is not async-signal-safe. So only flag the teardown here and return —
+    // the session-wait loop sees the flag and frees the seat in normal code.
+}
+
+/// Install a panic hook that frees the seat (and restores the VT) before the
+/// process unwinds/aborts, so a doord panic during a live session cannot leave the
+/// user's compositor squatting the seat's GPU and wedging the next login manager.
+/// Chains to the previous hook so the default panic message is still printed.
+fn install_panic_hook() {
+    let previous = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        eprintln!("doord: panic — freeing the seat before exit");
+        free_seat();
+        let vtnr = OWNED_VTNR.load(Ordering::SeqCst);
+        if vtnr >= 0 {
+            restore_text_vt(vtnr as u32);
+        }
+        previous(info);
+    }));
+}
+
+/// Own a started session until it ends, while staying responsive to an admin
+/// teardown. Polls the session for exit on a short cadence; if a teardown signal
+/// arrives first ([`TEARDOWN`]), the live compositor is squatting the seat's DRM
+/// master and must be cleared for the next login manager — so free the seat,
+/// restore a usable text console, and exit. (A `SIGTERM` cannot do this itself:
+/// it would have to scan `/proc` and kill the holder, which is not
+/// async-signal-safe — hence this normal-code path.)
+///
+/// A childless test handle has no real process to poll, so it falls back to the
+/// blocking [`SessionChild::wait`], which returns immediately for it.
+fn wait_for_session(mut child: SessionChild, seat: &crate::config::SeatTarget, session_id: &str) {
+    if child.id().is_none() {
+        let _ = child.wait();
+        return;
+    }
+    loop {
+        if TEARDOWN.load(Ordering::SeqCst) {
+            eprintln!(
+                "doord: teardown during live session '{session_id}'; freeing the seat for the next login manager"
+            );
+            free_seat();
+            if let Some(vtnr) = seat.vtnr {
+                restore_text_vt(vtnr);
+            }
+            std::process::exit(0);
+        }
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                eprintln!("doord: session '{session_id}' exited ({status})");
+                return;
+            }
+            Ok(None) => {}
+            Err(e) => {
+                eprintln!("doord: waiting on session '{session_id}' failed: {e}");
+                return;
+            }
+        }
+        thread::sleep(SESSION_WAIT_POLL);
+    }
+}
+
+/// Free doord's seat by killing the process **group** of whatever holds the seat's
+/// DRM device(s) open.
+///
+/// The user's compositor runs under the per-user systemd manager and *outlives*
+/// the logind session, doord, and `loginctl terminate-session` alike — it keeps
+/// the seat's DRM master, so any next login manager (sddm, or doord's own
+/// re-greeted cage) cannot acquire the GPU and is left on a blank, blinking VT.
+///
+/// Killing the holder's bare pid is *not* enough: KWin (and friends) run the
+/// compositor under a supervisor — `kwin_wayland_wrapper` — that **respawns** the
+/// compositor the instant it dies, which just bounces DRM (the desktop sees a
+/// monitor unplug/replug) and never frees the seat. The wrapper shares the
+/// compositor's process group, so signalling the whole **group** takes the
+/// supervisor down too and nothing respawns. `SIGTERM` first (a clean compositor
+/// exit that releases DRM), then `SIGKILL` any group still holding the card. A
+/// no-op when nothing holds the card (clean boot, clean in-session logout).
+///
+/// Single-seat assumption: targets every `/dev/dri/card*` KMS node. A multi-seat
+/// host would need to scope this to the seat's own GPU.
+fn free_seat() {
+    let cards = drm_card_nodes();
+    if cards.is_empty() {
+        return;
+    }
+    let holders = drm_card_holders(&cards);
+    if holders.is_empty() {
+        return;
+    }
+    let groups = holder_process_groups(&holders);
+    eprintln!(
+        "doord: freeing the seat — GPU held by pids {holders:?}; killing process group(s) {groups:?}"
+    );
+    for &pgid in &groups {
+        signal_group(pgid, libc::SIGTERM);
+    }
+    thread::sleep(SEAT_FREE_GRACE);
+    // Re-scan: SIGKILL the group of anything still — or freshly (a supervisor
+    // respawn that slipped in during the grace) — holding the card.
+    let stragglers = drm_card_holders(&cards);
+    if !stragglers.is_empty() {
+        for &pgid in &holder_process_groups(&stragglers) {
+            signal_group(pgid, libc::SIGKILL);
+        }
+        thread::sleep(SEAT_FREE_KILL_SETTLE);
+        let still = drm_card_holders(&cards);
+        if !still.is_empty() {
+            eprintln!(
+                "doord: warning: the GPU is still held after SIGKILL by {still:?}; the seat may not be free"
+            );
+        }
+    }
+}
+
+/// The distinct process groups of `holders` (`getpgid` of each). Groups `<= 1`
+/// (init / unknown) are dropped so we never signal the whole system.
+fn holder_process_groups(holders: &[libc::pid_t]) -> Vec<libc::pid_t> {
+    let mut groups = Vec::new();
+    for &pid in holders {
+        // SAFETY: getpgid of a pid; -1 (the process just exited) is filtered below.
+        let pgid = unsafe { libc::getpgid(pid) };
+        if pgid > 1 && !groups.contains(&pgid) {
+            groups.push(pgid);
+        }
+    }
+    groups
+}
+
+/// Send `sig` to every process in group `pgid` (`kill(-pgid)`), refusing to
+/// signal doord's own group. Best effort — an `ESRCH` (group already gone) is fine.
+fn signal_group(pgid: libc::pid_t, sig: libc::c_int) {
+    // SAFETY: getpgid(0) is this process's own group; never signal it.
+    let own = unsafe { libc::getpgid(0) };
+    if pgid == own {
+        return;
+    }
+    // SAFETY: a negative pid targets the process group; scalar args, no shared state.
+    unsafe { libc::kill(-pgid, sig) };
+}
+
+/// The seat's DRM KMS device nodes (`/dev/dri/card*`). Render-only nodes
+/// (`renderD*`) are excluded — they carry no DRM master / scanout, so a process
+/// holding only those is not squatting the seat.
+fn drm_card_nodes() -> Vec<PathBuf> {
+    let mut nodes = Vec::new();
+    if let Ok(entries) = fs::read_dir("/dev/dri") {
+        for entry in entries.flatten() {
+            if entry.file_name().to_string_lossy().starts_with("card") {
+                nodes.push(entry.path());
+            }
+        }
+    }
+    nodes
+}
+
+/// Pids with any of `cards` open, by scanning `/proc/<pid>/fd` symlinks — what
+/// `fuser` does. doord's own pid is excluded (it never holds the card). Best
+/// effort: pids that vanish or whose fd dir is unreadable mid-scan are skipped.
+fn drm_card_holders(cards: &[PathBuf]) -> Vec<libc::pid_t> {
+    let self_pid = std::process::id() as libc::pid_t;
+    let mut holders = Vec::new();
+    let Ok(procs) = fs::read_dir("/proc") else {
+        return holders;
+    };
+    for entry in procs.flatten() {
+        let Some(pid) = entry
+            .file_name()
+            .to_str()
+            .and_then(|s| s.parse::<libc::pid_t>().ok())
+        else {
+            continue;
+        };
+        if pid == self_pid {
+            continue;
+        }
+        let Ok(fds) = fs::read_dir(entry.path().join("fd")) else {
+            continue;
+        };
+        for fd in fds.flatten() {
+            if let Ok(target) = fs::read_link(fd.path()) {
+                if cards.contains(&target) {
+                    holders.push(pid);
+                    break;
+                }
+            }
+        }
+    }
+    holders
+}
 
 /// The daemon's main login loop (D-0008). When a greeter user is configured,
 /// doord owns the greeter lifecycle: **greet** (launch the greeter), **serve**
@@ -90,10 +374,37 @@ pub fn serve(config: &Config, logins: &dyn LoginFactory) -> io::Result<()> {
         manage_greeter,
     );
 
+    // When doord owns a real VT and the greeter, make an admin teardown leave a
+    // usable console: a SIGTERM/SIGINT while at the greeter resets the VT on the
+    // way out (the managed compositor dies with doord via its parent-death
+    // signal but never restores the VT itself).
+    if manage_greeter {
+        if let Some(vtnr) = config.seat.vtnr {
+            install_teardown_handler(vtnr);
+        }
+        // A panic must not leave the user's compositor squatting the seat's GPU.
+        // The hook frees the seat (and restores the VT) before the process dies.
+        install_panic_hook();
+    }
+
     // Consecutive quick-failure streak; reset by any greeter that lasts a real
     // login. A sustained streak trips the give-up path rather than thrashing.
     let mut rapid_failures: u32 = 0;
     loop {
+        // At the greeter: an admin teardown now should restore the VT (no live
+        // session owns it). Cleared again the moment a session takes the seat.
+        GREETING.store(true, Ordering::SeqCst);
+
+        // Claim the seat before greeting: if a previous session's compositor is
+        // still squatting the seat's DRM master (a doord crash/SIGKILL the
+        // teardown path couldn't clean up, or a session that outlived its logind
+        // session), cage could never take the master — it would die pre-connect
+        // and trip the give-up path. Free the seat first so the greeter always
+        // starts on a clean GPU. A no-op when nothing holds the card.
+        if manage_greeter {
+            free_seat();
+        }
+
         // Greet: launch the greeter doord manages (re-greet on each loop). If the
         // launch fails, back off and retry rather than block on accept() with no
         // greeter to connect.
@@ -118,12 +429,22 @@ pub fn serve(config: &Config, logins: &dyn LoginFactory) -> io::Result<()> {
         };
 
         // Serve one greeter connection. Sequential by construction — one seat, one
-        // greeter, no concurrency.
+        // greeter, no concurrency. While a greeter is managed, wait for it to
+        // connect *and* watch the process: if it dies before connecting (the
+        // pre-handshake wedge — e.g. cage can't take a held DRM master), don't
+        // block on accept() forever; reset the VT and fall through to the
+        // rapid-failure accounting so the streak trips the give-up path.
         let greeted_at = Instant::now();
-        match listener.accept() {
-            Ok((stream, _)) => {
+        match accept_with_greeter_watch(&listener, greeter.as_ref()) {
+            Ok(AcceptOutcome::Connected(stream)) => {
                 if let Err(e) = handle_connection(stream, config, logins, greeter.as_ref()) {
                     eprintln!("doord: connection ended: {e}");
+                }
+            }
+            Ok(AcceptOutcome::GreeterDied) => {
+                eprintln!("doord: greeter exited before connecting; resetting the VT and backing off");
+                if let Some(vtnr) = config.seat.vtnr {
+                    restore_text_vt(vtnr);
                 }
             }
             Err(e) => eprintln!("doord: accept failed: {e}"),
@@ -216,6 +537,73 @@ fn restore_text_vt(vtnr: u32) {
         );
         return;
     }
+    // SAFETY: fd is a freshly opened VT we own; reset_vt_via_fd issues the VT
+    // ioctls and we close fd exactly once after.
+    unsafe {
+        reset_vt_via_fd(fd, vtnr);
+        libc::close(fd);
+    }
+}
+
+/// Async-signal-safe variant of [`restore_text_vt`] for the teardown signal
+/// handler: no allocation (the VT path is built on the stack), no stdio. Errors
+/// are swallowed — a best-effort console restore on the way out.
+///
+/// # Safety
+/// Must only call async-signal-safe operations (open/ioctl/close); used from a
+/// signal handler.
+fn restore_text_vt_raw(vtnr: u32) {
+    // "/dev/tty" + up to 10 digits + NUL fits comfortably; vtnr is a small VT
+    // number. Built in place so the handler allocates nothing.
+    let mut buf = [0u8; 24];
+    let path = vt_path_into(&mut buf, vtnr);
+    // SAFETY: path points at a NUL-terminated C string in `buf` that outlives the
+    // call; open/ioctl/close are async-signal-safe and fd is closed once.
+    unsafe {
+        let fd = libc::open(path, libc::O_RDWR | libc::O_NOCTTY);
+        if fd < 0 {
+            return;
+        }
+        reset_vt_via_fd(fd, vtnr);
+        libc::close(fd);
+    }
+}
+
+/// Write `"/dev/ttyN\0"` for VT `vtnr` into `buf` without allocating, returning a
+/// pointer to it for `open(2)`. Async-signal-safe.
+fn vt_path_into(buf: &mut [u8; 24], vtnr: u32) -> *const libc::c_char {
+    const PREFIX: &[u8] = b"/dev/tty";
+    let mut i = PREFIX.len();
+    buf[..i].copy_from_slice(PREFIX);
+    // Decimal digits of vtnr, least-significant first, then reversed into place.
+    let mut digits = [0u8; 10];
+    let mut d = 0;
+    let mut n = vtnr;
+    loop {
+        digits[d] = b'0' + (n % 10) as u8;
+        d += 1;
+        n /= 10;
+        if n == 0 {
+            break;
+        }
+    }
+    while d > 0 {
+        d -= 1;
+        buf[i] = digits[d];
+        i += 1;
+    }
+    buf[i] = 0;
+    buf.as_ptr() as *const libc::c_char
+}
+
+/// Issue the VT-restore ioctls on an already-open VT fd: kernel-driven switching
+/// (`VT_AUTO`, undoing a dead compositor's `VT_PROCESS`), text mode (`KD_TEXT`),
+/// and bring the VT to the foreground. Shared by [`restore_text_vt`] and
+/// [`restore_text_vt_raw`].
+///
+/// # Safety
+/// `fd` must be an open VT device fd owned by the caller; the caller closes it.
+unsafe fn reset_vt_via_fd(fd: libc::c_int, vtnr: u32) {
     let auto = vt_ioctl::VtMode {
         mode: vt_ioctl::VT_AUTO,
         waitv: 0,
@@ -223,18 +611,11 @@ fn restore_text_vt(vtnr: u32) {
         acqsig: 0,
         frsig: 0,
     };
-    // SAFETY: fd is a freshly opened VT we own; each request matches its argument
-    // type per the kernel ABI (VT_SETMODE takes a *const vt_mode; KDSETMODE and
-    // VT_ACTIVATE take an int). fd is closed exactly once below.
-    unsafe {
-        // Kernel-driven switching again (undo a dead compositor's VT_PROCESS).
-        libc::ioctl(fd, vt_ioctl::VT_SETMODE, &auto as *const vt_ioctl::VtMode);
-        // Leave graphics mode so the text console renders.
-        libc::ioctl(fd, vt_ioctl::KDSETMODE, vt_ioctl::KD_TEXT);
-        // Bring this VT to the foreground so the restored console is visible.
-        libc::ioctl(fd, vt_ioctl::VT_ACTIVATE, vtnr as libc::c_int);
-        libc::close(fd);
-    }
+    // SAFETY: each request matches its argument type per the kernel ABI
+    // (VT_SETMODE takes a *const vt_mode; KDSETMODE and VT_ACTIVATE take an int).
+    libc::ioctl(fd, vt_ioctl::VT_SETMODE, &auto as *const vt_ioctl::VtMode);
+    libc::ioctl(fd, vt_ioctl::KDSETMODE, vt_ioctl::KD_TEXT);
+    libc::ioctl(fd, vt_ioctl::VT_ACTIVATE, vtnr as libc::c_int);
 }
 
 /// A managed greeter process (the re-exec'd greeter worker, which runs
@@ -247,6 +628,31 @@ struct GreeterHandle {
 impl GreeterHandle {
     fn new(child: Child) -> Self {
         GreeterHandle { child: Some(child) }
+    }
+
+    /// Non-blocking check for a greeter that exited *before* connecting. Reaps it
+    /// if so (clearing the handle, which makes a later [`terminate`](Self::terminate)
+    /// a no-op) and reports `true`; `true` also if it was already reaped. Used by
+    /// the greeter-watch so a pre-handshake death is noticed instead of hanging
+    /// the daemon on `accept()`.
+    fn reap_if_exited(&mut self) -> bool {
+        let Some(child) = self.child.as_mut() else {
+            return true;
+        };
+        match child.try_wait() {
+            Ok(Some(_)) => {
+                self.child = None;
+                true
+            }
+            Ok(None) => false,
+            // An errored wait can't be retried meaningfully; treat it as gone so
+            // the loop stops waiting rather than spinning on a broken handle.
+            Err(e) => {
+                eprintln!("doord: checking the greeter failed: {e}; treating it as exited");
+                self.child = None;
+                true
+            }
+        }
     }
 
     /// Terminate the greeter and **wait for it to exit**, so the seat's VT/DRM is
@@ -277,6 +683,74 @@ impl GreeterHandle {
         // SAFETY: pid is this child's; it has not been reaped (try_wait returned None).
         unsafe { libc::kill(pid, libc::SIGKILL) };
         let _ = child.wait();
+    }
+}
+
+/// The result of waiting for a greeter connection while watching the greeter
+/// process.
+enum AcceptOutcome {
+    /// The greeter connected; serve it.
+    Connected(UnixStream),
+    /// The greeter process exited before connecting (the pre-handshake wedge).
+    GreeterDied,
+}
+
+/// Accept the greeter connection, but — when doord manages the greeter — do not
+/// block on `accept()` indefinitely: concurrently watch the greeter process so a
+/// pre-handshake death (it never connects) is detected and reported rather than
+/// hanging the daemon forever (RC: cage failing to take a held DRM master would
+/// otherwise wedge doord silently). Without a managed greeter (dev) there is no
+/// process to watch, so it just blocks on `accept()`.
+fn accept_with_greeter_watch(
+    listener: &UnixListener,
+    greeter: Option<&RefCell<GreeterHandle>>,
+) -> io::Result<AcceptOutcome> {
+    let Some(greeter) = greeter else {
+        let (stream, _) = listener.accept()?;
+        return Ok(AcceptOutcome::Connected(stream));
+    };
+
+    // Non-blocking accept + a bounded poll so we alternate between "did the
+    // greeter connect?" and "is the greeter still alive?" without busy-spinning.
+    // A socket accepted from a non-blocking listener is itself blocking on Linux
+    // (O_NONBLOCK is not inherited through accept), so handle_connection's reads
+    // behave normally.
+    listener.set_nonblocking(true)?;
+    let outcome = loop {
+        match listener.accept() {
+            Ok((stream, _)) => break Ok(AcceptOutcome::Connected(stream)),
+            Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
+                if greeter.borrow_mut().reap_if_exited() {
+                    break Ok(AcceptOutcome::GreeterDied);
+                }
+                // Sleep until the listener is readable or the watch interval
+                // elapses, then re-check the greeter. EINTR (a teardown signal)
+                // also wakes us; the handler terminates the process, so we never
+                // return to a stale wait.
+                poll_readable(listener.as_raw_fd(), GREETER_WATCH_INTERVAL);
+            }
+            Err(e) => break Err(e),
+        }
+    };
+    // Restore blocking semantics for the next iteration's dev/no-greeter path and
+    // for cleanliness; ignore errors on a listener we are about to reuse anyway.
+    let _ = listener.set_nonblocking(false);
+    outcome
+}
+
+/// Block until `fd` is readable or `timeout` elapses. Best-effort: a poll error
+/// or an `EINTR` wake simply returns, and the caller re-checks its conditions.
+fn poll_readable(fd: libc::c_int, timeout: Duration) {
+    let mut pfd = libc::pollfd {
+        fd,
+        events: libc::POLLIN,
+        revents: 0,
+    };
+    let millis = timeout.as_millis().min(libc::c_int::MAX as u128) as libc::c_int;
+    // SAFETY: a single valid pollfd is passed with count 1; poll writes only
+    // revents. Any return value is acceptable — the caller re-checks state.
+    unsafe {
+        libc::poll(&mut pfd, 1, millis);
     }
 }
 
@@ -572,16 +1046,20 @@ fn run_start(
         );
         greeter.borrow_mut().terminate();
 
+        // The session is about to take the VT and owns it for its lifetime. From
+        // here an admin teardown must *not* reset the VT out from under the live
+        // compositor (and that session, having no parent-death signal, survives a
+        // doord restart). The loop re-arms GREETING when it re-greets.
+        GREETING.store(false, Ordering::SeqCst);
+
         match login.start(&session, &config.seat) {
             Ok(child) => {
                 eprintln!("doord: started session '{}' for '{username}'", session.id);
-                match child.wait() {
-                    Ok(Some(status)) => {
-                        eprintln!("doord: session '{}' exited ({status})", session.id)
-                    }
-                    Ok(None) => {}
-                    Err(e) => eprintln!("doord: waiting on session '{}' failed: {e}", session.id),
-                }
+                // Own the session until it ends — but stay responsive to an admin
+                // teardown: a SIGTERM/SIGINT here means the seat must be freed for
+                // the next login manager, which can't be done from the signal
+                // handler. wait_for_session polls for both.
+                wait_for_session(child, &config.seat, &session.id);
             }
             Err(e) => {
                 // The greeter is already gone; the loop re-greets after we return.
@@ -861,6 +1339,36 @@ mod tests {
         drop(client);
         handle.join().unwrap();
         terminal
+    }
+
+    /// Read back the NUL-terminated path `vt_path_into` wrote into `buf`.
+    fn vt_path_string(vtnr: u32) -> String {
+        let mut buf = [0u8; 24];
+        let _ = vt_path_into(&mut buf, vtnr);
+        let nul = buf.iter().position(|&b| b == 0).unwrap();
+        String::from_utf8(buf[..nul].to_vec()).unwrap()
+    }
+
+    #[test]
+    fn drm_card_nodes_are_kms_not_render() {
+        // Read-only: whatever /dev/dri holds (or nothing, in a sandbox), every
+        // returned node must be a `card*` KMS node and never a render-only
+        // `renderD*` node — a process holding only the latter is not squatting the
+        // seat, so it must never be a free_seat() target.
+        for node in drm_card_nodes() {
+            let name = node.file_name().unwrap().to_string_lossy().into_owned();
+            assert!(name.starts_with("card"), "unexpected non-card node: {name}");
+            assert!(!name.starts_with("renderD"), "render node leaked in: {name}");
+        }
+    }
+
+    #[test]
+    fn vt_path_matches_format_without_allocating() {
+        // The async-signal-safe hand-rolled path must equal the obvious format
+        // for the VT numbers doord actually sees (single- and multi-digit).
+        for vtnr in [0u32, 1, 2, 7, 12, 63] {
+            assert_eq!(vt_path_string(vtnr), format!("/dev/tty{vtnr}"));
+        }
     }
 
     #[test]

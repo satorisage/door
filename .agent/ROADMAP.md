@@ -69,21 +69,47 @@ be exercised end to end. M4 beauty + M5 hardening follow.)*
       `pacman -Qo /usr/bin/doord`), enabled, logged in for real through the greeter
       on the VT into Plasma; reverted to sddm with the revert in hand.
       `depends:` Arch PKGBUILD, reversible enable + TTY revert (validated)
-- [ ] **RC5 — reset the VT on admin teardown** (material; see postmortem RC5):
-      give doord a shutdown/`Drop` path that restores `VT_AUTO`/`KD_TEXT` whenever
-      it exits owning the VT with no live handoff — extend the RC2 *crash*-path
-      guarantee to the *admin stop/disable* path so the revert never leaves a
-      frozen VT. `depends:` reversible enable + TTY revert (validated, with RC5 follow-up)
+- [x] **RC5 — reset the VT on admin teardown** (2026-06-27; material; see postmortem
+      RC5): doord now installs a SIGTERM/SIGINT teardown handler (`ipc.rs`,
+      `install_teardown_handler`/`handle_teardown`) that restores `VT_AUTO`/`KD_TEXT`
+      **only while it holds the VT at the greeter** (`GREETING` flag), then re-raises
+      with the default disposition. Extends the RC2 *crash*-path guarantee to the
+      *admin stop/disable* path; a live session (no parent-death signal) keeps its VT
+      and survives a doord restart. 38 tests green, clippy clean. **Not yet
+      re-validated on hardware.** `depends:` reversible enable + TTY revert (validated,
+      with RC5 follow-up)
 - [ ] **RC6 — greeter shader-cache home** (cosmetic; see postmortem RC6): give the
       `door-greeter` user a writable `XDG_CACHE_HOME`/home so Mesa stops logging
       `Failed to create //.cache`. Deferred to M4/M5 polish.
-- [ ] **RC7 — greeter death pre-handshake must not wedge doord** (material; see
-      postmortem RC7): the serve loop must wait on the greeter child concurrently
-      with `accept()`, so a greeter that dies before connecting is reaped, the VT
-      is reset, and the failure is counted toward give-up/backoff — instead of
-      doord blocking forever on `accept()` (black screen, no feedback). Surfaced
-      by a live `enable --now doord` under an occupied seat0; clean-boot switch is
-      unaffected. `depends:` RC5 — reset the VT on admin teardown
+- [x] **RC7 — greeter death pre-handshake must not wedge doord** (2026-06-27;
+      material; see postmortem RC7): the serve loop now waits on the greeter via a
+      non-blocking accept + bounded poll (`accept_with_greeter_watch`,
+      `GreeterHandle::reap_if_exited`); a greeter that dies before connecting is
+      reaped, the VT is reset, and the failure counts toward give-up/backoff —
+      instead of blocking forever on `accept()`. 38 tests green, clippy clean.
+      **Not yet re-validated on hardware** (the wedge only reproduces under an
+      occupied seat0; clean-boot switch is unaffected). `depends:` RC5 — reset the
+      VT on admin teardown
+- [ ] **RC8 — session stdio paints the VT console** (cosmetic; see postmortem RC8):
+      `spawn.rs::take_controlling_tty` dup2's the session's std{out,err} onto the VT,
+      so the compositor's startup warnings (kwin/xkbcomp "multiply defined", etc.)
+      flash on tty1 before the desktop paints over them. Harmless — but a DM normally
+      routes session logs to a file/journal, not the console. Fix: keep the VT as the
+      controlling terminal but redirect std{out,err} to the journal or a logfile.
+      Deferred to M4/M5 polish. `depends:` RC5 — reset the VT on admin teardown
+- [x] **RC9 — free the seat on teardown/re-greet** (2026-06-27; material; **proven
+      on hardware**; see postmortem RC9): a door session's compositor runs under
+      `user@1000` behind a self-respawning supervisor (`kwin_wayland_wrapper`) and
+      outlives the logind session, doord, and `terminate-session` alike, squatting
+      the seat's DRM master so the next login manager (sddm, or doord's re-greeted
+      cage) can't acquire the GPU → bare blinking cursor. Fix (`ipc.rs`):
+      `free_seat()` kills the **process group** of each `/dev/dri/card*` holder
+      (`SIGTERM`→`SIGKILL`, taking the supervisor down so nothing respawns), wired
+      to (1) seat-claim before each greet, (2) an interruptible session-wait that
+      acts on a teardown flag, and (3) a panic hook. Owner decision: sessions die
+      with doord (every exit incl. crash). Validated live: doord seat-claimed a
+      stuck compositor and greeted; `stop doord; start sddm` reverted cleanly. 26+3
+      tests green, clippy clean. `depends:` RC7 — greeter death pre-handshake
 
 **Done-when (M6):** door installs from a PKGBUILD (disabled by default), can be
 enabled to become the machine's login manager with the previous DM kept as

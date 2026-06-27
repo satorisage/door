@@ -76,6 +76,17 @@ impl SessionChild {
             None => Ok(None),
         }
     }
+
+    /// Non-blocking check for session exit, reaping it if it has. `Ok(Some(status))`
+    /// once it exits, `Ok(None)` while it still runs. A childless test handle is
+    /// always `Ok(None)` (the caller drives it via [`wait`](Self::wait) instead).
+    /// Lets the daemon poll the session while also watching for an admin teardown.
+    pub fn try_wait(&mut self) -> io::Result<Option<ExitStatus>> {
+        match self.0.as_mut() {
+            Some(child) => child.try_wait(),
+            None => Ok(None),
+        }
+    }
 }
 
 /// Fork the chosen session for `target`, hand it the seat's VT, drop privilege,
