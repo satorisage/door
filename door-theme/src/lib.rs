@@ -117,6 +117,13 @@ pub struct Theme {
     pub spinner_glow: f32,
     /// Comet-spinner rotation speed (rad/s). Shared across variants.
     pub spinner_speed: f32,
+    /// The rotating comet's color (head + trail). Per variant.
+    pub spinner_comet: Color,
+    /// The static ring of dots the comet passes over. Per variant.
+    pub spinner_track: Color,
+    /// Trail length, 0.2–1.0 (shorter = crisper, fewer overlapping dots — helps on a
+    /// light card; longer = a softer glowing ribbon, lovely on dark). Per variant.
+    pub spinner_trail: f32,
 }
 
 impl Default for Theme {
@@ -141,6 +148,9 @@ impl Default for Theme {
             is_day: false,
             spinner_glow: 1.0,
             spinner_speed: 2.5,
+            spinner_comet: Color::rgb(0x7d, 0xcf, 0xff),
+            spinner_track: Color::rgb(0x7a, 0xa2, 0xf7),
+            spinner_trail: 1.0,
         }
     }
 }
@@ -169,6 +179,10 @@ impl Theme {
             // No head bloom on the bright card (the bloom bands on light); crisp.
             spinner_glow: 0.0,
             spinner_speed: 2.5,
+            // Deep solid comet + a short trail so it stays crisp on the white card.
+            spinner_comet: Color::rgb(0x21, 0x46, 0x93),
+            spinner_track: Color::rgb(0x2e, 0x7d, 0xe9),
+            spinner_trail: 0.55,
         }
     }
 }
@@ -193,6 +207,9 @@ struct ThemeFile {
     animate: Option<bool>,
     spinner_glow: Option<f32>,
     spinner_speed: Option<f32>,
+    spinner_comet: Option<String>,
+    spinner_track: Option<String>,
+    spinner_trail: Option<f32>,
     /// Local day window for the greeter's auto day/night, `"HH:MM"` (default
     /// 07:00–19:00). Inside the window the greeter uses the day palette.
     day_start: Option<String>,
@@ -215,6 +232,9 @@ struct DayFile {
     field: Option<String>,
     logo: Option<String>,
     spinner_glow: Option<f32>,
+    spinner_comet: Option<String>,
+    spinner_track: Option<String>,
+    spinner_trail: Option<f32>,
 }
 
 impl Theme {
@@ -292,6 +312,11 @@ impl Theme {
         }
         if let Some(s) = file.spinner_speed {
             self.spinner_speed = s;
+        }
+        self.spinner_comet = color("spinner_comet", file.spinner_comet, self.spinner_comet);
+        self.spinner_track = color("spinner_track", file.spinner_track, self.spinner_track);
+        if let Some(tr) = file.spinner_trail {
+            self.spinner_trail = tr;
         }
         self
     }
@@ -374,6 +399,11 @@ impl Theme {
         if let Some(g) = d.spinner_glow {
             self.spinner_glow = g;
         }
+        self.spinner_comet = color("spinner_comet", d.spinner_comet, self.spinner_comet);
+        self.spinner_track = color("spinner_track", d.spinner_track, self.spinner_track);
+        if let Some(tr) = d.spinner_trail {
+            self.spinner_trail = tr;
+        }
         self
     }
 
@@ -416,6 +446,9 @@ impl Theme {
             None => out.push_str("# logo =\n"),
         }
         out.push_str(&format!("spinner_glow = {}\n", day.spinner_glow));
+        out.push_str(&format!("spinner_comet = {:?}\n", day.spinner_comet.to_hex()));
+        out.push_str(&format!("spinner_track = {:?}\n", day.spinner_track.to_hex()));
+        out.push_str(&format!("spinner_trail = {}\n", day.spinner_trail));
         out
     }
 
@@ -451,6 +484,9 @@ impl Theme {
         out.push_str(&format!("animate       = {}\n", self.animate));
         out.push_str(&format!("spinner_glow  = {}\n", self.spinner_glow));
         out.push_str(&format!("spinner_speed = {}\n", self.spinner_speed));
+        out.push_str(&format!("spinner_comet = {:?}\n", self.spinner_comet.to_hex()));
+        out.push_str(&format!("spinner_track = {:?}\n", self.spinner_track.to_hex()));
+        out.push_str(&format!("spinner_trail = {}\n", self.spinner_trail));
         out
     }
 }

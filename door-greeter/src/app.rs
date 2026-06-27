@@ -443,7 +443,9 @@ fn view(state: &State) -> Element<'_, Message> {
         None => canvas(sky::Spinner {
             anim: state.anim,
             fade: f,
-            day: t.is_day,
+            comet: t.spinner_comet.iced(),
+            track: t.spinner_track.iced(),
+            trail: t.spinner_trail,
             glow: t.spinner_glow,
             speed: t.spinner_speed,
         })

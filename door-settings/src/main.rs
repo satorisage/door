@@ -47,7 +47,10 @@ struct Palette {
     foreground: String,
     muted: String,
     logo: String,
-    /// Per-variant spinner head-glow (0–1).
+    // Per-variant spinner fields.
+    comet: String,
+    track: String,
+    trail: f32,
     glow: f32,
 }
 
@@ -65,6 +68,9 @@ impl Palette {
             foreground: t.foreground.to_hex(),
             muted: t.muted.to_hex(),
             logo: path(&t.logo),
+            comet: t.spinner_comet.to_hex(),
+            track: t.spinner_track.to_hex(),
+            trail: t.spinner_trail,
             glow: t.spinner_glow,
         }
     }
@@ -82,6 +88,8 @@ enum Param {
     Foreground,
     Muted,
     Logo,
+    SpinnerComet,
+    SpinnerTrack,
     Font,
     CornerRadius,
     CardWidth,
@@ -95,6 +103,7 @@ enum Message {
     CardAlpha(f32),
     SpinnerGlow(f32),
     SpinnerSpeed(f32),
+    SpinnerTrail(f32),
     EditDay(bool),
     ToggleClock(bool),
     ToggleAnimate(bool),
@@ -165,6 +174,8 @@ impl State {
             Param::Foreground => pal.foreground = value,
             Param::Muted => pal.muted = value,
             Param::Logo => pal.logo = value,
+            Param::SpinnerComet => pal.comet = value,
+            Param::SpinnerTrack => pal.track = value,
             Param::Font => self.font = value,
             Param::CornerRadius => self.corner_radius = value,
             Param::CardWidth => self.card_width = value,
@@ -208,6 +219,9 @@ impl State {
             is_day: day,
             spinner_glow: pal.glow,
             spinner_speed: self.spinner_speed,
+            spinner_comet: color("Comet", &pal.comet)?,
+            spinner_track: color("Track", &pal.track)?,
+            spinner_trail: pal.trail,
         })
     }
 
@@ -249,6 +263,10 @@ fn update(state: &mut State, message: Message) -> Task<Message> {
             pal.glow = v.clamp(0.0, 1.0);
         }
         Message::SpinnerSpeed(v) => state.spinner_speed = v.clamp(0.0, 8.0),
+        Message::SpinnerTrail(v) => {
+            let pal = if state.editing_day { &mut state.day } else { &mut state.night };
+            pal.trail = v.clamp(0.15, 1.0);
+        }
         Message::EditDay(on) => state.editing_day = on,
         Message::ToggleClock(on) => state.show_clock = on,
         Message::ToggleAnimate(on) => state.animate = on,
@@ -402,6 +420,24 @@ fn controls(state: &State) -> Element<'_, Message> {
         .spacing(10)
         .align_y(Alignment::Center),
         section("SPINNER"),
+        row![
+            color_cell("Comet", &pal.comet, Param::SpinnerComet),
+            color_cell("Track", &pal.track, Param::SpinnerTrack),
+        ]
+        .spacing(10),
+        row![
+            text("Trail")
+                .size(13)
+                .width(Length::Fixed(92.0))
+                .color(c(LABEL.0, LABEL.1, LABEL.2)),
+            slider(0.15..=1.0, pal.trail, Message::SpinnerTrail).step(0.01),
+            text(format!("{}%", (pal.trail * 100.0).round() as u32))
+                .size(12)
+                .width(Length::Fixed(38.0))
+                .color(c(MUTED.0, MUTED.1, MUTED.2)),
+        ]
+        .spacing(10)
+        .align_y(Alignment::Center),
         row![
             text("Glow")
                 .size(13)
@@ -637,7 +673,9 @@ fn preview_card(t: &Theme, anim: f32) -> Element<'static, Message> {
         None => canvas(sky::Spinner {
             anim,
             fade: 1.0,
-            day: t.is_day,
+            comet: t.spinner_comet.iced(),
+            track: t.spinner_track.iced(),
+            trail: t.spinner_trail,
             glow: t.spinner_glow,
             speed: t.spinner_speed,
         })

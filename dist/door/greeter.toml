@@ -36,6 +36,9 @@ animate       = true
 # speed = rotation in rad/s. Both also have sliders in door-settings.
 spinner_glow  = 1.0
 spinner_speed = 2.5
+spinner_comet = "#7dcfff"   # the rotating comet's color (head + trail)
+spinner_track = "#7aa2f7"   # the static ring of dots it passes over
+spinner_trail = 1.0         # trail length 0.15–1.0 (shorter = crisper on a light card)
 
 # Auto day/night: the greeter runs before login, so it can't read your KDE color
 # scheme — it picks by the local clock instead. The colors above are the NIGHT

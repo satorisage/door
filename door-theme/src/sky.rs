@@ -134,10 +134,15 @@ fn ease_in_out(x: f32) -> f32 {
 pub struct Spinner {
     pub anim: f32,
     pub fade: f32,
-    pub day: bool,
-    /// Head-glow intensity (0 = crisp/no bloom). From `theme.spinner_glow`.
+    /// The rotating comet's color (head + trail).
+    pub comet: Color,
+    /// The static ring of dots.
+    pub track: Color,
+    /// Trail length 0.2–1.0 (shorter = crisper; longer = a softer ribbon).
+    pub trail: f32,
+    /// Head-glow intensity (0 = crisp/no bloom).
     pub glow: f32,
-    /// Rotation speed (rad/s). From `theme.spinner_speed`.
+    /// Rotation speed (rad/s).
     pub speed: f32,
 }
 
@@ -158,52 +163,34 @@ impl<Message> Program<Message> for Spinner {
         let ring = size * 0.36;
         let dot = size * 0.075;
         let at = |angle: f32| Point::new(center.x + angle.cos() * ring, center.y + angle.sin() * ring);
-        let (core, blue, cyan, _) = palette(self.day);
-        // Head→mid→tail colors. Night glows bright-on-dark; day must invert the
-        // value (a deep comet inking onto a light card) or it washes out to nothing.
-        let (c_head, c_mid, c_tail, bloom_col) = if self.day {
-            (
-                rgb(0x21, 0x46, 0x93),
-                rgb(0x2e, 0x7d, 0xe9),
-                rgb(0x52, 0x82, 0xd8),
-                rgb(0x2e, 0x7d, 0xe9),
-            )
-        } else {
-            (core, cyan, blue, cyan)
-        };
-        let track_alpha = if self.day { 0.16 } else { 0.12 };
-        let bloom_mul = self.glow;
 
-        // A faint static track of dots.
+        // A faint static track of dots (the comet passes over these).
         const TRACK: usize = 12;
         for i in 0..TRACK {
             let a = i as f32 / TRACK as f32 * std::f32::consts::TAU;
-            frame.fill(&Path::circle(at(a), dot * 0.5), with_alpha(c_tail, track_alpha * self.fade));
+            frame.fill(&Path::circle(at(a), dot * 0.5), with_alpha(self.track, 0.18 * self.fade));
         }
 
-        // The comet: a bright head + fading trail at a *continuous* angle, so it
-        // glides smoothly around the ring rather than snapping between track dots.
+        // The comet head + trail at a *continuous* angle. The trail length and dot
+        // count scale together with `trail`: a short trail is fewer, less-overlapping
+        // dots (crisp on a light card); a long trail is a dense soft ribbon (glow on
+        // dark). A single comet color with an alpha taper, so it reads at any value.
         let head = self.anim * self.speed;
-        // A dense, overlapping trail reads as one continuous silk ribbon rather
-        // than separate dots; a smooth taper in radius and alpha toward the tail.
-        const TRAIL: usize = 40;
-        for j in 0..TRAIL {
-            let k = j as f32 / TRAIL as f32; // 0 head .. ~1 tail
-            let a = head - k * 2.6; // trail sweeps ~2.6 rad behind the head
+        let trail = self.trail.clamp(0.15, 1.0);
+        let arc = 2.6 * trail;
+        let dots = ((44.0 * trail).round() as usize).max(8);
+        for j in 0..dots {
+            let k = j as f32 / dots as f32; // 0 head .. ~1 tail
+            let a = head - k * arc;
             let r = dot * (1.0 - 0.5 * k);
-            let col = if j == 0 {
-                c_head
-            } else if k < 0.4 {
-                c_mid
-            } else {
-                c_tail
-            };
-            let alpha = (1.0 - k).powf(1.6) * self.fade;
-            frame.fill(&Path::circle(at(a), r.max(0.6)), with_alpha(col, alpha));
+            let alpha = (1.0 - k).powf(1.5) * self.fade;
+            frame.fill(&Path::circle(at(a), r.max(0.6)), with_alpha(self.comet, alpha));
         }
-        // Soft layered glow on the head for a silky bloom (gentler in day).
-        for &(rr, oo) in &[(2.2f32, 0.10f32), (1.6, 0.16), (1.05, 0.30)] {
-            frame.fill(&Path::circle(at(head), dot * rr), with_alpha(bloom_col, oo * bloom_mul * self.fade));
+        // Optional soft head bloom (0 = crisp; bands on a light card, so day → 0).
+        if self.glow > 0.0 {
+            for &(rr, oo) in &[(2.2f32, 0.10f32), (1.6, 0.16), (1.05, 0.30)] {
+                frame.fill(&Path::circle(at(head), dot * rr), with_alpha(self.comet, oo * self.glow * self.fade));
+            }
         }
 
         vec![frame.into_geometry()]
