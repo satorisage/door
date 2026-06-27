@@ -254,11 +254,11 @@ fn view(state: &State) -> Element<'_, Message> {
 
     // Left: a floating frosted glass control card. Right: the live greeter preview.
     let panel = container(scrollable(controls(state)))
-        .width(Length::Fixed(372.0))
+        .width(Length::Fixed(360.0))
         .height(Length::Fill)
-        .padding(24)
+        .padding(16)
         .style(glass_panel);
-    let left = container(panel).padding(20);
+    let left = container(panel).padding(16);
 
     let preview = container(preview_card(&theme))
         .center_x(Length::Fill)
@@ -345,7 +345,7 @@ fn controls(state: &State) -> Element<'_, Message> {
             .size(12)
             .color(c(MUTED.0, MUTED.1, MUTED.2)),
     ]
-    .spacing(13)
+    .spacing(7)
     .into()
 }
 
@@ -366,7 +366,7 @@ fn plain_row<'a>(label: &'a str, value: &'a str, param: Param) -> Element<'a, Me
             .color(c(LABEL.0, LABEL.1, LABEL.2)),
         text_input("", value)
             .on_input(move |v| Message::Set(param, v))
-            .padding(8)
+            .padding(6)
             .size(14)
             .style(input_style),
     ]
@@ -384,7 +384,7 @@ fn color_row<'a>(label: &'a str, value: &'a str, param: Param) -> Element<'a, Me
             .color(c(LABEL.0, LABEL.1, LABEL.2)),
         text_input("", value)
             .on_input(move |v| Message::Set(param, v))
-            .padding(8)
+            .padding(6)
             .size(14)
             .style(input_style),
         swatch(value),
