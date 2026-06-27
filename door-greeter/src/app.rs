@@ -12,14 +12,18 @@
 //! then the field is cleared.
 
 use std::sync::mpsc;
+use std::time::Duration;
 
 use futures::SinkExt;
-use iced::widget::{button, column, container, pick_list, row, text, text_input};
-use iced::{window, Alignment, Element, Length, Task};
+use iced::widget::{
+    button, column, container, image, pick_list, row, stack, text, text_input, Space,
+};
+use iced::{window, Alignment, Background, Border, ContentFit, Element, Length, Subscription, Task};
 
 use protocol::{PowerAction, Secret, Session};
 
 use crate::client::{AuthStep, Client, StartOutcome, DEFAULT_SOCKET};
+use crate::theme::Theme;
 
 /// Run the greeter (D-0007): a plain `iced` fullscreen toplevel, hosted by `cage`
 /// on the greeter VT. As the sole client on its own compositor it needs nothing
@@ -38,8 +42,44 @@ pub fn run() -> iced::Result {
             fullscreen,
             ..Default::default()
         })
-        .subscription(|_state| iced_futures::Subscription::run(daemon_worker))
+        .style(app_style)
+        .subscription(subscription)
         .run()
+}
+
+/// Window-level appearance from the theme: the solid background (also shown at any
+/// wallpaper letterbox edge) and the default text color.
+fn app_style(state: &State, _theme: &iced::Theme) -> iced::theme::Style {
+    iced::theme::Style {
+        background_color: state.theme.background.iced(),
+        text_color: state.theme.foreground.iced(),
+    }
+}
+
+/// The greeter's subscriptions: the daemon worker event stream plus a 1 Hz clock.
+fn subscription(_state: &State) -> Subscription<Message> {
+    Subscription::batch([
+        Subscription::run(daemon_worker),
+        Subscription::run(clock_ticker),
+    ])
+}
+
+/// Emit a [`Message::Tick`] once a second so the card clock stays current. A small
+/// thread sleeps and pushes through the Iced channel (same shape as the daemon
+/// worker) — avoids pulling an async timer/runtime feature onto the greeter.
+fn clock_ticker() -> impl futures::Stream<Item = Message> {
+    iced_futures::stream::channel(4, |output: futures::channel::mpsc::Sender<Message>| async move {
+        std::thread::spawn(move || {
+            let mut output = output;
+            loop {
+                std::thread::sleep(Duration::from_secs(1));
+                if futures::executor::block_on(output.send(Message::Tick)).is_err() {
+                    break;
+                }
+            }
+        });
+        std::future::pending::<()>().await;
+    })
 }
 
 /// A startable session, rendered by name in the picker.
@@ -90,6 +130,8 @@ pub enum Message {
     SessionStarted,
     DaemonError(String),
     Fatal(String),
+    /// 1 Hz clock tick — refreshes the card clock.
+    Tick,
     // From the UI:
     UsernameChanged(String),
     PasswordChanged(String),
@@ -106,6 +148,10 @@ struct State {
     password: String,
     status: String,
     cmd_tx: Option<mpsc::Sender<Command>>,
+    /// The resolved look, loaded once at startup (M4).
+    theme: Theme,
+    /// Current local time, `HH:MM`, refreshed by [`Message::Tick`].
+    clock: String,
 }
 
 impl State {
@@ -118,6 +164,8 @@ impl State {
             password: String::new(),
             status: "Connecting to doord…".to_string(),
             cmd_tx: None,
+            theme: Theme::load(),
+            clock: now_hm(),
         }
     }
 
@@ -219,19 +267,55 @@ fn update(state: &mut State, message: Message) -> Task<Message> {
             }
         }
         Message::PowerPressed(action) => state.send(Command::Power(action)),
+        Message::Tick => state.clock = now_hm(),
     }
     task
 }
 
+/// Local wall-clock time as `HH:MM`, without pulling a date/time crate onto the
+/// pre-auth surface: `localtime_r` on the current epoch second.
+fn now_hm() -> String {
+    // SAFETY: `time(NULL)` returns the epoch seconds; `localtime_r` fills a caller-
+    // owned `tm` from it (no shared state, no allocation). Both are async-signal-safe
+    // libc calls; here they just read the clock.
+    unsafe {
+        let now = libc::time(std::ptr::null_mut());
+        let mut tm: libc::tm = std::mem::zeroed();
+        if libc::localtime_r(&now, &mut tm).is_null() {
+            return String::new();
+        }
+        format!("{:02}:{:02}", tm.tm_hour, tm.tm_min)
+    }
+}
+
 fn view(state: &State) -> Element<'_, Message> {
-    let title = text("door").size(48);
+    let t = &state.theme;
+    let fg = t.foreground.iced();
+    let muted = t.muted.iced();
+    let accent = t.accent.iced();
+
+    let clock: Element<Message> = if t.show_clock {
+        text(state.clock.clone()).size(30).color(muted).into()
+    } else {
+        Space::new().into()
+    };
+
+    let logo: Element<Message> = match &t.logo {
+        Some(path) => image(image::Handle::from_path(path))
+            .height(Length::Fixed(72.0))
+            .into(),
+        None => Space::new().into(),
+    };
+
+    let title = text("door").size(44).color(fg);
 
     let picker = pick_list(
         state.sessions.clone(),
         state.selected.clone(),
         Message::SessionPicked,
     )
-    .placeholder("Session");
+    .placeholder("Session")
+    .width(Length::Fill);
 
     let username = text_input("Username", &state.username)
         .on_input(Message::UsernameChanged)
@@ -245,7 +329,18 @@ fn view(state: &State) -> Element<'_, Message> {
         .padding(10);
 
     let busy = matches!(state.phase, Phase::Authenticating | Phase::Started);
-    let mut login = button(text("Sign in"));
+    let mut login = button(text("Sign in"))
+        .padding(10)
+        .width(Length::Fill)
+        .style(move |_theme, _status| button::Style {
+            background: Some(Background::Color(accent)),
+            text_color: iced::Color::WHITE,
+            border: Border {
+                radius: 8.0.into(),
+                ..Default::default()
+            },
+            ..Default::default()
+        });
     if !busy {
         login = login.on_press(Message::LoginPressed);
     }
@@ -258,22 +353,48 @@ fn view(state: &State) -> Element<'_, Message> {
     .spacing(10);
 
     let form = column![
+        clock,
+        logo,
         title,
         picker,
         username,
         password,
         login,
-        text(&state.status),
+        text(state.status.clone()).color(muted),
         power,
     ]
     .spacing(14)
-    .align_x(Alignment::Center)
-    .max_width(360);
+    .align_x(Alignment::Center);
 
-    container(form)
-        .center_x(Length::Fill)
-        .center_y(Length::Fill)
-        .into()
+    // The frosted card: a translucent, rounded panel holding the form.
+    let card_color = t.card.iced();
+    let radius = t.corner_radius;
+    let card = container(form)
+        .padding(28)
+        .max_width(t.card_width)
+        .style(move |_theme| container::Style {
+            background: Some(Background::Color(card_color)),
+            border: Border {
+                radius: radius.into(),
+                ..Default::default()
+            },
+            ..Default::default()
+        });
+
+    let centered = container(card).center_x(Length::Fill).center_y(Length::Fill);
+
+    // Wallpaper behind the card when one is configured (a missing file just renders
+    // nothing here, leaving the solid window background from `app_style`).
+    match &t.wallpaper {
+        Some(path) => {
+            let background = image(image::Handle::from_path(path))
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .content_fit(ContentFit::Cover);
+            stack![background, centered].into()
+        }
+        None => centered.into(),
+    }
 }
 
 /// The subscription body: spawn the worker thread and stream its events. Created

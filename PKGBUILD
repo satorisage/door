@@ -50,5 +50,10 @@ package() {
     install -Dm644 dist/systemd/doord.service "$pkgdir/usr/lib/systemd/system/doord.service"
     install -Dm644 dist/sysusers.d/door.conf  "$pkgdir/usr/lib/sysusers.d/door.conf"
 
+    # Greeter theme: the packaged default look + its wallpaper, world-readable under
+    # /usr/share/door/. Admins customize by copying greeter.toml to /etc/door/.
+    install -Dm644 dist/door/greeter.toml  "$pkgdir/usr/share/door/greeter.toml"
+    install -Dm644 dist/door/wallpaper.png "$pkgdir/usr/share/door/wallpaper.png"
+
     install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE" 2>/dev/null || true
 }

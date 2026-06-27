@@ -1,0 +1,25 @@
+# door greeter theme — the packaged default, installed to
+# /usr/share/door/greeter.toml. To customize, copy this to /etc/door/greeter.toml
+# and edit; that path overrides this one. (A DOORD_GREETER_CONFIG=<path> env var
+# overrides both, for testing.)
+#
+# Every key is optional and overlays a built-in default, so a partial file works.
+# Colors are "#rrggbb" or "#rrggbbaa" — the card uses alpha for the translucent,
+# frosted look over the wallpaper. An unknown key is a loud error, not silently
+# ignored. A missing asset (wallpaper/logo) degrades to the solid background.
+
+# Full-bleed background image behind the frosted card. Comment this out for a
+# solid `background` fill instead.
+wallpaper = "/usr/share/door/wallpaper.png"
+
+background  = "#1a1b26"    # solid fill (wallpaper letterbox edges, or no wallpaper)
+card        = "#24283bd0"  # the frosted login card — translucent (alpha d0 ≈ 82%)
+accent      = "#7aa2f7"    # focus highlight + the sign-in button
+foreground  = "#c0caf5"    # primary text
+muted       = "#828bb8"    # status line + clock
+
+corner_radius = 14.0       # card corner radius (px)
+card_width    = 380.0      # card width (px)
+show_clock    = true       # show the clock in the card
+
+# logo = "/usr/share/door/logo.png"   # optional image shown above the title
