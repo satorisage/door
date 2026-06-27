@@ -10,7 +10,8 @@ use std::path::PathBuf;
 use std::time::Instant;
 
 use iced::widget::{
-    button, canvas, column, container, image, row, scrollable, text, text_input, toggler, Space,
+    button, canvas, column, container, image, row, scrollable, slider, text, text_input, toggler,
+    Space,
 };
 use iced::{
     Alignment, Background, Border, Color as IColor, ContentFit, Element, Length, Shadow,
@@ -88,6 +89,7 @@ enum Param {
 #[derive(Debug, Clone)]
 enum Message {
     Set(Param, String),
+    CardAlpha(f32),
     EditDay(bool),
     ToggleClock(bool),
     ToggleAnimate(bool),
@@ -226,6 +228,13 @@ fn write_draft(state: &State) -> Result<PathBuf, String> {
 fn update(state: &mut State, message: Message) -> Task<Message> {
     match message {
         Message::Set(param, value) => state.set(param, value),
+        Message::CardAlpha(v) => {
+            let pal = if state.editing_day { &mut state.day } else { &mut state.night };
+            if let Some(mut col) = Color::parse(pal.card.trim()) {
+                col.a = (v.clamp(0.0, 1.0) * 255.0).round() as u8;
+                pal.card = col.to_hex();
+            }
+        }
         Message::EditDay(on) => state.editing_day = on,
         Message::ToggleClock(on) => state.show_clock = on,
         Message::ToggleAnimate(on) => state.animate = on,
@@ -332,6 +341,9 @@ const MUTED: (u8, u8, u8) = (0x56, 0x5f, 0x89);
 
 fn controls(state: &State) -> Element<'_, Message> {
     let pal = state.active();
+    let card_a = Color::parse(pal.card.trim())
+        .map(|col| col.a as f32 / 255.0)
+        .unwrap_or(1.0);
     column![
         text("Greeter").size(26).color(c(FG.0, FG.1, FG.2)),
         text("Edits preview live · Save asks for your password")
@@ -362,6 +374,19 @@ fn controls(state: &State) -> Element<'_, Message> {
             color_cell("Muted", &pal.muted, Param::Muted),
         ]
         .spacing(10),
+        row![
+            text("Card opacity")
+                .size(13)
+                .width(Length::Fixed(92.0))
+                .color(c(LABEL.0, LABEL.1, LABEL.2)),
+            slider(0.0..=1.0, card_a, Message::CardAlpha).step(0.01),
+            text(format!("{}%", (card_a * 100.0).round() as u32))
+                .size(12)
+                .width(Length::Fixed(38.0))
+                .color(c(MUTED.0, MUTED.1, MUTED.2)),
+        ]
+        .spacing(10)
+        .align_y(Alignment::Center),
         section("SHARED (font, layout, behavior)"),
         plain_row("Font", &state.font, "(stock font)", Param::Font),
         plain_row("Corner radius", &state.corner_radius, "", Param::CornerRadius),
