@@ -29,10 +29,13 @@ fn main() -> iced::Result {
         .run()
 }
 
-fn app_style(_state: &State, _theme: &iced::Theme) -> iced::theme::Style {
+fn app_style(state: &State, _theme: &iced::Theme) -> iced::theme::Style {
+    // Use the previewed variant's background so the day preview sits on a light bg
+    // (not a hardcoded dark one) — the sky + card render over it accurately.
+    let t = state.preview_theme();
     iced::theme::Style {
-        background_color: iced::Color::from_rgb8(0x16, 0x16, 0x1e),
-        text_color: iced::Color::from_rgb8(0xc0, 0xca, 0xf5),
+        background_color: t.background.iced(),
+        text_color: t.foreground.iced(),
     }
 }
 
