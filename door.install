@@ -15,18 +15,22 @@ post_install() {
    doord conflicts with display-manager.service, so enabling it stops your
    current DM automatically; keep the DM *installed* as the fallback.
 
-   REVERT — from a text VT (Ctrl+Alt+F3) or over SSH:
+   REVERT — from a text VT (Ctrl+Alt+F2) or over SSH:
      systemctl disable --now doord.service
-     systemctl enable  --now <current-dm>.service
+     systemctl enable  --now <current-dm>.service   # --now is REQUIRED: without
+                                                    # it the DM is armed for next
+                                                    # boot but not started now.
 
    FAIL-SAFE: if the greeter cannot start (bad perms, missing compositor, crash),
    doord stops itself after a few quick failures, restores a text console, and
    exits instead of locking the machine — so the revert above stays reachable.
    Check 'journalctl -u doord' for the reason.
 
-   WARNING: the greeter<->session VT handoff is built (D-0008) but not yet
-   validated live. Test on a spare machine or a spare VT with the revert above
-   already in hand before relying on it.
+   STATUS: the greeter<->session VT handoff is validated live (2026-06-26):
+   boot -> greeter -> auth -> Plasma, with SSH as a safety net.
+   KNOWN ISSUE: stopping doord on a VT left in graphics mode can leave that VT
+   frozen on the last frame until the fallback DM starts — another VT
+   (Ctrl+Alt+F2 = getty) and SSH stay live, so it is recoverable, not a lockout.
 EOF
 }
 
