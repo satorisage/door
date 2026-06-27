@@ -12,10 +12,11 @@ use std::time::Duration;
 
 use futures::SinkExt;
 use iced::widget::{
-    button, canvas, checkbox, column, container, image, row, scrollable, text, text_input, Space,
+    button, canvas, column, container, image, row, scrollable, text, text_input, toggler, Space,
 };
 use iced::{
-    Alignment, Background, Border, ContentFit, Element, Length, Shadow, Subscription, Task, Vector,
+    Alignment, Background, Border, Color as IColor, ContentFit, Element, Length, Shadow,
+    Subscription, Task, Vector,
 };
 
 use door_theme::sky::{self, Sky};
@@ -251,18 +252,19 @@ fn ticker() -> impl futures::Stream<Item = Message> {
 fn view(state: &State) -> Element<'_, Message> {
     let theme = state.preview_theme();
 
-    // Left: a glass control panel. Right: the live greeter preview, centered.
-    let controls = container(scrollable(controls(state)))
-        .width(Length::Fixed(380.0))
+    // Left: a floating frosted glass control card. Right: the live greeter preview.
+    let panel = container(scrollable(controls(state)))
+        .width(Length::Fixed(372.0))
         .height(Length::Fill)
-        .padding(22)
+        .padding(24)
         .style(glass_panel);
+    let left = container(panel).padding(20);
 
     let preview = container(preview_card(&theme))
         .center_x(Length::Fill)
         .center_y(Length::Fill);
 
-    let content = row![controls, preview].height(Length::Fill);
+    let content = row![left, preview].height(Length::Fill);
 
     // The whole window is a live preview: wallpaper + animated sky behind the
     // control panel and the card — "what you're editing, live".
@@ -291,53 +293,195 @@ fn view(state: &State) -> Element<'_, Message> {
     }
 }
 
+// Panel chrome palette (fixed Tokyo Night — independent of the theme being edited).
+fn c(r: u8, g: u8, b: u8) -> IColor {
+    IColor::from_rgb8(r, g, b)
+}
+const LABEL: (u8, u8, u8) = (0x9a, 0xa3, 0xc8);
+const ACCENT: (u8, u8, u8) = (0x7a, 0xa2, 0xf7);
+const FG: (u8, u8, u8) = (0xc0, 0xca, 0xf5);
+const MUTED: (u8, u8, u8) = (0x56, 0x5f, 0x89);
+
 /// The editable control list inside the glass panel.
 fn controls(state: &State) -> Element<'_, Message> {
-    let row_field = |label: &'static str, value: &str, param: Param| -> Element<Message> {
-        row![
-            text(label).size(13).width(Length::Fixed(118.0)),
-            text_input("", value)
-                .on_input(move |v| Message::Set(param, v))
-                .padding(7)
-                .size(14),
-        ]
-        .spacing(8)
-        .align_y(Alignment::Center)
-        .into()
-    };
-
     column![
-        text("Greeter theme").size(24),
-        text("Edits preview live. Save asks for your password.").size(12),
-        row_field("Wallpaper", &state.wallpaper, Param::Wallpaper),
-        row_field("Background", &state.background, Param::Background),
-        row_field("Card", &state.card, Param::Card),
-        row_field("Field", &state.field, Param::Field),
-        row_field("Accent", &state.accent, Param::Accent),
-        row_field("Foreground", &state.foreground, Param::Foreground),
-        row_field("Muted", &state.muted, Param::Muted),
-        row_field("Font", &state.font, Param::Font),
-        row_field("Logo", &state.logo, Param::Logo),
-        row_field("Corner radius", &state.corner_radius, Param::CornerRadius),
-        row_field("Card width", &state.card_width, Param::CardWidth),
-        checkbox(state.show_clock)
-            .label("Show clock + date")
+        text("Greeter").size(26).color(c(FG.0, FG.1, FG.2)),
+        text("Edits preview live · Save asks for your password")
+            .size(12)
+            .color(c(MUTED.0, MUTED.1, MUTED.2)),
+        section("WALLPAPER & ASSETS"),
+        plain_row("Wallpaper", &state.wallpaper, Param::Wallpaper),
+        plain_row("Logo", &state.logo, Param::Logo),
+        plain_row("Font", &state.font, Param::Font),
+        section("COLORS"),
+        color_row("Background", &state.background, Param::Background),
+        color_row("Card", &state.card, Param::Card),
+        color_row("Field", &state.field, Param::Field),
+        color_row("Accent", &state.accent, Param::Accent),
+        color_row("Text", &state.foreground, Param::Foreground),
+        color_row("Muted", &state.muted, Param::Muted),
+        section("LAYOUT"),
+        plain_row("Corner radius", &state.corner_radius, Param::CornerRadius),
+        plain_row("Card width", &state.card_width, Param::CardWidth),
+        section("BEHAVIOR"),
+        toggler(state.show_clock)
+            .label("Clock + date")
             .on_toggle(Message::ToggleClock)
-            .size(16),
-        checkbox(state.animate)
+            .size(18)
+            .text_size(14),
+        toggler(state.animate)
             .label("Animate sky (stars + comet)")
             .on_toggle(Message::ToggleAnimate)
-            .size(16),
+            .size(18)
+            .text_size(14),
+        Space::new(),
         row![
-            button(text("Save").size(14)).on_press(Message::Save),
-            button(text("Open in greeter").size(14)).on_press(Message::OpenInGreeter),
-            button(text("Reset").size(14)).on_press(Message::Reset),
+            primary_button("Save", Message::Save),
+            ghost_button("Open in greeter", Message::OpenInGreeter),
+            ghost_button("Reset", Message::Reset),
         ]
         .spacing(8),
-        text(state.status.clone()).size(12),
+        text(state.status.clone())
+            .size(12)
+            .color(c(MUTED.0, MUTED.1, MUTED.2)),
     ]
-    .spacing(12)
+    .spacing(13)
     .into()
+}
+
+/// A small uppercase section header.
+fn section(title: &str) -> Element<'static, Message> {
+    text(title.to_string())
+        .size(11)
+        .color(c(MUTED.0, MUTED.1, MUTED.2))
+        .into()
+}
+
+/// A labeled row with a styled input (no swatch).
+fn plain_row<'a>(label: &'a str, value: &'a str, param: Param) -> Element<'a, Message> {
+    row![
+        text(label)
+            .size(13)
+            .width(Length::Fixed(92.0))
+            .color(c(LABEL.0, LABEL.1, LABEL.2)),
+        text_input("", value)
+            .on_input(move |v| Message::Set(param, v))
+            .padding(8)
+            .size(14)
+            .style(input_style),
+    ]
+    .spacing(10)
+    .align_y(Alignment::Center)
+    .into()
+}
+
+/// A labeled color row: styled hex input + a live swatch of the current value.
+fn color_row<'a>(label: &'a str, value: &'a str, param: Param) -> Element<'a, Message> {
+    row![
+        text(label)
+            .size(13)
+            .width(Length::Fixed(92.0))
+            .color(c(LABEL.0, LABEL.1, LABEL.2)),
+        text_input("", value)
+            .on_input(move |v| Message::Set(param, v))
+            .padding(8)
+            .size(14)
+            .style(input_style),
+        swatch(value),
+    ]
+    .spacing(10)
+    .align_y(Alignment::Center)
+    .into()
+}
+
+/// A 26px rounded color chip of the current hex (empty border if it doesn't parse).
+fn swatch(value: &str) -> Element<'static, Message> {
+    let fill = Color::parse(value.trim()).map(|col| Background::Color(col.iced()));
+    container(Space::new())
+        .width(Length::Fixed(26.0))
+        .height(Length::Fixed(26.0))
+        .style(move |_t| container::Style {
+            background: fill,
+            border: Border {
+                radius: 7.0.into(),
+                width: 1.0,
+                color: c(0x2a, 0x2e, 0x42),
+            },
+            ..Default::default()
+        })
+        .into()
+}
+
+/// Slim rounded input styling, accent border on focus.
+fn input_style(_t: &iced::Theme, status: text_input::Status) -> text_input::Style {
+    let focused = matches!(status, text_input::Status::Focused { .. });
+    let mut selection = c(ACCENT.0, ACCENT.1, ACCENT.2);
+    selection.a = 0.30;
+    text_input::Style {
+        background: Background::Color(c(0x1d, 0x20, 0x30)),
+        border: Border {
+            radius: 9.0.into(),
+            width: 1.0,
+            color: if focused {
+                c(ACCENT.0, ACCENT.1, ACCENT.2)
+            } else {
+                c(0x2a, 0x2e, 0x42)
+            },
+        },
+        icon: c(MUTED.0, MUTED.1, MUTED.2),
+        placeholder: c(MUTED.0, MUTED.1, MUTED.2),
+        value: c(FG.0, FG.1, FG.2),
+        selection,
+    }
+}
+
+/// The accent primary button (Save).
+fn primary_button(label: &str, msg: Message) -> Element<'_, Message> {
+    button(text(label.to_string()).size(14).color(c(0x16, 0x16, 0x1e)))
+        .padding(9)
+        .on_press(msg)
+        .style(|_t, status| {
+            let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
+            button::Style {
+                background: Some(Background::Color(if hovered {
+                    c(0x9a, 0xbb, 0xff)
+                } else {
+                    c(ACCENT.0, ACCENT.1, ACCENT.2)
+                })),
+                text_color: c(0x16, 0x16, 0x1e),
+                border: Border {
+                    radius: 9.0.into(),
+                    ..Default::default()
+                },
+                ..Default::default()
+            }
+        })
+        .into()
+}
+
+/// A subtle ghost button (Open / Reset).
+fn ghost_button(label: &str, msg: Message) -> Element<'_, Message> {
+    button(text(label.to_string()).size(14))
+        .padding(9)
+        .on_press(msg)
+        .style(|_t, status| {
+            let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
+            button::Style {
+                background: Some(Background::Color(IColor::TRANSPARENT)),
+                text_color: if hovered {
+                    c(ACCENT.0, ACCENT.1, ACCENT.2)
+                } else {
+                    c(LABEL.0, LABEL.1, LABEL.2)
+                },
+                border: Border {
+                    radius: 9.0.into(),
+                    width: 1.0,
+                    color: c(0x2a, 0x2e, 0x42),
+                },
+                ..Default::default()
+            }
+        })
+        .into()
 }
 
 /// A non-interactive mock of the greeter card, themed from the draft.
@@ -427,11 +571,11 @@ fn preview_card(t: &Theme) -> Element<'static, Message> {
 /// The frosted control panel: a translucent dark glass with a soft edge + shadow.
 fn glass_panel(_theme: &iced::Theme) -> container::Style {
     container::Style {
-        background: Some(Background::Color(iced::Color::from_rgba8(0x0e, 0x0f, 0x16, 0.78))),
+        background: Some(Background::Color(iced::Color::from_rgba8(0x0e, 0x0f, 0x16, 0.74))),
         border: Border {
-            radius: 0.0.into(),
+            radius: 18.0.into(),
             width: 1.0,
-            color: iced::Color::from_rgba8(0x7a, 0xa2, 0xf7, 0.18),
+            color: iced::Color::from_rgba8(0x7a, 0xa2, 0xf7, 0.20),
         },
         shadow: Shadow {
             color: iced::Color::from_rgba(0.0, 0.0, 0.0, 0.5),
