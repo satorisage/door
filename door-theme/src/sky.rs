@@ -123,6 +123,17 @@ fn with_alpha(mut c: Color, a: f32) -> Color {
     c
 }
 
+/// Linear blend of two colors (ignoring alpha — callers set that via `with_alpha`).
+fn mix(a: Color, b: Color, t: f32) -> Color {
+    let t = t.clamp(0.0, 1.0);
+    Color {
+        r: a.r + (b.r - a.r) * t,
+        g: a.g + (b.g - a.g) * t,
+        b: a.b + (b.b - a.b) * t,
+        a: 1.0,
+    }
+}
+
 /// InOutSine ease, matching the wallpaper's comet motion.
 fn ease_in_out(x: f32) -> f32 {
     0.5 * (1.0 - (std::f32::consts::PI * x).cos())
@@ -157,6 +168,7 @@ impl<Message> Program<Message> for Spinner {
         bounds: Rectangle,
         _cursor: mouse::Cursor,
     ) -> Vec<Geometry> {
+        use std::f32::consts::{PI, TAU};
         let mut frame = Frame::new(renderer, bounds.size());
         let size = bounds.width.min(bounds.height);
         let center = Point::new(bounds.width / 2.0, bounds.height / 2.0);
@@ -164,33 +176,89 @@ impl<Message> Program<Message> for Spinner {
         let dot = size * 0.075;
         let at = |angle: f32| Point::new(center.x + angle.cos() * ring, center.y + angle.sin() * ring);
 
-        // A faint static track of dots (the comet passes over these).
+        // `hot` ties the white-hot/bloom look to `glow`: on the dark night card a
+        // glowing comet over a bright white-blue nucleus reads beautifully; the day
+        // card defaults `glow` to 0, which keeps the head a crisp pure-comet dot with
+        // no white wash and no banding on the light background.
+        let hot = self.glow.clamp(0.0, 1.0);
+        let white = rgb(0xff, 0xff, 0xff);
+        // Head brightness gently breathes so the spinner feels alive even at rest.
+        let pulse = 0.86 + 0.14 * (self.anim * 3.0).sin();
+
+        // A faint static orbit the comet rides — a hairline ring plus sparse dots, so
+        // the path reads even when the comet is on the far side.
+        frame.stroke(
+            &Path::circle(center, ring),
+            iced::widget::canvas::Stroke {
+                style: with_alpha(self.track, 0.10 * self.fade).into(),
+                width: (size * 0.012).max(0.6),
+                ..Default::default()
+            },
+        );
         const TRACK: usize = 12;
         for i in 0..TRACK {
-            let a = i as f32 / TRACK as f32 * std::f32::consts::TAU;
-            frame.fill(&Path::circle(at(a), dot * 0.5), with_alpha(self.track, 0.18 * self.fade));
+            let a = i as f32 / TRACK as f32 * TAU;
+            frame.fill(&Path::circle(at(a), dot * 0.4), with_alpha(self.track, 0.16 * self.fade));
         }
 
-        // The comet head + trail at a *continuous* angle. The trail length and dot
-        // count scale together with `trail`: a short trail is fewer, less-overlapping
-        // dots (crisp on a light card); a long trail is a dense soft ribbon (glow on
-        // dark). A single comet color with an alpha taper, so it reads at any value.
+        // The comet trail: a dense ribbon of dots from tail → head, each blended from
+        // pure comet (tail) toward a white-blue hot core (head, scaled by `hot`), with
+        // a smooth size + alpha taper so it reads as a luminous streak rather than
+        // beads. Density scales with `trail`. Drawn tail-first so the head sits on top.
         let head = self.anim * self.speed;
         let trail = self.trail.clamp(0.15, 1.0);
         let arc = 2.6 * trail;
-        let dots = ((44.0 * trail).round() as usize).max(8);
-        for j in 0..dots {
-            let k = j as f32 / dots as f32; // 0 head .. ~1 tail
+        let dots = ((72.0 * trail).round() as usize).max(12);
+        for j in (0..dots).rev() {
+            let k = j as f32 / dots as f32; // 0 head .. 1 tail
             let a = head - k * arc;
-            let r = dot * (1.0 - 0.5 * k);
-            let alpha = (1.0 - k).powf(1.5) * self.fade;
-            frame.fill(&Path::circle(at(a), r.max(0.6)), with_alpha(self.comet, alpha));
+            let r = dot * (1.0 - 0.55 * k);
+            let alpha = (1.0 - k).powf(1.7) * self.fade;
+            let col = mix(self.comet, white, hot * (1.0 - k).powi(2) * 0.85);
+            frame.fill(&Path::circle(at(a), r.max(0.6)), with_alpha(col, alpha));
         }
-        // Optional soft head bloom (0 = crisp; bands on a light card, so day → 0).
+
+        let h = at(head);
+        // Soft coma halo around the head — layered low-alpha discs (night only; bands
+        // on the light day card, where `glow` is 0).
         if self.glow > 0.0 {
-            for &(rr, oo) in &[(2.2f32, 0.10f32), (1.6, 0.16), (1.05, 0.30)] {
-                frame.fill(&Path::circle(at(head), dot * rr), with_alpha(self.comet, oo * self.glow * self.fade));
+            for &(rr, oo) in &[(3.4f32, 0.05f32), (2.5, 0.09), (1.7, 0.16), (1.1, 0.28)] {
+                let c = mix(self.comet, white, hot * 0.5);
+                frame.fill(&Path::circle(h, dot * rr), with_alpha(c, oo * self.glow * pulse * self.fade));
             }
+        }
+
+        // The bright nucleus — a hot near-white core (night) / crisp comet dot (day),
+        // with a tiny white center pip for sparkle.
+        let core = mix(self.comet, white, hot * 0.8);
+        frame.fill(&Path::circle(h, dot * 0.78), with_alpha(core, pulse * self.fade));
+        frame.fill(&Path::circle(h, dot * 0.32), with_alpha(white, (0.35 + 0.55 * hot) * pulse * self.fade));
+
+        // A 4-point star glint over the head — the classic comet sparkle. Spike reach
+        // and brightness grow with `glow`; on the day card it's a small crisp cross.
+        let reach = dot * (1.6 + 3.2 * hot);
+        let glint = Path::new(|b| {
+            for i in 0..8 {
+                let ang = i as f32 / 8.0 * TAU;
+                let rad = if i % 2 == 0 { reach } else { dot * 0.28 };
+                let p = Point::new(h.x + ang.cos() * rad, h.y + ang.sin() * rad);
+                if i == 0 { b.move_to(p); } else { b.line_to(p); }
+            }
+            b.close();
+        });
+        frame.fill(&glint, with_alpha(mix(self.comet, white, 0.4 + 0.5 * hot), (0.30 + 0.45 * hot) * pulse * self.fade));
+
+        // Shed sparkles — a few tiny twinkling motes riding just off the trail, each on
+        // its own phase, for a touch of magic. Subtle and color-matched so they read on
+        // either card.
+        for s in 0..3 {
+            let off = s as f32 * 2.3 + 0.7;
+            let ka = head - (0.4 + 0.5 * s as f32) * arc;
+            let wob = (self.anim * (1.7 + 0.4 * s as f32) + off).sin();
+            let twk = 0.5 + 0.5 * (self.anim * (3.1 + s as f32) + off * PI).sin();
+            let rr = ring + wob * dot * 1.4;
+            let p = Point::new(center.x + ka.cos() * rr, center.y + ka.sin() * rr);
+            frame.fill(&Path::circle(p, dot * 0.22), with_alpha(self.comet, 0.5 * twk * self.fade));
         }
 
         vec![frame.into_geometry()]

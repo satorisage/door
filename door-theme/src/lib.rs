@@ -17,6 +17,7 @@
 //! stock font rather than failing.
 
 pub mod sky;
+pub mod skyshader;
 
 use serde::Deserialize;
 use std::path::PathBuf;
@@ -124,6 +125,9 @@ pub struct Theme {
     /// Trail length, 0.2–1.0 (shorter = crisper, fewer overlapping dots — helps on a
     /// light card; longer = a softer glowing ribbon, lovely on dark). Per variant.
     pub spinner_trail: f32,
+    /// The drifting *background-sky* comet's color — distinct from `spinner_comet`
+    /// (which is tuned for the card emblem; the sky comet sits on the sky). Per variant.
+    pub comet_color: Color,
 }
 
 impl Default for Theme {
@@ -151,6 +155,7 @@ impl Default for Theme {
             spinner_comet: Color::rgb(0x7d, 0xcf, 0xff),
             spinner_track: Color::rgb(0x7a, 0xa2, 0xf7),
             spinner_trail: 1.0,
+            comet_color: Color::rgb(0x7d, 0xcf, 0xff),
         }
     }
 }
@@ -183,6 +188,8 @@ impl Theme {
             spinner_comet: Color::rgb(0x21, 0x46, 0x93),
             spinner_track: Color::rgb(0x2e, 0x7d, 0xe9),
             spinner_trail: 0.55,
+            // A brighter sky comet so it reads against the luminous day sky.
+            comet_color: Color::rgb(0x6f, 0x9f, 0xe0),
         }
     }
 }
@@ -210,6 +217,7 @@ struct ThemeFile {
     spinner_comet: Option<String>,
     spinner_track: Option<String>,
     spinner_trail: Option<f32>,
+    comet_color: Option<String>,
     /// Local day window for the greeter's auto day/night, `"HH:MM"` (default
     /// 07:00–19:00). Inside the window the greeter uses the day palette.
     day_start: Option<String>,
@@ -235,6 +243,7 @@ struct DayFile {
     spinner_comet: Option<String>,
     spinner_track: Option<String>,
     spinner_trail: Option<f32>,
+    comet_color: Option<String>,
 }
 
 impl Theme {
@@ -318,6 +327,7 @@ impl Theme {
         if let Some(tr) = file.spinner_trail {
             self.spinner_trail = tr;
         }
+        self.comet_color = color("comet_color", file.comet_color, self.comet_color);
         self
     }
 
@@ -404,6 +414,7 @@ impl Theme {
         if let Some(tr) = d.spinner_trail {
             self.spinner_trail = tr;
         }
+        self.comet_color = color("comet_color", d.comet_color, self.comet_color);
         self
     }
 
@@ -449,6 +460,7 @@ impl Theme {
         out.push_str(&format!("spinner_comet = {:?}\n", day.spinner_comet.to_hex()));
         out.push_str(&format!("spinner_track = {:?}\n", day.spinner_track.to_hex()));
         out.push_str(&format!("spinner_trail = {}\n", day.spinner_trail));
+        out.push_str(&format!("comet_color = {:?}\n", day.comet_color.to_hex()));
         out
     }
 
@@ -487,6 +499,7 @@ impl Theme {
         out.push_str(&format!("spinner_comet = {:?}\n", self.spinner_comet.to_hex()));
         out.push_str(&format!("spinner_track = {:?}\n", self.spinner_track.to_hex()));
         out.push_str(&format!("spinner_trail = {}\n", self.spinner_trail));
+        out.push_str(&format!("comet_color   = {:?}\n", self.comet_color.to_hex()));
         out
     }
 }
@@ -576,11 +589,13 @@ mod tests {
     #[test]
     fn written_config_round_trips_through_parsing() {
         // What door-settings writes must parse back to the same theme.
-        let mut t = Theme::default();
-        t.accent = Color::rgb(0xbb, 0x9a, 0xf7);
-        t.wallpaper = Some(PathBuf::from("/usr/share/door/wallpaper.png"));
-        t.font = Some("MesloLGS Nerd Font".to_string());
-        t.show_clock = false;
+        let t = Theme {
+            accent: Color::rgb(0xbb, 0x9a, 0xf7),
+            wallpaper: Some(PathBuf::from("/usr/share/door/wallpaper.png")),
+            font: Some("MesloLGS Nerd Font".to_string()),
+            show_clock: false,
+            ..Default::default()
+        };
         let rendered = t.to_config_string();
         let file: ThemeFile = toml::from_str(&rendered).expect("written config must parse");
         assert_eq!(Theme::default().merged(file), t);
@@ -616,11 +631,15 @@ mod tests {
 
     #[test]
     fn render_pair_round_trips_both_palettes_and_window() {
-        let mut night = Theme::default();
-        night.accent = Color::rgb(0xbb, 0x9a, 0xf7);
-        let mut day = Theme::day();
-        day.accent = Color::rgb(0x12, 0x34, 0x56);
-        day.background = Color::rgb(0xff, 0xff, 0xff);
+        let night = Theme {
+            accent: Color::rgb(0xbb, 0x9a, 0xf7),
+            ..Default::default()
+        };
+        let day = Theme {
+            accent: Color::rgb(0x12, 0x34, 0x56),
+            background: Color::rgb(0xff, 0xff, 0xff),
+            ..Theme::day()
+        };
         let s = Theme::render_pair(&night, &day, "06:30", "18:45");
         let file: ThemeFile = toml::from_str(&s).expect("render_pair must parse");
         let n2 = Theme::default().merged(file.clone());

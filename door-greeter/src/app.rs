@@ -17,7 +17,8 @@ use std::time::{Duration, Instant};
 
 use futures::SinkExt;
 use iced::widget::{
-    button, canvas, column, container, image, pick_list, row, stack, text, text_input, Space,
+    button, column, container, image, pick_list, row, shader, stack, text, text_input,
+    Space,
 };
 use iced::{
     keyboard, window, Alignment, Background, Border, ContentFit, Element, Font, Length, Shadow,
@@ -27,7 +28,7 @@ use iced::{
 use protocol::{PowerAction, Secret, Session};
 
 use crate::client::{AuthStep, Client, StartOutcome, DEFAULT_SOCKET};
-use door_theme::sky::{self, Sky};
+use door_theme::skyshader::{SkyShader, SpinnerShader};
 use door_theme::{Color, Theme};
 
 /// The resolved theme, loaded once. `run` needs it for the default font before the
@@ -226,8 +227,6 @@ struct State {
     anim: f32,
     /// When the greeter started, the zero point for `anim`.
     started: Instant,
-    /// Fixed ambient starfield positions (generated once so they don't jump).
-    stars: Vec<sky::Star>,
 }
 
 impl State {
@@ -248,7 +247,6 @@ impl State {
             fade: 0.0,
             anim: 0.0,
             started: Instant::now(),
-            stars: sky::stars(),
         }
     }
 
@@ -440,18 +438,10 @@ fn view(state: &State) -> Element<'_, Message> {
         Some(path) => image(image::Handle::from_path(path))
             .height(Length::Fixed(56.0))
             .into(),
-        None => canvas(sky::Spinner {
-            anim: state.anim,
-            fade: f,
-            comet: t.spinner_comet.iced(),
-            track: t.spinner_track.iced(),
-            trail: t.spinner_trail,
-            glow: t.spinner_glow,
-            speed: t.spinner_speed,
-        })
-        .width(Length::Fixed(52.0))
-        .height(Length::Fixed(52.0))
-        .into(),
+        None => shader(SpinnerShader::from_theme(t, state.anim, f))
+            .width(Length::Fixed(52.0))
+            .height(Length::Fixed(52.0))
+            .into(),
     };
 
     let username = text_input("user", &state.username)
@@ -526,14 +516,9 @@ fn view(state: &State) -> Element<'_, Message> {
     // The animated sky (twinkling starfield + drifting comet) over the wallpaper —
     // only when animation is enabled; otherwise the still wallpaper shows through.
     let scene: Element<Message> = if t.animate {
-        let sky = canvas(Sky {
-            stars: state.stars.clone(),
-            anim: state.anim,
-            fade: f,
-            day: t.is_day,
-        })
-        .width(Length::Fill)
-        .height(Length::Fill);
+        let sky = shader(SkyShader::from_theme(t, state.anim, f))
+            .width(Length::Fill)
+            .height(Length::Fill);
         stack![sky, overlay].into()
     } else {
         overlay.into()

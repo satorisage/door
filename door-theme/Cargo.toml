@@ -12,7 +12,10 @@ path = "src/lib.rs"
 # both door-greeter (renders it) and door-settings (edits it) — one source of
 # truth for the look. Depends on iced only for the Color conversions both UIs need.
 [dependencies]
-# `canvas` for the shared animated sky (twinkle + comet).
-iced = { version = "0.14", features = ["canvas"] }
+# `canvas` for the line-art spinner; `wgpu` for the GPU sky shader (real radial
+# glow / nebula / comet, per-pixel — no flat-fill banding).
+iced = { version = "0.14", features = ["canvas", "wgpu"] }
 serde = { workspace = true }
 toml = "0.8"
+# Plain-old-data → bytes for the shader's uniform buffer (already in the tree via wgpu).
+bytemuck = { version = "1", features = ["derive"] }

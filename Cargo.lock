@@ -884,6 +884,7 @@ dependencies = [
 name = "door-theme"
 version = "0.0.0"
 dependencies = [
+ "bytemuck",
  "iced",
  "serde",
  "toml",

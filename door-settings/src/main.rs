@@ -10,21 +10,22 @@ use std::path::PathBuf;
 use std::time::Instant;
 
 use iced::widget::{
-    button, canvas, column, container, image, row, scrollable, slider, text, text_input, toggler,
-    Space,
+    button, column, container, image, row, scrollable, shader, slider, text, text_input,
+    toggler, Space,
 };
 use iced::{
     Alignment, Background, Border, Color as IColor, ContentFit, Element, Length, Shadow,
     Subscription, Task, Vector,
 };
 
-use door_theme::sky::{self, Sky};
+use door_theme::skyshader::{SkyShader, SpinnerShader};
 use door_theme::{Color, Theme};
 
 fn main() -> iced::Result {
     iced::application(State::new, update, view)
         .title("door — greeter settings")
         .style(app_style)
+        .window_size((1180.0, 940.0))
         .subscription(subscription)
         .run()
 }
@@ -55,6 +56,8 @@ struct Palette {
     track: String,
     trail: f32,
     glow: f32,
+    // The background-sky comet color (per variant).
+    comet_color: String,
 }
 
 impl Palette {
@@ -75,6 +78,7 @@ impl Palette {
             track: t.spinner_track.to_hex(),
             trail: t.spinner_trail,
             glow: t.spinner_glow,
+            comet_color: t.comet_color.to_hex(),
         }
     }
 }
@@ -100,6 +104,15 @@ enum Param {
     DayEnd,
 }
 
+/// The control panel's tabs — splits the (long) option list so a tab fits the window
+/// without scrolling. The header (variant toggle) and footer (actions) stay pinned.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Tab {
+    Appearance,
+    Spinner,
+    Layout,
+}
+
 #[derive(Debug, Clone)]
 enum Message {
     Set(Param, String),
@@ -110,6 +123,7 @@ enum Message {
     EditDay(bool),
     ToggleClock(bool),
     ToggleAnimate(bool),
+    SelectTab(Tab),
     Tick,
     OpenInGreeter,
     Save,
@@ -130,10 +144,11 @@ struct State {
     animate: bool,
     // Which variant is being edited / previewed.
     editing_day: bool,
+    // Which control tab is showing.
+    tab: Tab,
     status: String,
     anim: f32,
     started: Instant,
-    stars: Vec<sky::Star>,
     /// Cached built theme for the preview/window — rebuilt on edits, not per frame
     /// (parsing every color twice each vsync frame was the day-flip stutter).
     preview: Theme,
@@ -159,10 +174,10 @@ impl State {
             animate: night.animate,
             // Dev: start on the day variant when DOOR_SETTINGS_DAY is set.
             editing_day: std::env::var_os("DOOR_SETTINGS_DAY").is_some(),
+            tab: Tab::Appearance,
             status: "Loaded night + day themes.".to_string(),
             anim: 0.0,
             started: Instant::now(),
-            stars: sky::stars(),
             preview: Theme::default(),
         };
         s.rebuild_preview();
@@ -243,6 +258,7 @@ impl State {
             spinner_comet: color("Comet", &pal.comet)?,
             spinner_track: color("Track", &pal.track)?,
             spinner_trail: pal.trail,
+            comet_color: color("Sky comet", &pal.comet_color)?,
         })
     }
 
@@ -261,7 +277,7 @@ fn write_draft(state: &State) -> Result<PathBuf, String> {
 fn update(state: &mut State, message: Message) -> Task<Message> {
     // Every message except the per-frame animation tick can change the theme; only
     // rebuild the cached preview for those (not 60×/s) so the day flip stays smooth.
-    let touches_theme = !matches!(message, Message::Tick);
+    let touches_theme = !matches!(message, Message::Tick | Message::SelectTab(_));
     match message {
         Message::Set(param, value) => state.set(param, value),
         Message::CardAlpha(v) => {
@@ -281,6 +297,7 @@ fn update(state: &mut State, message: Message) -> Task<Message> {
             pal.trail = v.clamp(0.15, 1.0);
         }
         Message::EditDay(on) => state.editing_day = on,
+        Message::SelectTab(t) => state.tab = t,
         Message::ToggleClock(on) => state.show_clock = on,
         Message::ToggleAnimate(on) => state.animate = on,
         Message::Tick => state.anim = state.started.elapsed().as_secs_f32() % 10_000.0,
@@ -354,15 +371,10 @@ fn view(state: &State) -> Element<'_, Message> {
     let content = row![left, preview].height(Length::Fill);
 
     let sky_layer: Element<Message> = if theme.animate {
-        canvas(Sky {
-            stars: state.stars.clone(),
-            anim: state.anim,
-            fade: 1.0,
-            day: theme.is_day,
-        })
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .into()
+        shader(SkyShader::from_theme(theme, state.anim, 1.0))
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .into()
     } else {
         Space::new().into()
     };
@@ -392,143 +404,271 @@ fn controls(state: &State) -> Element<'_, Message> {
     let card_a = Color::parse(pal.card.trim())
         .map(|col| col.a as f32 / 255.0)
         .unwrap_or(1.0);
-    column![
-        text("Greeter").size(26).color(c(FG.0, FG.1, FG.2)),
+    let editing_day = state.editing_day;
+
+    // Header: title + the Night/Day variant toggle on one baseline, then a subtitle.
+    let header = column![
+        row![
+            text("Greeter").size(26).color(c(FG.0, FG.1, FG.2)),
+            Space::new().width(Length::Fill),
+            toggler(editing_day)
+                .label(if editing_day { "Day" } else { "Night" })
+                .on_toggle(Message::EditDay)
+                .size(18)
+                .text_size(13),
+        ]
+        .align_y(Alignment::Center),
         text("Edits preview live · Save asks for your password")
             .size(12)
             .color(c(MUTED.0, MUTED.1, MUTED.2)),
-        // Night / Day editor toggle.
-        toggler(state.editing_day)
-            .label(if state.editing_day { "Editing: Day" } else { "Editing: Night" })
-            .on_toggle(Message::EditDay)
-            .size(18)
-            .text_size(14),
-        section("WALLPAPER & ASSETS"),
-        plain_row("Wallpaper", &pal.wallpaper, "(animated sky)", Param::Wallpaper),
-        plain_row("Logo", &pal.logo, "(comet spinner)", Param::Logo),
-        section("COLORS"),
-        row![
-            color_cell("BG", &pal.background, Param::Background),
-            color_cell("Card", &pal.card, Param::Card),
+    ]
+    .spacing(4);
+
+    let assets = group(
+        "ASSETS",
+        column![
+            plain_row("Wallpaper", &pal.wallpaper, "(animated sky)", Param::Wallpaper),
+            plain_row("Logo", &pal.logo, "(comet spinner)", Param::Logo),
         ]
-        .spacing(10),
-        row![
-            color_cell("Field", &pal.field, Param::Field),
-            color_cell("Accent", &pal.accent, Param::Accent),
+        .spacing(9)
+        .into(),
+    );
+
+    let colors = group(
+        "COLORS",
+        column![
+            row![
+                color_cell("BG", &pal.background, Param::Background),
+                color_cell("Card", &pal.card, Param::Card),
+            ]
+            .spacing(10),
+            row![
+                color_cell("Field", &pal.field, Param::Field),
+                color_cell("Accent", &pal.accent, Param::Accent),
+            ]
+            .spacing(10),
+            row![
+                color_cell("Text", &pal.foreground, Param::Foreground),
+                color_cell("Muted", &pal.muted, Param::Muted),
+            ]
+            .spacing(10),
+            slider_row(
+                "Card opacity",
+                card_a,
+                0.0..=1.0,
+                0.01,
+                format!("{}%", (card_a * 100.0).round() as u32),
+                Message::CardAlpha,
+            ),
         ]
-        .spacing(10),
-        row![
-            color_cell("Text", &pal.foreground, Param::Foreground),
-            color_cell("Muted", &pal.muted, Param::Muted),
+        .spacing(9)
+        .into(),
+    );
+
+    let spinner = group(
+        "SPINNER",
+        column![
+            row![
+                color_cell("Comet", &pal.comet, Param::SpinnerComet),
+                color_cell("Track", &pal.track, Param::SpinnerTrack),
+            ]
+            .spacing(10),
+            slider_row(
+                "Trail",
+                pal.trail,
+                0.15..=1.0,
+                0.01,
+                format!("{}%", (pal.trail * 100.0).round() as u32),
+                Message::SpinnerTrail,
+            ),
+            slider_row(
+                "Glow",
+                pal.glow,
+                0.0..=1.0,
+                0.01,
+                format!("{}%", (pal.glow * 100.0).round() as u32),
+                Message::SpinnerGlow,
+            ),
+            slider_row(
+                "Speed",
+                state.spinner_speed,
+                0.0..=6.0,
+                0.1,
+                format!("{:.1}", state.spinner_speed),
+                Message::SpinnerSpeed,
+            ),
         ]
-        .spacing(10),
-        row![
-            text("Card opacity")
-                .size(13)
-                .width(Length::Fixed(92.0))
-                .color(c(LABEL.0, LABEL.1, LABEL.2)),
-            slider(0.0..=1.0, card_a, Message::CardAlpha).step(0.01),
-            text(format!("{}%", (card_a * 100.0).round() as u32))
-                .size(12)
-                .width(Length::Fixed(38.0))
-                .color(c(MUTED.0, MUTED.1, MUTED.2)),
+        .spacing(9)
+        .into(),
+    );
+
+    let shared = group(
+        "LAYOUT & BEHAVIOR",
+        column![
+            plain_row("Font", &state.font, "(stock font)", Param::Font),
+            plain_row("Corner radius", &state.corner_radius, "", Param::CornerRadius),
+            plain_row("Card width", &state.card_width, "", Param::CardWidth),
+            row![
+                color_label("Day from"),
+                text_input("07:00", &state.day_start)
+                    .on_input(|v| Message::Set(Param::DayStart, v))
+                    .padding(6)
+                    .size(14)
+                    .style(input_style),
+                color_label("to"),
+                text_input("19:00", &state.day_end)
+                    .on_input(|v| Message::Set(Param::DayEnd, v))
+                    .padding(6)
+                    .size(14)
+                    .style(input_style),
+            ]
+            .spacing(8)
+            .align_y(Alignment::Center),
+            toggler(state.show_clock)
+                .label("Clock + date")
+                .on_toggle(Message::ToggleClock)
+                .size(18)
+                .text_size(14),
+            toggler(state.animate)
+                .label("Animate sky (stars + comet)")
+                .on_toggle(Message::ToggleAnimate)
+                .size(18)
+                .text_size(14),
         ]
-        .spacing(10)
-        .align_y(Alignment::Center),
-        section("SPINNER"),
-        row![
-            color_cell("Comet", &pal.comet, Param::SpinnerComet),
-            color_cell("Track", &pal.track, Param::SpinnerTrack),
-        ]
-        .spacing(10),
-        row![
-            text("Trail")
-                .size(13)
-                .width(Length::Fixed(92.0))
-                .color(c(LABEL.0, LABEL.1, LABEL.2)),
-            slider(0.15..=1.0, pal.trail, Message::SpinnerTrail).step(0.01),
-            text(format!("{}%", (pal.trail * 100.0).round() as u32))
-                .size(12)
-                .width(Length::Fixed(38.0))
-                .color(c(MUTED.0, MUTED.1, MUTED.2)),
-        ]
-        .spacing(10)
-        .align_y(Alignment::Center),
-        row![
-            text("Glow")
-                .size(13)
-                .width(Length::Fixed(92.0))
-                .color(c(LABEL.0, LABEL.1, LABEL.2)),
-            slider(0.0..=1.0, pal.glow, Message::SpinnerGlow).step(0.01),
-            text(format!("{}%", (pal.glow * 100.0).round() as u32))
-                .size(12)
-                .width(Length::Fixed(38.0))
-                .color(c(MUTED.0, MUTED.1, MUTED.2)),
-        ]
-        .spacing(10)
-        .align_y(Alignment::Center),
-        row![
-            text("Speed")
-                .size(13)
-                .width(Length::Fixed(92.0))
-                .color(c(LABEL.0, LABEL.1, LABEL.2)),
-            slider(0.0..=6.0, state.spinner_speed, Message::SpinnerSpeed).step(0.1),
-            text(format!("{:.1}", state.spinner_speed))
-                .size(12)
-                .width(Length::Fixed(38.0))
-                .color(c(MUTED.0, MUTED.1, MUTED.2)),
-        ]
-        .spacing(10)
-        .align_y(Alignment::Center),
-        section("SHARED (font, layout, behavior)"),
-        plain_row("Font", &state.font, "(stock font)", Param::Font),
-        plain_row("Corner radius", &state.corner_radius, "", Param::CornerRadius),
-        plain_row("Card width", &state.card_width, "", Param::CardWidth),
-        row![
-            color_label("Day from"),
-            text_input("07:00", &state.day_start)
-                .on_input(|v| Message::Set(Param::DayStart, v))
-                .padding(6)
-                .size(14)
-                .style(input_style),
-            color_label("to"),
-            text_input("19:00", &state.day_end)
-                .on_input(|v| Message::Set(Param::DayEnd, v))
-                .padding(6)
-                .size(14)
-                .style(input_style),
-        ]
-        .spacing(8)
-        .align_y(Alignment::Center),
-        toggler(state.show_clock)
-            .label("Clock + date")
-            .on_toggle(Message::ToggleClock)
-            .size(18)
-            .text_size(14),
-        toggler(state.animate)
-            .label("Animate sky (stars + comet)")
-            .on_toggle(Message::ToggleAnimate)
-            .size(18)
-            .text_size(14),
-        row![
-            primary_button("Save", Message::Save),
-            ghost_button("Open in greeter", Message::OpenInGreeter),
-            ghost_button("Reset", Message::Reset),
-        ]
-        .spacing(8),
+        .spacing(9)
+        .into(),
+    );
+
+    let actions = row![
+        primary_button("Save", Message::Save),
+        ghost_button("Open in greeter", Message::OpenInGreeter),
+        ghost_button("Reset", Message::Reset),
+    ]
+    .spacing(8);
+
+    let tabbar = row![
+        tab_button("Appearance", Tab::Appearance, state.tab),
+        tab_button("Spinner", Tab::Spinner, state.tab),
+        tab_button("Layout", Tab::Layout, state.tab),
+    ]
+    .spacing(6);
+
+    // Only the active tab's groups render — keeps the panel short enough to fit.
+    let body: Element<Message> = match state.tab {
+        Tab::Appearance => column![assets, colors].spacing(14).into(),
+        Tab::Spinner => spinner,
+        Tab::Layout => shared,
+    };
+
+    column![
+        header,
+        tabbar,
+        body,
+        actions,
         text(state.status.clone())
             .size(12)
             .color(c(MUTED.0, MUTED.1, MUTED.2)),
     ]
-    .spacing(7)
+    .spacing(14)
     .into()
 }
 
-fn section(title: &str) -> Element<'static, Message> {
-    text(title.to_string())
-        .size(11)
-        .color(c(MUTED.0, MUTED.1, MUTED.2))
+/// One tab in the control panel's tab bar — accent-filled when active.
+fn tab_button(label: &str, tab: Tab, active: Tab) -> Element<'static, Message> {
+    let is_active = tab == active;
+    button(text(label.to_string()).size(13))
+        .padding([7.0, 14.0])
+        .on_press(Message::SelectTab(tab))
+        .style(move |_t, status| {
+            let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
+            button::Style {
+                background: Some(Background::Color(if is_active {
+                    IColor::from_rgba8(0x7a, 0xa2, 0xf7, 0.16)
+                } else {
+                    IColor::TRANSPARENT
+                })),
+                text_color: if is_active {
+                    c(ACCENT.0, ACCENT.1, ACCENT.2)
+                } else if hovered {
+                    c(FG.0, FG.1, FG.2)
+                } else {
+                    c(LABEL.0, LABEL.1, LABEL.2)
+                },
+                border: Border {
+                    radius: 9.0.into(),
+                    width: if is_active { 1.0 } else { 0.0 },
+                    color: IColor::from_rgba8(0x7a, 0xa2, 0xf7, 0.30),
+                },
+                ..Default::default()
+            }
+        })
         .into()
+}
+
+/// A titled, faintly-bordered sub-card grouping one section's controls — the panel
+/// reads as a stack of glass tiles, echoing the greeter's frosted card.
+fn group<'a>(title: &str, body: Element<'a, Message>) -> Element<'a, Message> {
+    let head = row![
+        text(title.to_string())
+            .size(11)
+            .color(c(LABEL.0, LABEL.1, LABEL.2)),
+        container(Space::new())
+            .width(Length::Fill)
+            .height(Length::Fixed(1.0))
+            .style(hairline),
+    ]
+    .spacing(10)
+    .align_y(Alignment::Center);
+
+    container(column![head, body].spacing(11))
+        .width(Length::Fill)
+        .padding(14)
+        .style(subcard)
+        .into()
+}
+
+/// A label · slider · value row — the shared shape for every slider control.
+fn slider_row<'a>(
+    label: &'a str,
+    value: f32,
+    range: std::ops::RangeInclusive<f32>,
+    step: f32,
+    display: String,
+    on: impl Fn(f32) -> Message + 'a,
+) -> Element<'a, Message> {
+    row![
+        text(label)
+            .size(13)
+            .width(Length::Fixed(92.0))
+            .color(c(LABEL.0, LABEL.1, LABEL.2)),
+        slider(range, value, on).step(step),
+        text(display)
+            .size(12)
+            .width(Length::Fixed(40.0))
+            .color(c(MUTED.0, MUTED.1, MUTED.2)),
+    ]
+    .spacing(10)
+    .align_y(Alignment::Center)
+    .into()
+}
+
+fn subcard(_t: &iced::Theme) -> container::Style {
+    container::Style {
+        background: Some(Background::Color(IColor::from_rgba8(0xff, 0xff, 0xff, 0.022))),
+        border: Border {
+            radius: 13.0.into(),
+            width: 1.0,
+            color: IColor::from_rgba8(0x7a, 0xa2, 0xf7, 0.10),
+        },
+        ..Default::default()
+    }
+}
+
+fn hairline(_t: &iced::Theme) -> container::Style {
+    container::Style {
+        background: Some(Background::Color(IColor::from_rgba8(0x7a, 0xa2, 0xf7, 0.14))),
+        ..Default::default()
+    }
 }
 
 fn color_label(label: &str) -> Element<'static, Message> {
@@ -686,15 +826,7 @@ fn preview_card(t: &Theme, anim: f32) -> Element<'static, Message> {
         Some(path) => image(image::Handle::from_path(path))
             .height(Length::Fixed(56.0))
             .into(),
-        None => canvas(sky::Spinner {
-            anim,
-            fade: 1.0,
-            comet: t.spinner_comet.iced(),
-            track: t.spinner_track.iced(),
-            trail: t.spinner_trail,
-            glow: t.spinner_glow,
-            speed: t.spinner_speed,
-        })
+        None => shader(SpinnerShader::from_theme(t, anim, 1.0))
             .width(Length::Fixed(52.0))
             .height(Length::Fixed(52.0))
             .into(),
