@@ -358,8 +358,11 @@ the sddm#1200 dirty-seat dead end). Fix re-scoped accordingly — see Dispositio
   handler does only async-signal-safe work (atomics + open/ioctl/close via
   `restore_text_vt_raw`, then `signal`/`raise`). `enable --now` doc emphasis
   already landed in `door.install`.
-- RC6 (greeter shader-cache permission error from `HOME=/`) — **found, not yet
-  fixed.** Cosmetic; greeter `XDG_CACHE_HOME`/home. Deferred to M4/M5 polish.
+- RC6 (greeter shader-cache permission error from `HOME=/`) — **fixed 2026-06-27**
+  (`worker.rs::launch_greeter`): the greeter env now sets `XDG_CACHE_HOME` to the
+  greeter's logind runtime dir (`XDG_RUNTIME_DIR`, 0700/writable/ephemeral), so
+  Mesa stops trying `//.cache` and the shader cache works. Cosmetic; pending a
+  hardware glance at the greeter log.
 - RC7 (greeter dies pre-handshake → doord hangs; surfaced by a live DM switch
   under occupied seat0) — **fixed (2026-06-27), not yet re-validated on
   hardware.** The serve loop now waits via a non-blocking accept + bounded poll
@@ -370,9 +373,11 @@ the sddm#1200 dirty-seat dead end). Fix re-scoped accordingly — see Dispositio
   a wedged accept. Operationally, the supported DM switch remains clean-boot, not
   live `enable --now`.
 - RC8 (session stdio paints the VT console → scary-but-harmless compositor
-  warnings flash on tty1) — **found, not yet fixed.** Cosmetic: redirect the
-  session's `stdout`/`stderr` to the journal/logfile instead of dup2'ing onto the
-  VT. Deferred to M4/M5 polish.
+  warnings flash on tty1) — **fixed 2026-06-27** (`spawn.rs::take_controlling_tty`):
+  the VT is still the session's controlling terminal and stdin, but stdout/stderr
+  are left on the daemon's inherited streams (the service journal) instead of being
+  dup2'd onto the VT — so the compositor's startup chatter goes to the journal, not
+  the framebuffer. Cosmetic; pending a hardware glance at the console on login.
 - RC9 (revert/DM-switch under a live session squats the seat's DRM master → next
   login manager can't acquire the GPU → bare blinking cursor) — **fixed and proven
   on hardware 2026-06-27.** Lever proven on hardware: only killing the compositor
@@ -393,7 +398,11 @@ the sddm#1200 dirty-seat dead end). Fix re-scoped accordingly — see Dispositio
   die with doord (every exit incl. crash); the desktop is not preserved across a
   doord stop/restart/crash — accepted, since the compositor is the squatter and
   can't be cleanly preserved. Residual gap: a `SIGKILL`/power-loss of doord runs no
-  cleanup, but the next start's seat-claim (point 1) clears the orphan. **Validated
+  cleanup, but the next start's seat-claim (point 1) clears the orphan. (After
+  killing the compositor, `free_seat` also runs a best-effort `loginctl
+  terminate-seat` to sweep session-bound user units — e.g. `plasmashell`,
+  `PartOf=graphical-session.target Restart=on-failure` — so they stop cleanly
+  instead of restart-looping.) **Validated
   live: step 1 — doord seat-claimed a stuck compositor and greeted; step 2 —
   `stop doord; start sddm` reached the sddm login with no flicker/respawn.** 26 unit
   + 3 integration tests green, clippy clean. Distinct from RC5/RC7

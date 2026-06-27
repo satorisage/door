@@ -32,6 +32,7 @@ use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
 use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
+use std::sync::OnceLock;
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -107,6 +108,13 @@ static GREETING: AtomicBool = AtomicBool::new(false);
 /// itself: freeing the seat means scanning `/proc` and killing the compositor,
 /// which is not async-signal-safe.
 static TEARDOWN: AtomicBool = AtomicBool::new(false);
+
+/// doord's seat name (e.g. `seat0`), set once at startup. Used by [`free_seat`] to
+/// sweep any remaining logind sessions on the seat (`loginctl terminate-seat`)
+/// after killing the compositor — so session-bound units like `plasmashell`
+/// (`PartOf=graphical-session.target`, `Restart=on-failure`) stop cleanly instead
+/// of restart-looping with no compositor.
+static OWNED_SEAT: OnceLock<String> = OnceLock::new();
 
 /// Install the teardown signal handler so an admin `systemctl stop`/`disable`
 /// (`SIGTERM`, or `SIGINT` under a foreground run) leaves a usable text console.
@@ -275,6 +283,33 @@ fn free_seat() {
             );
         }
     }
+    // The GPU is freed; sweep the seat's logind session(s) too, so session-bound
+    // user units left behind (e.g. plasmashell, PartOf=graphical-session.target,
+    // Restart=on-failure) stop cleanly instead of restart-looping now that their
+    // compositor is gone. Best effort — only reached when we actually freed a
+    // squatter, and a missing/absent loginctl just leaves the (harmless) leftover.
+    sweep_seat_sessions();
+}
+
+/// Best-effort `loginctl terminate-seat <seat>` to end any logind sessions still
+/// on doord's seat after the compositor was killed. Errors are ignored: the seat's
+/// GPU/VT — what the next login manager actually needs — is already free; this only
+/// tidies leftover session-bound user units.
+fn sweep_seat_sessions() {
+    let Some(seat) = OWNED_SEAT.get() else {
+        return;
+    };
+    match Command::new("loginctl")
+        .arg("terminate-seat")
+        .arg(seat)
+        .status()
+    {
+        Ok(status) if !status.success() => {
+            eprintln!("doord: loginctl terminate-seat {seat} exited {status} (leftover sessions may remain)");
+        }
+        Err(e) => eprintln!("doord: could not run loginctl terminate-seat {seat}: {e}"),
+        _ => {}
+    }
 }
 
 /// The distinct process groups of `holders` (`getpgid` of each). Groups `<= 1`
@@ -382,6 +417,8 @@ pub fn serve(config: &Config, logins: &dyn LoginFactory) -> io::Result<()> {
         if let Some(vtnr) = config.seat.vtnr {
             install_teardown_handler(vtnr);
         }
+        // Remember the seat so free_seat can sweep its logind sessions on teardown.
+        let _ = OWNED_SEAT.set(config.seat.seat.clone());
         // A panic must not leave the user's compositor squatting the seat's GPU.
         // The hook frees the seat (and restores the VT) before the process dies.
         install_panic_hook();

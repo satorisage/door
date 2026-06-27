@@ -78,9 +78,11 @@ be exercised end to end. M4 beauty + M5 hardening follow.)*
       and survives a doord restart. 38 tests green, clippy clean. **Not yet
       re-validated on hardware.** `depends:` reversible enable + TTY revert (validated,
       with RC5 follow-up)
-- [ ] **RC6 — greeter shader-cache home** (cosmetic; see postmortem RC6): give the
-      `door-greeter` user a writable `XDG_CACHE_HOME`/home so Mesa stops logging
-      `Failed to create //.cache`. Deferred to M4/M5 polish.
+- [x] **RC6 — greeter shader-cache home** (2026-06-27; cosmetic; see postmortem
+      RC6): the greeter env (`worker.rs::launch_greeter`) now sets `XDG_CACHE_HOME`
+      to the greeter's logind runtime dir (`XDG_RUNTIME_DIR`, 0700/writable), so
+      Mesa stops logging `Failed to create //.cache` and its shader cache works.
+      Pending a hardware glance at the greeter log.
 - [x] **RC7 — greeter death pre-handshake must not wedge doord** (2026-06-27;
       material; see postmortem RC7): the serve loop now waits on the greeter via a
       non-blocking accept + bounded poll (`accept_with_greeter_watch`,
@@ -90,13 +92,14 @@ be exercised end to end. M4 beauty + M5 hardening follow.)*
       **Not yet re-validated on hardware** (the wedge only reproduces under an
       occupied seat0; clean-boot switch is unaffected). `depends:` RC5 — reset the
       VT on admin teardown
-- [ ] **RC8 — session stdio paints the VT console** (cosmetic; see postmortem RC8):
-      `spawn.rs::take_controlling_tty` dup2's the session's std{out,err} onto the VT,
-      so the compositor's startup warnings (kwin/xkbcomp "multiply defined", etc.)
-      flash on tty1 before the desktop paints over them. Harmless — but a DM normally
-      routes session logs to a file/journal, not the console. Fix: keep the VT as the
-      controlling terminal but redirect std{out,err} to the journal or a logfile.
-      Deferred to M4/M5 polish. `depends:` RC5 — reset the VT on admin teardown
+- [x] **RC8 — session stdio paints the VT console** (2026-06-27; cosmetic; see
+      postmortem RC8): `spawn.rs::take_controlling_tty` kept the VT as the session's
+      controlling terminal **and stdin**, but now leaves std{out,err} on the daemon's
+      inherited streams (the service journal) instead of dup2'ing them onto the VT —
+      so the compositor's startup warnings (kwin/xkbcomp "multiply defined", "Lost
+      connection to Wayland compositor", etc.) go to the journal, not the framebuffer.
+      Pending a hardware glance at the console on login. `depends:` RC5 — reset the VT
+      on admin teardown
 - [x] **RC9 — free the seat on teardown/re-greet** (2026-06-27; material; **proven
       on hardware**; see postmortem RC9): a door session's compositor runs under
       `user@1000` behind a self-respawning supervisor (`kwin_wayland_wrapper`) and
