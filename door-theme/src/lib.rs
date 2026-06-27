@@ -16,6 +16,8 @@
 //! files installed system-wide; a missing asset degrades to the solid background /
 //! stock font rather than failing.
 
+pub mod sky;
+
 use serde::Deserialize;
 use std::path::PathBuf;
 
@@ -104,6 +106,9 @@ pub struct Theme {
     pub card_width: f32,
     /// Whether to show the clock + date in the card.
     pub show_clock: bool,
+    /// Whether to run the animated sky (twinkling stars + drifting comet). Off → a
+    /// still wallpaper, like the battery half of the Plasma comet wallpaper.
+    pub animate: bool,
 }
 
 impl Default for Theme {
@@ -124,6 +129,7 @@ impl Default for Theme {
             corner_radius: 16.0,
             card_width: 300.0,
             show_clock: true,
+            animate: true,
         }
     }
 }
@@ -145,6 +151,7 @@ struct ThemeFile {
     corner_radius: Option<f32>,
     card_width: Option<f32>,
     show_clock: Option<bool>,
+    animate: Option<bool>,
 }
 
 impl Theme {
@@ -214,6 +221,9 @@ impl Theme {
         if let Some(c) = file.show_clock {
             self.show_clock = c;
         }
+        if let Some(a) = file.animate {
+            self.animate = a;
+        }
         self
     }
 
@@ -246,6 +256,7 @@ impl Theme {
         out.push_str(&format!("corner_radius = {}\n", self.corner_radius));
         out.push_str(&format!("card_width    = {}\n", self.card_width));
         out.push_str(&format!("show_clock    = {}\n", self.show_clock));
+        out.push_str(&format!("animate       = {}\n", self.animate));
         out
     }
 }

@@ -12,6 +12,7 @@ path = "src/lib.rs"
 # both door-greeter (renders it) and door-settings (edits it) — one source of
 # truth for the look. Depends on iced only for the Color conversions both UIs need.
 [dependencies]
-iced = "0.14"
+# `canvas` for the shared animated sky (twinkle + comet).
+iced = { version = "0.14", features = ["canvas"] }
 serde = { workspace = true }
 toml = "0.8"

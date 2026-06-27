@@ -26,5 +26,8 @@ font = "MesloLGS Nerd Font"
 corner_radius = 16.0       # card corner radius (px)
 card_width    = 300.0      # card width (px) — keep it minimal
 show_clock    = true       # show the clock + date in the card
+# Animated sky: a twinkling Tokyo Night starfield + a drifting comet (a native
+# port of the com.genny.tokyonightcomet Plasma wallpaper). false → still wallpaper.
+animate       = true
 
 # logo = "/usr/share/door/logo.png"   # optional image shown above the fields

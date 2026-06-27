@@ -13,5 +13,8 @@ path = "src/main.rs"
 # saves to /etc/door/greeter.toml via pkexec. Shares the schema with the greeter
 # through door-theme — one source of truth.
 [dependencies]
-iced = "0.14"
+# image: the wallpaper in the live preview; canvas: the shared animated sky.
+iced = { version = "0.14", features = ["image", "canvas"] }
 door-theme = { workspace = true }
+futures = "0.3"
+iced_futures = "0.14"

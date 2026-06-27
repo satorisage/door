@@ -16,18 +16,18 @@ use std::sync::OnceLock;
 use std::time::Duration;
 
 use futures::SinkExt;
-use iced::widget::canvas::{Frame, Geometry, Path, Program};
 use iced::widget::{
     button, canvas, column, container, image, pick_list, row, stack, text, text_input, Space,
 };
 use iced::{
-    keyboard, mouse, window, Alignment, Background, Border, ContentFit, Element, Font, Length,
-    Point, Rectangle, Renderer, Shadow, Subscription, Task, Vector,
+    keyboard, window, Alignment, Background, Border, ContentFit, Element, Font, Length, Shadow,
+    Subscription, Task, Vector,
 };
 
 use protocol::{PowerAction, Secret, Session};
 
 use crate::client::{AuthStep, Client, StartOutcome, DEFAULT_SOCKET};
+use door_theme::sky::{self, Sky};
 use door_theme::{Color, Theme};
 
 /// The resolved theme, loaded once. `run` needs it for the default font before the
@@ -78,12 +78,11 @@ fn app_style(state: &State, _theme: &iced::Theme) -> iced::theme::Style {
 
 /// The greeter's subscriptions: the daemon worker event stream, a 1 Hz clock, and
 /// the one-shot launch fade.
-fn subscription(_state: &State) -> Subscription<Message> {
-    Subscription::batch([
+fn subscription(state: &State) -> Subscription<Message> {
+    let mut subs = vec![
         Subscription::run(daemon_worker),
         Subscription::run(clock_ticker),
         Subscription::run(fade_ticker),
-        Subscription::run(anim_ticker),
         // Tab / Shift-Tab cycle focus through the fields and the sign-in button.
         iced::event::listen_with(|event, _status, _window| match event {
             iced::Event::Keyboard(keyboard::Event::KeyPressed {
@@ -97,7 +96,12 @@ fn subscription(_state: &State) -> Subscription<Message> {
             }),
             _ => None,
         }),
-    ])
+    ];
+    // The ~30 fps animation tick only runs when the sky is animated.
+    if state.theme.animate {
+        subs.push(Subscription::run(anim_ticker));
+    }
+    Subscription::batch(subs)
 }
 
 /// Emit a [`Message::Tick`] once a second so the card clock stays current. A small
@@ -237,7 +241,7 @@ struct State {
     /// twinkle and the breathing card edge.
     anim: f32,
     /// Fixed ambient starfield positions (generated once so they don't jump).
-    stars: Vec<Star>,
+    stars: Vec<sky::Star>,
 }
 
 impl State {
@@ -255,7 +259,7 @@ impl State {
             date: now_date(),
             fade: 0.0,
             anim: 0.0,
-            stars: generate_stars(),
+            stars: sky::stars(),
         }
     }
 
@@ -414,124 +418,6 @@ fn now_date() -> String {
     }
 }
 
-/// A single ambient star: position as a fraction of the screen, a radius, and a
-/// per-star phase offset so they don't twinkle in unison.
-#[derive(Clone, Copy)]
-struct Star {
-    x: f32,
-    y: f32,
-    r: f32,
-    phase: f32,
-}
-
-/// ~80 stars at deterministic positions (a tiny seeded LCG — no `rand` on the
-/// pre-auth surface, and fixed so they never jump between frames).
-fn generate_stars() -> Vec<Star> {
-    let mut seed: u64 = 0x9E37_79B9_7F4A_7C15;
-    let mut next = || {
-        seed = seed
-            .wrapping_mul(6364136223846793005)
-            .wrapping_add(1442695040888963407);
-        (seed >> 33) as f32 / (1u64 << 31) as f32 // 0.0..1.0
-    };
-    (0..80)
-        .map(|_| Star {
-            x: next(),
-            y: next(),
-            r: 0.5 + next() * 1.3,
-            phase: next() * std::f32::consts::TAU,
-        })
-        .collect()
-}
-
-/// One shooting-star lane: a trajectory across the screen (fractions of the
-/// bounds), how often it fires (`period`, seconds), a stagger `offset`, and the
-/// fraction of each cycle it actually streaks (`streak`).
-struct Comet {
-    sx: f32,
-    sy: f32,
-    ex: f32,
-    ey: f32,
-    period: f32,
-    offset: f32,
-    streak: f32,
-}
-
-/// Three staggered comet lanes — a shooting star crosses every few seconds.
-const COMETS: [Comet; 3] = [
-    Comet { sx: 0.12, sy: -0.05, ex: 0.78, ey: 0.58, period: 7.0, offset: 0.00, streak: 0.19 },
-    Comet { sx: 0.98, sy: 0.02, ex: 0.34, ey: 0.72, period: 9.0, offset: 0.45, streak: 0.17 },
-    Comet { sx: 0.50, sy: -0.06, ex: 1.06, ey: 0.50, period: 11.0, offset: 0.78, streak: 0.16 },
-];
-
-/// The animated sky over the wallpaper: twinkling stars *and* periodic shooting
-/// stars (dotted comet trails, echoing the wallpaper's comet). Fades in via `fade`.
-struct Sky {
-    stars: Vec<Star>,
-    phase: f32,
-    fade: f32,
-    star_color: iced::Color,
-}
-
-impl Program<Message> for Sky {
-    type State = ();
-
-    fn draw(
-        &self,
-        _state: &(),
-        renderer: &Renderer,
-        _theme: &iced::Theme,
-        bounds: Rectangle,
-        _cursor: mouse::Cursor,
-    ) -> Vec<Geometry> {
-        let mut frame = Frame::new(renderer, bounds.size());
-        let (w, h) = (bounds.width, bounds.height);
-
-        // Twinkling stars.
-        for s in &self.stars {
-            let tw = 0.35 + 0.65 * (0.5 + 0.5 * (self.phase * 1.6 + s.phase).sin());
-            let mut c = self.star_color;
-            c.a = tw * self.fade * 0.9;
-            frame.fill(&Path::circle(Point::new(s.x * w, s.y * h), s.r), c);
-        }
-
-        // Shooting stars: a bright dotted trail (head leading), eased in/out so it
-        // streaks in and fades rather than popping.
-        let head = iced::Color::from_rgb8(0xd6, 0xe6, 0xff);
-        let tail = iced::Color::from_rgb8(0x7a, 0xa2, 0xf7);
-        const DOTS: usize = 16;
-        for comet in COMETS.iter() {
-            let cycle = (self.phase / comet.period + comet.offset).fract();
-            if cycle >= comet.streak {
-                continue;
-            }
-            let p = cycle / comet.streak; // 0..1 along the trajectory
-            let edge = (p * (1.0 - p) * 4.0).clamp(0.0, 1.0); // 0 at ends, 1 mid-streak
-            for i in 0..DOTS {
-                let k = i as f32 / DOTS as f32; // 0 = head, →1 = tail end
-                let tp = p - k * 0.06;
-                if tp < 0.0 {
-                    break;
-                }
-                let x = (comet.sx + (comet.ex - comet.sx) * tp) * w;
-                let y = (comet.sy + (comet.ey - comet.sy) * tp) * h;
-                let radius = (2.6 * (1.0 - k * 0.7)).max(0.6);
-                let mut col = if i == 0 { head } else { tail };
-                col.a = (1.0 - k) * self.fade * edge * if i == 0 { 1.0 } else { 0.8 };
-                frame.fill(&Path::circle(Point::new(x, y), radius), col);
-            }
-            // A soft glow at the head.
-            let hx = (comet.sx + (comet.ex - comet.sx) * p) * w;
-            let hy = (comet.sy + (comet.ey - comet.sy) * p) * h;
-            let mut glow = head;
-            glow.a = 0.20 * self.fade * edge;
-            frame.fill(&Path::circle(Point::new(hx, hy), 7.0), glow);
-        }
-
-        vec![frame.into_geometry()]
-    }
-}
-
 fn view(state: &State) -> Element<'_, Message> {
     let t = &state.theme;
     let f = state.fade.clamp(0.0, 1.0);
@@ -627,15 +513,20 @@ fn view(state: &State) -> Element<'_, Message> {
 
     let overlay = stack![centered, power];
 
-    // Ambient twinkle layer, drawn over the wallpaper / solid background.
-    let sky = canvas(Sky {
-        stars: state.stars.clone(),
-        phase: state.anim,
-        fade: f,
-        star_color: t.foreground.iced(),
-    })
-    .width(Length::Fill)
-    .height(Length::Fill);
+    // The animated sky (twinkling starfield + drifting comet) over the wallpaper —
+    // only when animation is enabled; otherwise the still wallpaper shows through.
+    let scene: Element<Message> = if t.animate {
+        let sky = canvas(Sky {
+            stars: state.stars.clone(),
+            anim: state.anim,
+            fade: f,
+        })
+        .width(Length::Fill)
+        .height(Length::Fill);
+        stack![sky, overlay].into()
+    } else {
+        overlay.into()
+    };
 
     // Wallpaper behind everything, if configured (a missing file just leaves the
     // solid window background from `app_style`).
@@ -645,9 +536,9 @@ fn view(state: &State) -> Element<'_, Message> {
                 .width(Length::Fill)
                 .height(Length::Fill)
                 .content_fit(ContentFit::Cover);
-            stack![background, sky, overlay].into()
+            stack![background, scene].into()
         }
-        None => stack![sky, overlay].into(),
+        None => scene,
     }
 }
 

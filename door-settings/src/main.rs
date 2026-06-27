@@ -1,26 +1,42 @@
 //! door-settings — a standalone editor for the greeter theme.
 //!
-//! It is *not* the greeter and holds no authority: it loads the resolved theme
-//! ([`door_theme::Theme::load`]), lets you edit it, **previews** by launching the
-//! real `door-greeter` in dev mode against a draft config (a true preview, no UI
-//! duplication), and **saves** to `/etc/door/greeter.toml` via `pkexec` (the file
-//! is root-owned because the greeter is pre-login). Sharing `door-theme` with the
-//! greeter keeps one source of truth for the schema.
+//! Not the greeter and holds no authority: it loads the resolved theme
+//! ([`door_theme::Theme::load`]), edits it with a **live in-window preview** (the
+//! real wallpaper + the shared animated sky + a mock card, rendered from the
+//! current draft), and saves to `/etc/door/greeter.toml` via `pkexec` (the file is
+//! root-owned because the greeter is pre-login). Sharing `door-theme` with the
+//! greeter keeps one source of truth for both the schema and the look.
 
 use std::path::PathBuf;
+use std::time::Duration;
 
-use iced::widget::{button, checkbox, column, container, row, scrollable, text, text_input};
-use iced::{Alignment, Element, Length, Task};
+use futures::SinkExt;
+use iced::widget::{
+    button, canvas, checkbox, column, container, image, row, scrollable, text, text_input, Space,
+};
+use iced::{
+    Alignment, Background, Border, ContentFit, Element, Length, Shadow, Subscription, Task, Vector,
+};
 
+use door_theme::sky::{self, Sky};
 use door_theme::{Color, Theme};
 
 fn main() -> iced::Result {
     iced::application(State::new, update, view)
         .title("door — greeter settings")
+        .style(app_style)
+        .subscription(subscription)
         .run()
 }
 
-/// Which text field changed (every editable theme value except the clock toggle).
+fn app_style(_state: &State, _theme: &iced::Theme) -> iced::theme::Style {
+    iced::theme::Style {
+        background_color: iced::Color::from_rgb8(0x16, 0x16, 0x1e),
+        text_color: iced::Color::from_rgb8(0xc0, 0xca, 0xf5),
+    }
+}
+
+/// Which text field changed.
 #[derive(Debug, Clone, Copy)]
 enum Param {
     Wallpaper,
@@ -40,7 +56,9 @@ enum Param {
 enum Message {
     Set(Param, String),
     ToggleClock(bool),
-    Preview,
+    ToggleAnimate(bool),
+    Tick,
+    OpenInGreeter,
     Save,
     Reset,
 }
@@ -58,7 +76,11 @@ struct State {
     corner_radius: String,
     card_width: String,
     show_clock: bool,
+    animate: bool,
     status: String,
+    // Live-preview animation.
+    anim: f32,
+    stars: Vec<sky::Star>,
 }
 
 impl State {
@@ -68,11 +90,9 @@ impl State {
         s
     }
 
-    /// Populate the editable fields from a resolved theme.
     fn from_theme(t: &Theme) -> Self {
-        let path = |p: &Option<PathBuf>| {
-            p.as_ref().map(|p| p.display().to_string()).unwrap_or_default()
-        };
+        let path =
+            |p: &Option<PathBuf>| p.as_ref().map(|p| p.display().to_string()).unwrap_or_default();
         State {
             wallpaper: path(&t.wallpaper),
             background: t.background.to_hex(),
@@ -86,7 +106,10 @@ impl State {
             corner_radius: t.corner_radius.to_string(),
             card_width: t.card_width.to_string(),
             show_clock: t.show_clock,
+            animate: t.animate,
             status: String::new(),
+            anim: 0.0,
+            stars: sky::stars(),
         }
     }
 
@@ -106,8 +129,7 @@ impl State {
         }
     }
 
-    /// Build a [`Theme`] from the edited fields, or an error describing the first
-    /// invalid input (so Preview/Save fail loudly rather than writing garbage).
+    /// Build a [`Theme`] from the edited fields, or the first invalid-input error.
     fn build(&self) -> Result<Theme, String> {
         let color = |label: &str, v: &str| {
             Color::parse(v.trim()).ok_or_else(|| format!("{label}: '{v}' is not #rrggbb[aa]"))
@@ -137,7 +159,14 @@ impl State {
             corner_radius: num("Corner radius", &self.corner_radius)?,
             card_width: num("Card width", &self.card_width)?,
             show_clock: self.show_clock,
+            animate: self.animate,
         })
+    }
+
+    /// The theme to render the preview with — the draft if valid, else the default
+    /// (the status line still shows the parse error so nothing is silently wrong).
+    fn preview_theme(&self) -> Theme {
+        self.build().unwrap_or_default()
     }
 }
 
@@ -153,91 +182,262 @@ fn update(state: &mut State, message: Message) -> Task<Message> {
     match message {
         Message::Set(param, value) => state.set(param, value),
         Message::ToggleClock(on) => state.show_clock = on,
+        Message::ToggleAnimate(on) => state.animate = on,
+        Message::Tick => state.anim = (state.anim + 0.033) % 10_000.0,
         Message::Reset => {
             *state = State::from_theme(&Theme::default());
             state.status = "Reset to the built-in default (not saved).".to_string();
         }
-        Message::Preview => match write_draft(state) {
+        Message::OpenInGreeter => match write_draft(state) {
             Ok(path) => {
-                // Launch the real greeter in dev mode against the draft — a true
-                // preview. `DOOR_GREETER_BIN` overrides the binary for dev runs.
-                let bin = std::env::var("DOOR_GREETER_BIN").unwrap_or_else(|_| "door-greeter".into());
+                let bin =
+                    std::env::var("DOOR_GREETER_BIN").unwrap_or_else(|_| "door-greeter".into());
                 match std::process::Command::new(&bin)
                     .env("DOORD_GREETER_DEV", "1")
                     .env("DOORD_GREETER_CONFIG", &path)
                     .spawn()
                 {
-                    Ok(_) => state.status = "Preview launched (close its window to return).".into(),
+                    Ok(_) => state.status = "Opened a full greeter window.".into(),
                     Err(e) => state.status = format!("Could not launch '{bin}': {e}"),
                 }
             }
             Err(e) => state.status = e,
         },
         Message::Save => match write_draft(state) {
-            Ok(path) => {
-                // /etc/door is root-owned (the greeter is pre-login), so escalate
-                // the install via pkexec — the user gets a polkit prompt.
-                match std::process::Command::new("pkexec")
-                    .args(["install", "-Dm644"])
-                    .arg(&path)
-                    .arg(door_theme::ETC_CONFIG)
-                    .status()
-                {
-                    Ok(s) if s.success() => {
-                        state.status = format!("Saved to {} ✓", door_theme::ETC_CONFIG)
-                    }
-                    Ok(_) => state.status = "Save cancelled or failed at the pkexec prompt.".into(),
-                    Err(e) => state.status = format!("Could not run pkexec: {e}"),
+            Ok(path) => match std::process::Command::new("pkexec")
+                .args(["install", "-Dm644"])
+                .arg(&path)
+                .arg(door_theme::ETC_CONFIG)
+                .status()
+            {
+                Ok(s) if s.success() => {
+                    state.status = format!("Saved to {} ✓", door_theme::ETC_CONFIG)
                 }
-            }
+                Ok(_) => state.status = "Save cancelled or failed at the pkexec prompt.".into(),
+                Err(e) => state.status = format!("Could not run pkexec: {e}"),
+            },
             Err(e) => state.status = e,
         },
     }
     Task::none()
 }
 
+fn subscription(state: &State) -> Subscription<Message> {
+    if state.animate {
+        Subscription::run(ticker)
+    } else {
+        Subscription::none()
+    }
+}
+
+/// ~30 fps tick for the live preview's animated sky.
+fn ticker() -> impl futures::Stream<Item = Message> {
+    iced_futures::stream::channel(4, |output: futures::channel::mpsc::Sender<Message>| async move {
+        std::thread::spawn(move || {
+            let mut output = output;
+            loop {
+                std::thread::sleep(Duration::from_millis(33));
+                if futures::executor::block_on(output.send(Message::Tick)).is_err() {
+                    break;
+                }
+            }
+        });
+        std::future::pending::<()>().await;
+    })
+}
+
+// ---- view -----------------------------------------------------------------
+
 fn view(state: &State) -> Element<'_, Message> {
-    let field = |label: &'static str, value: &str, param: Param| -> Element<Message> {
+    let theme = state.preview_theme();
+
+    // Left: a glass control panel. Right: the live greeter preview, centered.
+    let controls = container(scrollable(controls(state)))
+        .width(Length::Fixed(380.0))
+        .height(Length::Fill)
+        .padding(22)
+        .style(glass_panel);
+
+    let preview = container(preview_card(&theme))
+        .center_x(Length::Fill)
+        .center_y(Length::Fill);
+
+    let content = row![controls, preview].height(Length::Fill);
+
+    // The whole window is a live preview: wallpaper + animated sky behind the
+    // control panel and the card — "what you're editing, live".
+    let sky_layer: Element<Message> = if theme.animate {
+        canvas(Sky {
+            stars: state.stars.clone(),
+            anim: state.anim,
+            fade: 1.0,
+        })
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .into()
+    } else {
+        Space::new().into()
+    };
+
+    match &theme.wallpaper {
+        Some(path) => {
+            let bg = image(image::Handle::from_path(path))
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .content_fit(ContentFit::Cover);
+            iced::widget::stack![bg, sky_layer, content].into()
+        }
+        None => iced::widget::stack![sky_layer, content].into(),
+    }
+}
+
+/// The editable control list inside the glass panel.
+fn controls(state: &State) -> Element<'_, Message> {
+    let row_field = |label: &'static str, value: &str, param: Param| -> Element<Message> {
         row![
-            text(label).width(Length::Fixed(130.0)),
+            text(label).size(13).width(Length::Fixed(118.0)),
             text_input("", value)
                 .on_input(move |v| Message::Set(param, v))
-                .padding(8),
+                .padding(7)
+                .size(14),
         ]
-        .spacing(10)
+        .spacing(8)
         .align_y(Alignment::Center)
         .into()
     };
 
-    let form = column![
-        text("Greeter theme").size(26),
-        text("Edit, Preview to see it live, Save to apply (asks for your password).")
-            .size(13),
-        field("Wallpaper", &state.wallpaper, Param::Wallpaper),
-        field("Background", &state.background, Param::Background),
-        field("Card", &state.card, Param::Card),
-        field("Field", &state.field, Param::Field),
-        field("Accent", &state.accent, Param::Accent),
-        field("Foreground", &state.foreground, Param::Foreground),
-        field("Muted", &state.muted, Param::Muted),
-        field("Font", &state.font, Param::Font),
-        field("Logo", &state.logo, Param::Logo),
-        field("Corner radius", &state.corner_radius, Param::CornerRadius),
-        field("Card width", &state.card_width, Param::CardWidth),
+    column![
+        text("Greeter theme").size(24),
+        text("Edits preview live. Save asks for your password.").size(12),
+        row_field("Wallpaper", &state.wallpaper, Param::Wallpaper),
+        row_field("Background", &state.background, Param::Background),
+        row_field("Card", &state.card, Param::Card),
+        row_field("Field", &state.field, Param::Field),
+        row_field("Accent", &state.accent, Param::Accent),
+        row_field("Foreground", &state.foreground, Param::Foreground),
+        row_field("Muted", &state.muted, Param::Muted),
+        row_field("Font", &state.font, Param::Font),
+        row_field("Logo", &state.logo, Param::Logo),
+        row_field("Corner radius", &state.corner_radius, Param::CornerRadius),
+        row_field("Card width", &state.card_width, Param::CardWidth),
         checkbox(state.show_clock)
             .label("Show clock + date")
-            .on_toggle(Message::ToggleClock),
+            .on_toggle(Message::ToggleClock)
+            .size(16),
+        checkbox(state.animate)
+            .label("Animate sky (stars + comet)")
+            .on_toggle(Message::ToggleAnimate)
+            .size(16),
         row![
-            button(text("Preview")).on_press(Message::Preview),
-            button(text("Save")).on_press(Message::Save),
-            button(text("Reset to default")).on_press(Message::Reset),
+            button(text("Save").size(14)).on_press(Message::Save),
+            button(text("Open in greeter").size(14)).on_press(Message::OpenInGreeter),
+            button(text("Reset").size(14)).on_press(Message::Reset),
         ]
-        .spacing(10),
-        text(state.status.clone()).size(13),
+        .spacing(8),
+        text(state.status.clone()).size(12),
     ]
     .spacing(12)
-    .padding(20)
-    .max_width(560);
+    .into()
+}
 
-    container(scrollable(form)).center_x(Length::Fill).into()
+/// A non-interactive mock of the greeter card, themed from the draft.
+fn preview_card(t: &Theme) -> Element<'static, Message> {
+    let fg = t.foreground.iced();
+    let muted = t.muted.iced();
+
+    let header: Element<Message> = if t.show_clock {
+        column![
+            text("12:34").size(54).color(fg),
+            text("Friday, June 27").size(13).color(muted),
+        ]
+        .spacing(2)
+        .align_x(Alignment::Center)
+        .into()
+    } else {
+        Space::new().into()
+    };
+
+    let field = |placeholder: &'static str, t: &Theme| {
+        let muted = t.muted.iced();
+        let field = t.field;
+        container(text(placeholder).size(14).color(muted))
+            .width(Length::Fill)
+            .padding(11)
+            .style(move |_theme| container::Style {
+                background: Some(Background::Color(field.iced())),
+                border: Border {
+                    radius: 10.0.into(),
+                    ..Default::default()
+                },
+                ..Default::default()
+            })
+    };
+
+    let accent = t.accent;
+    let sign_in = container(
+        text("Sign in")
+            .size(15)
+            .width(Length::Fill)
+            .center()
+            .color(iced::Color::from_rgb8(0x16, 0x16, 0x1e)),
+    )
+    .width(Length::Fill)
+    .padding(11)
+    .style(move |_theme| container::Style {
+        background: Some(Background::Color(accent.iced())),
+        border: Border {
+            radius: 10.0.into(),
+            ..Default::default()
+        },
+        ..Default::default()
+    });
+
+    let body = column![
+        header,
+        field("user", t),
+        field("password", t),
+        sign_in,
+    ]
+    .spacing(12)
+    .align_x(Alignment::Center);
+
+    let card = t.card;
+    let accent = t.accent;
+    let radius = t.corner_radius;
+    container(body)
+        .padding(26)
+        .width(Length::Fixed(t.card_width))
+        .style(move |_theme| container::Style {
+            background: Some(Background::Color(card.iced())),
+            border: Border {
+                radius: radius.into(),
+                width: 1.0,
+                color: accent.iced_alpha(0.28),
+            },
+            shadow: Shadow {
+                color: iced::Color::from_rgba(0.0, 0.0, 0.0, 0.5),
+                offset: Vector::new(0.0, 12.0),
+                blur_radius: 38.0,
+            },
+            ..Default::default()
+        })
+        .into()
+}
+
+/// The frosted control panel: a translucent dark glass with a soft edge + shadow.
+fn glass_panel(_theme: &iced::Theme) -> container::Style {
+    container::Style {
+        background: Some(Background::Color(iced::Color::from_rgba8(0x0e, 0x0f, 0x16, 0.78))),
+        border: Border {
+            radius: 0.0.into(),
+            width: 1.0,
+            color: iced::Color::from_rgba8(0x7a, 0xa2, 0xf7, 0.18),
+        },
+        shadow: Shadow {
+            color: iced::Color::from_rgba(0.0, 0.0, 0.0, 0.5),
+            offset: Vector::new(6.0, 0.0),
+            blur_radius: 30.0,
+        },
+        ..Default::default()
+    }
 }
