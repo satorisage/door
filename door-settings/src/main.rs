@@ -296,9 +296,9 @@ fn controls(state: &State) -> Element<'_, Message> {
             .size(12)
             .color(c(MUTED.0, MUTED.1, MUTED.2)),
         section("WALLPAPER & ASSETS"),
-        plain_row("Wallpaper", &state.wallpaper, Param::Wallpaper),
-        plain_row("Logo", &state.logo, Param::Logo),
-        plain_row("Font", &state.font, Param::Font),
+        plain_row("Wallpaper", &state.wallpaper, "(animated sky)", Param::Wallpaper),
+        plain_row("Logo", &state.logo, "(comet spinner)", Param::Logo),
+        plain_row("Font", &state.font, "(stock font)", Param::Font),
         section("COLORS"),
         row![
             color_cell("BG", &state.background, Param::Background),
@@ -316,8 +316,8 @@ fn controls(state: &State) -> Element<'_, Message> {
         ]
         .spacing(10),
         section("LAYOUT"),
-        plain_row("Corner radius", &state.corner_radius, Param::CornerRadius),
-        plain_row("Card width", &state.card_width, Param::CardWidth),
+        plain_row("Corner radius", &state.corner_radius, "", Param::CornerRadius),
+        plain_row("Card width", &state.card_width, "", Param::CardWidth),
         section("BEHAVIOR"),
         toggler(state.show_clock)
             .label("Clock + date")
@@ -352,14 +352,20 @@ fn section(title: &str) -> Element<'static, Message> {
         .into()
 }
 
-/// A labeled row with a styled input (no swatch).
-fn plain_row<'a>(label: &'a str, value: &'a str, param: Param) -> Element<'a, Message> {
+/// A labeled row with a styled input (no swatch). `placeholder` shows what an empty
+/// field falls back to (e.g. the comet spinner for Logo).
+fn plain_row<'a>(
+    label: &'a str,
+    value: &'a str,
+    placeholder: &'a str,
+    param: Param,
+) -> Element<'a, Message> {
     row![
         text(label)
             .size(13)
             .width(Length::Fixed(92.0))
             .color(c(LABEL.0, LABEL.1, LABEL.2)),
-        text_input("", value)
+        text_input(placeholder, value)
             .on_input(move |v| Message::Set(param, v))
             .padding(6)
             .size(14)
