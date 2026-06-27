@@ -12,18 +12,30 @@
 //! then the field is cleared.
 
 use std::sync::mpsc;
+use std::sync::OnceLock;
 use std::time::Duration;
 
 use futures::SinkExt;
 use iced::widget::{
     button, column, container, image, pick_list, row, stack, text, text_input, Space,
 };
-use iced::{window, Alignment, Background, Border, ContentFit, Element, Length, Subscription, Task};
+use iced::{
+    window, Alignment, Background, Border, ContentFit, Element, Font, Length, Shadow, Subscription,
+    Task, Vector,
+};
 
 use protocol::{PowerAction, Secret, Session};
 
 use crate::client::{AuthStep, Client, StartOutcome, DEFAULT_SOCKET};
-use crate::theme::Theme;
+use crate::theme::{Color, Theme};
+
+/// The resolved theme, loaded once. `run` needs it for the default font before the
+/// app state exists, and the UI reads it every frame — so it lives here, not in
+/// `State`.
+fn theme() -> &'static Theme {
+    static THEME: OnceLock<Theme> = OnceLock::new();
+    THEME.get_or_init(Theme::load)
+}
 
 /// Run the greeter (D-0007): a plain `iced` fullscreen toplevel, hosted by `cage`
 /// on the greeter VT. As the sole client on its own compositor it needs nothing
@@ -36,15 +48,22 @@ use crate::theme::Theme;
 pub fn run() -> iced::Result {
     let fullscreen = std::env::var_os("DOORD_GREETER_DEV").is_none();
 
-    iced::application(State::new, update, view)
+    let mut app = iced::application(State::new, update, view)
         .title("door")
         .window(window::Settings {
             fullscreen,
             ..Default::default()
         })
         .style(app_style)
-        .subscription(subscription)
-        .run()
+        .subscription(subscription);
+
+    // Render in the themed font if one is configured and installed system-wide.
+    // iced wants a 'static family name, so leak the single, process-lifetime string.
+    if let Some(name) = theme().font.clone() {
+        let name: &'static str = Box::leak(name.into_boxed_str());
+        app = app.default_font(Font::with_name(name));
+    }
+    app.run()
 }
 
 /// Window-level appearance from the theme: the solid background (also shown at any
@@ -56,11 +75,13 @@ fn app_style(state: &State, _theme: &iced::Theme) -> iced::theme::Style {
     }
 }
 
-/// The greeter's subscriptions: the daemon worker event stream plus a 1 Hz clock.
+/// The greeter's subscriptions: the daemon worker event stream, a 1 Hz clock, and
+/// the one-shot launch fade.
 fn subscription(_state: &State) -> Subscription<Message> {
     Subscription::batch([
         Subscription::run(daemon_worker),
         Subscription::run(clock_ticker),
+        Subscription::run(fade_ticker),
     ])
 }
 
@@ -75,6 +96,23 @@ fn clock_ticker() -> impl futures::Stream<Item = Message> {
                 std::thread::sleep(Duration::from_secs(1));
                 if futures::executor::block_on(output.send(Message::Tick)).is_err() {
                     break;
+                }
+            }
+        });
+        std::future::pending::<()>().await;
+    })
+}
+
+/// Drive the launch fade-in: ~24 [`Message::Fade`] ticks over ~380 ms, then the
+/// stream ends (bounded — no perpetual repaint on the idle greeter).
+fn fade_ticker() -> impl futures::Stream<Item = Message> {
+    iced_futures::stream::channel(4, |output: futures::channel::mpsc::Sender<Message>| async move {
+        std::thread::spawn(move || {
+            let mut output = output;
+            for _ in 0..24 {
+                std::thread::sleep(Duration::from_millis(16));
+                if futures::executor::block_on(output.send(Message::Fade)).is_err() {
+                    return;
                 }
             }
         });
@@ -130,8 +168,10 @@ pub enum Message {
     SessionStarted,
     DaemonError(String),
     Fatal(String),
-    /// 1 Hz clock tick — refreshes the card clock.
+    /// 1 Hz clock tick — refreshes the card clock + date.
     Tick,
+    /// One step of the launch fade-in.
+    Fade,
     // From the UI:
     UsernameChanged(String),
     PasswordChanged(String),
@@ -148,10 +188,14 @@ struct State {
     password: String,
     status: String,
     cmd_tx: Option<mpsc::Sender<Command>>,
-    /// The resolved look, loaded once at startup (M4).
+    /// The resolved look (a clone of the process-wide [`theme`]).
     theme: Theme,
     /// Current local time, `HH:MM`, refreshed by [`Message::Tick`].
     clock: String,
+    /// Current local date, e.g. `Friday, June 27`.
+    date: String,
+    /// Launch fade-in progress, 0.0 → 1.0 (driven by [`Message::Fade`]).
+    fade: f32,
 }
 
 impl State {
@@ -164,8 +208,10 @@ impl State {
             password: String::new(),
             status: "Connecting to doord…".to_string(),
             cmd_tx: None,
-            theme: Theme::load(),
+            theme: theme().clone(),
             clock: now_hm(),
+            date: now_date(),
+            fade: 0.0,
         }
     }
 
@@ -267,134 +313,305 @@ fn update(state: &mut State, message: Message) -> Task<Message> {
             }
         }
         Message::PowerPressed(action) => state.send(Command::Power(action)),
-        Message::Tick => state.clock = now_hm(),
+        Message::Tick => {
+            state.clock = now_hm();
+            state.date = now_date();
+        }
+        Message::Fade => state.fade = (state.fade + 1.0 / 24.0).min(1.0),
     }
     task
 }
 
-/// Local wall-clock time as `HH:MM`, without pulling a date/time crate onto the
-/// pre-auth surface: `localtime_r` on the current epoch second.
-fn now_hm() -> String {
-    // SAFETY: `time(NULL)` returns the epoch seconds; `localtime_r` fills a caller-
-    // owned `tm` from it (no shared state, no allocation). Both are async-signal-safe
-    // libc calls; here they just read the clock.
+/// Local `tm` for the current epoch second, or `None` if the conversion fails.
+/// `localtime_r` fills a caller-owned struct — no date/time crate on the pre-auth
+/// surface.
+fn local_tm() -> Option<libc::tm> {
+    // SAFETY: `time(NULL)` returns epoch seconds; `localtime_r` fills our owned `tm`
+    // and returns null on failure. No shared state, no allocation.
     unsafe {
         let now = libc::time(std::ptr::null_mut());
         let mut tm: libc::tm = std::mem::zeroed();
         if libc::localtime_r(&now, &mut tm).is_null() {
-            return String::new();
+            None
+        } else {
+            Some(tm)
         }
-        format!("{:02}:{:02}", tm.tm_hour, tm.tm_min)
+    }
+}
+
+/// Local wall-clock time as `HH:MM`.
+fn now_hm() -> String {
+    match local_tm() {
+        Some(tm) => format!("{:02}:{:02}", tm.tm_hour, tm.tm_min),
+        None => String::new(),
+    }
+}
+
+/// Local date as `Weekday, Month D` (e.g. `Friday, June 27`).
+fn now_date() -> String {
+    const DAYS: [&str; 7] = [
+        "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday",
+    ];
+    const MONTHS: [&str; 12] = [
+        "January", "February", "March", "April", "May", "June", "July", "August", "September",
+        "October", "November", "December",
+    ];
+    match local_tm() {
+        Some(tm) => {
+            let day = DAYS.get(tm.tm_wday as usize).copied().unwrap_or("");
+            let month = MONTHS.get(tm.tm_mon as usize).copied().unwrap_or("");
+            format!("{day}, {month} {}", tm.tm_mday)
+        }
+        None => String::new(),
     }
 }
 
 fn view(state: &State) -> Element<'_, Message> {
     let t = &state.theme;
-    let fg = t.foreground.iced();
-    let muted = t.muted.iced();
-    let accent = t.accent.iced();
+    let f = state.fade.clamp(0.0, 1.0);
+    let fg = t.foreground.iced_alpha(f);
+    let muted = t.muted.iced_alpha(f);
 
-    let clock: Element<Message> = if t.show_clock {
-        text(state.clock.clone()).size(30).color(muted).into()
+    // Clock + date — the minimal focal point at the top of the card.
+    let header: Element<Message> = if t.show_clock {
+        column![
+            text(state.clock.clone()).size(56).color(fg),
+            text(state.date.clone()).size(13).color(muted),
+        ]
+        .spacing(2)
+        .align_x(Alignment::Center)
+        .into()
     } else {
         Space::new().into()
     };
 
     let logo: Element<Message> = match &t.logo {
         Some(path) => image(image::Handle::from_path(path))
-            .height(Length::Fixed(72.0))
+            .height(Length::Fixed(56.0))
             .into(),
         None => Space::new().into(),
     };
 
-    let title = text("door").size(44).color(fg);
+    let username = text_input("user", &state.username)
+        .on_input(Message::UsernameChanged)
+        .on_submit(Message::LoginPressed)
+        .padding(11)
+        .size(15)
+        .style(field_style(t, f));
 
+    let password = text_input("password", &state.password)
+        .on_input(Message::PasswordChanged)
+        .on_submit(Message::LoginPressed)
+        .secure(true)
+        .padding(11)
+        .size(15)
+        .style(field_style(t, f));
+
+    let busy = matches!(state.phase, Phase::Authenticating | Phase::Started);
+    let mut login = button(text("Sign in").width(Length::Fill).center().size(15))
+        .width(Length::Fill)
+        .padding(11)
+        .style(button_style(t, f));
+    if !busy {
+        login = login.on_press(Message::LoginPressed);
+    }
+
+    // Session: a slim, subtle selector under the button.
     let picker = pick_list(
         state.sessions.clone(),
         state.selected.clone(),
         Message::SessionPicked,
     )
-    .placeholder("Session")
-    .width(Length::Fill);
+    .placeholder("session")
+    .text_size(13)
+    .padding(8)
+    .width(Length::Fill)
+    .style(picker_style(t, f));
 
-    let username = text_input("Username", &state.username)
-        .on_input(Message::UsernameChanged)
-        .on_submit(Message::LoginPressed)
-        .padding(10);
+    // Status only takes space when there is something to say.
+    let status: Element<Message> = if state.status.is_empty() {
+        Space::new().into()
+    } else {
+        text(state.status.clone()).size(12).color(muted).into()
+    };
 
-    let password = text_input("Password", &state.password)
-        .on_input(Message::PasswordChanged)
-        .on_submit(Message::LoginPressed)
-        .secure(true)
-        .padding(10);
+    let form = column![header, logo, username, password, login, picker, status]
+        .spacing(12)
+        .align_x(Alignment::Center);
 
-    let busy = matches!(state.phase, Phase::Authenticating | Phase::Started);
-    let mut login = button(text("Sign in"))
-        .padding(10)
-        .width(Length::Fill)
-        .style(move |_theme, _status| button::Style {
-            background: Some(Background::Color(accent)),
-            text_color: iced::Color::WHITE,
-            border: Border {
-                radius: 8.0.into(),
-                ..Default::default()
-            },
-            ..Default::default()
-        });
-    if !busy {
-        login = login.on_press(Message::LoginPressed);
-    }
-
-    let power = row![
-        button(text("Suspend")).on_press(Message::PowerPressed(PowerAction::Suspend)),
-        button(text("Reboot")).on_press(Message::PowerPressed(PowerAction::Reboot)),
-        button(text("Power off")).on_press(Message::PowerPressed(PowerAction::PowerOff)),
-    ]
-    .spacing(10);
-
-    let form = column![
-        clock,
-        logo,
-        title,
-        picker,
-        username,
-        password,
-        login,
-        text(state.status.clone()).color(muted),
-        power,
-    ]
-    .spacing(14)
-    .align_x(Alignment::Center);
-
-    // The frosted card: a translucent, rounded panel holding the form.
-    let card_color = t.card.iced();
-    let radius = t.corner_radius;
     let card = container(form)
-        .padding(28)
-        .max_width(t.card_width)
-        .style(move |_theme| container::Style {
-            background: Some(Background::Color(card_color)),
-            border: Border {
-                radius: radius.into(),
-                ..Default::default()
-            },
-            ..Default::default()
-        });
+        .padding(26)
+        .width(Length::Fixed(t.card_width))
+        .style(card_style(t, f));
 
     let centered = container(card).center_x(Length::Fill).center_y(Length::Fill);
 
-    // Wallpaper behind the card when one is configured (a missing file just renders
-    // nothing here, leaving the solid window background from `app_style`).
+    // Power controls: subtle, outside the card, bottom-right of the screen.
+    let power = container(
+        row![
+            power_button("Suspend", PowerAction::Suspend, t, f),
+            power_button("Restart", PowerAction::Reboot, t, f),
+            power_button("Shut down", PowerAction::PowerOff, t, f),
+        ]
+        .spacing(4),
+    )
+    .align_right(Length::Fill)
+    .align_bottom(Length::Fill)
+    .padding(18);
+
+    let overlay = stack![centered, power];
+
+    // Wallpaper behind everything, if configured (a missing file just leaves the
+    // solid window background from `app_style`).
     match &t.wallpaper {
         Some(path) => {
             let background = image(image::Handle::from_path(path))
                 .width(Length::Fill)
                 .height(Length::Fill)
                 .content_fit(ContentFit::Cover);
-            stack![background, centered].into()
+            stack![background, overlay].into()
         }
-        None => centered.into(),
+        None => overlay.into(),
     }
+}
+
+/// Lighten a color toward white by `amt` (0.0–1.0) — for button hover.
+fn lighten(c: Color, amt: f32) -> Color {
+    let mix = |v: u8| (v as f32 + (255.0 - v as f32) * amt).round() as u8;
+    Color {
+        r: mix(c.r),
+        g: mix(c.g),
+        b: mix(c.b),
+        a: c.a,
+    }
+}
+
+/// Slim rounded input: a lifted field fill with an accent border on focus.
+fn field_style(t: &Theme, fade: f32) -> impl Fn(&iced::Theme, text_input::Status) -> text_input::Style {
+    let field = t.field.iced_alpha(fade);
+    let fg = t.foreground.iced_alpha(fade);
+    let muted = t.muted.iced_alpha(fade);
+    let accent = t.accent.iced_alpha(fade);
+    move |_theme, status| {
+        let focused = matches!(status, text_input::Status::Focused { .. });
+        text_input::Style {
+            background: Background::Color(field),
+            border: Border {
+                radius: 10.0.into(),
+                width: 1.0,
+                color: if focused {
+                    accent
+                } else {
+                    iced::Color::TRANSPARENT
+                },
+            },
+            icon: muted,
+            placeholder: muted,
+            value: fg,
+            selection: accent,
+        }
+    }
+}
+
+/// The accent sign-in button, brighter on hover, with dark text.
+fn button_style(t: &Theme, fade: f32) -> impl Fn(&iced::Theme, button::Status) -> button::Style {
+    let accent = t.accent;
+    let on_accent = Color {
+        r: 0x16,
+        g: 0x16,
+        b: 0x1e,
+        a: 0xff,
+    };
+    move |_theme, status| {
+        let bg = match status {
+            button::Status::Hovered | button::Status::Pressed => lighten(accent, 0.15),
+            _ => accent,
+        };
+        button::Style {
+            background: Some(Background::Color(bg.iced_alpha(fade))),
+            text_color: on_accent.iced_alpha(fade),
+            border: Border {
+                radius: 10.0.into(),
+                ..Default::default()
+            },
+            ..Default::default()
+        }
+    }
+}
+
+/// The glassy card: translucent fill, thin accent hairline, soft drop shadow.
+fn card_style(t: &Theme, fade: f32) -> impl Fn(&iced::Theme) -> container::Style {
+    let card = t.card.iced_alpha(fade);
+    let accent = t.accent;
+    let radius = t.corner_radius;
+    move |_theme| container::Style {
+        background: Some(Background::Color(card)),
+        border: Border {
+            radius: radius.into(),
+            width: 1.0,
+            color: accent.iced_alpha(fade * 0.25),
+        },
+        shadow: Shadow {
+            color: iced::Color::from_rgba(0.0, 0.0, 0.0, 0.45 * fade),
+            offset: Vector::new(0.0, 10.0),
+            blur_radius: 34.0,
+        },
+        ..Default::default()
+    }
+}
+
+/// The slim session selector, matched to the field styling.
+fn picker_style(t: &Theme, fade: f32) -> impl Fn(&iced::Theme, pick_list::Status) -> pick_list::Style {
+    let field = t.field.iced_alpha(fade);
+    let fg = t.foreground.iced_alpha(fade);
+    let muted = t.muted.iced_alpha(fade);
+    let accent = t.accent.iced_alpha(fade);
+    move |_theme, status| {
+        let focused = matches!(status, pick_list::Status::Hovered | pick_list::Status::Opened { .. });
+        pick_list::Style {
+            text_color: fg,
+            placeholder_color: muted,
+            handle_color: muted,
+            background: Background::Color(field),
+            border: Border {
+                radius: 10.0.into(),
+                width: 1.0,
+                color: if focused {
+                    accent
+                } else {
+                    iced::Color::TRANSPARENT
+                },
+            },
+        }
+    }
+}
+
+/// A subtle, text-only power control that picks up the accent on hover.
+fn power_button<'a>(
+    label: &'a str,
+    action: PowerAction,
+    t: &Theme,
+    fade: f32,
+) -> Element<'a, Message> {
+    let muted = t.muted.iced_alpha(fade);
+    let accent = t.accent.iced_alpha(fade);
+    button(text(label).size(12))
+        .padding(8)
+        .on_press(Message::PowerPressed(action))
+        .style(move |_theme, status| button::Style {
+            background: Some(Background::Color(iced::Color::TRANSPARENT)),
+            text_color: if matches!(status, button::Status::Hovered) {
+                accent
+            } else {
+                muted
+            },
+            border: Border {
+                radius: 8.0.into(),
+                ..Default::default()
+            },
+            ..Default::default()
+        })
+        .into()
 }
 
 /// The subscription body: spawn the worker thread and stream its events. Created

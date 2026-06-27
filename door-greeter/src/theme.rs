@@ -55,6 +55,12 @@ impl Color {
     pub fn iced(self) -> iced::Color {
         iced::Color::from_rgba8(self.r, self.g, self.b, self.a as f32 / 255.0)
     }
+
+    /// As an `iced::Color` with the alpha scaled by `mult` (0.0–1.0) — drives the
+    /// launch fade-in (the card and its text ramp up together).
+    pub fn iced_alpha(self, mult: f32) -> iced::Color {
+        iced::Color::from_rgba8(self.r, self.g, self.b, (self.a as f32 / 255.0) * mult)
+    }
 }
 
 /// The resolved theme the UI renders against. Every field has a built-in default.
@@ -70,15 +76,19 @@ pub struct Theme {
     pub accent: Color,
     /// Main text/field color.
     pub foreground: Color,
-    /// Secondary text (status line, clock).
+    /// Secondary text (status line, date, placeholders).
     pub muted: Color,
+    /// Input field fill (slightly lifted from the card).
+    pub field: Color,
     /// Optional logo image shown in the card.
     pub logo: Option<PathBuf>,
+    /// Optional font family name (must be installed system-wide); `None` → stock.
+    pub font: Option<String>,
     /// Card corner radius (px).
     pub corner_radius: f32,
     /// Card width (px).
     pub card_width: f32,
-    /// Whether to show the clock in the card.
+    /// Whether to show the clock + date in the card.
     pub show_clock: bool,
 }
 
@@ -89,13 +99,16 @@ impl Default for Theme {
         Theme {
             wallpaper: None,
             background: Color::rgb(0x1a, 0x1b, 0x26),
-            card: Color::rgba(0x24, 0x28, 0x3b, 0xd0),
+            // A dark, glassy card — translucent so the wallpaper reads through.
+            card: Color::rgba(0x16, 0x16, 0x1e, 0xd8),
             accent: Color::rgb(0x7a, 0xa2, 0xf7),
             foreground: Color::rgb(0xc0, 0xca, 0xf5),
-            muted: Color::rgb(0x82, 0x8b, 0xb8),
+            muted: Color::rgb(0x56, 0x5f, 0x89),
+            field: Color::rgb(0x29, 0x2e, 0x42),
             logo: None,
-            corner_radius: 14.0,
-            card_width: 380.0,
+            font: None,
+            corner_radius: 16.0,
+            card_width: 300.0,
             show_clock: true,
         }
     }
@@ -112,6 +125,8 @@ struct ThemeFile {
     accent: Option<String>,
     foreground: Option<String>,
     muted: Option<String>,
+    field: Option<String>,
+    font: Option<String>,
     logo: Option<String>,
     corner_radius: Option<f32>,
     card_width: Option<f32>,
@@ -166,11 +181,15 @@ impl Theme {
         self.accent = color("accent", file.accent, self.accent);
         self.foreground = color("foreground", file.foreground, self.foreground);
         self.muted = color("muted", file.muted, self.muted);
+        self.field = color("field", file.field, self.field);
         if let Some(w) = file.wallpaper {
             self.wallpaper = Some(PathBuf::from(w));
         }
         if let Some(l) = file.logo {
             self.logo = Some(PathBuf::from(l));
+        }
+        if file.font.is_some() {
+            self.font = file.font;
         }
         if let Some(r) = file.corner_radius {
             self.corner_radius = r;

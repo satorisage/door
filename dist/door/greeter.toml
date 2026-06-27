@@ -5,21 +5,26 @@
 #
 # Every key is optional and overlays a built-in default, so a partial file works.
 # Colors are "#rrggbb" or "#rrggbbaa" — the card uses alpha for the translucent,
-# frosted look over the wallpaper. An unknown key is a loud error, not silently
+# glassy look over the wallpaper. An unknown key is a loud error, not silently
 # ignored. A missing asset (wallpaper/logo) degrades to the solid background.
 
-# Full-bleed background image behind the frosted card. Comment this out for a
-# solid `background` fill instead.
+# Full-bleed background image behind the card. Comment out for a solid
+# `background` fill instead.
 wallpaper = "/usr/share/door/wallpaper.png"
 
+# Tokyo Night palette.
 background  = "#1a1b26"    # solid fill (wallpaper letterbox edges, or no wallpaper)
-card        = "#24283bd0"  # the frosted login card — translucent (alpha d0 ≈ 82%)
+card        = "#16161ed8"  # the glassy login card — translucent (alpha d8 ≈ 85%)
+field       = "#292e42"    # input fill, lifted slightly off the card
 accent      = "#7aa2f7"    # focus highlight + the sign-in button
 foreground  = "#c0caf5"    # primary text
-muted       = "#828bb8"    # status line + clock
+muted       = "#565f89"    # date, placeholders, status, idle power controls
 
-corner_radius = 14.0       # card corner radius (px)
-card_width    = 380.0      # card width (px)
-show_clock    = true       # show the clock in the card
+# Installed system-wide; falls back to the stock font if absent.
+font = "MesloLGS Nerd Font"
 
-# logo = "/usr/share/door/logo.png"   # optional image shown above the title
+corner_radius = 16.0       # card corner radius (px)
+card_width    = 300.0      # card width (px) — keep it minimal
+show_clock    = true       # show the clock + date in the card
+
+# logo = "/usr/share/door/logo.png"   # optional image shown above the fields
