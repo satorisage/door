@@ -223,6 +223,18 @@ fn launch_greeter(config: &Config) -> io::Result<Option<std::process::ExitStatus
         OsString::from("DOORD_SOCKET"),
         config.socket_path.clone().into_os_string(),
     ));
+    // The greeter user has HOME=/ (sysusers), so Mesa cannot create `//.cache` for
+    // its shader cache — it logs a permission error and runs cache-disabled. Point
+    // XDG_CACHE_HOME at the greeter's own logind runtime dir (0700, writable,
+    // ephemeral), so the cache works and the warning is gone. Merged after the
+    // logind vars so it overrides nothing of theirs.
+    if let Some((_, runtime)) = pam_env
+        .iter()
+        .find(|(k, _)| k.to_str() == Some("XDG_RUNTIME_DIR"))
+    {
+        let cache_home = runtime.clone();
+        pam_env.push((OsString::from("XDG_CACHE_HOME"), cache_home));
+    }
     let token = pam_session.leak();
 
     // Fork the greeter command (cage -- door-greeter) as the greeter user, on the

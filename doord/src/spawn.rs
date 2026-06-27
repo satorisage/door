@@ -194,9 +194,11 @@ fn session_setup(
     Ok(())
 }
 
-/// Open the seat's VT, make it this session's controlling terminal, and route
-/// stdin/stdout/stderr to it — replacing the daemon's inherited stdio so the
-/// session owns the seat rather than the daemon's pipes.
+/// Open the seat's VT, make it this session's controlling terminal, and point
+/// stdin at it so the session owns the seat's console for input/VT-switch.
+/// stdout/stderr are deliberately left on the daemon's inherited streams (the
+/// service journal) rather than the VT, so the compositor's startup chatter does
+/// not paint the seat console before the desktop renders.
 fn take_controlling_tty(tty_cpath: &std::ffi::CStr) -> io::Result<()> {
     // O_NOCTTY: opening does not implicitly grab the tty; we claim it explicitly
     // below so the semantics are the same whether or not the kernel would have.
@@ -216,18 +218,23 @@ fn take_controlling_tty(tty_cpath: &std::ffi::CStr) -> io::Result<()> {
         return Err(e);
     }
 
-    // Point std{in,out,err} at the VT.
-    for std_fd in 0..3 {
-        // SAFETY: dup2 onto the three standard fds from a valid open fd.
-        if unsafe { libc::dup2(fd, std_fd) } < 0 {
-            let e = io::Error::last_os_error();
-            // SAFETY: fd is open and owned here.
-            unsafe { libc::close(fd) };
-            return Err(e);
-        }
+    // Point stdin at the VT (the session's controlling console for input), but
+    // leave stdout/stderr on the daemon's inherited streams — which are the
+    // service's journal. Routing the session's stdout/stderr to the VT instead
+    // paints the framebuffer with the compositor's startup chatter (kwin/xkbcomp
+    // keymap warnings, "Lost connection to Wayland compositor", etc.) before the
+    // desktop renders. A conventional DM logs the session to the journal/a file,
+    // not the console; do the same so the seat console stays clean and the logs
+    // are still captured.
+    // SAFETY: dup2 onto stdin from a valid open fd.
+    if unsafe { libc::dup2(fd, 0) } < 0 {
+        let e = io::Error::last_os_error();
+        // SAFETY: fd is open and owned here.
+        unsafe { libc::close(fd) };
+        return Err(e);
     }
     if fd > 2 {
-        // SAFETY: the original fd is now duplicated onto 0..3 and no longer needed.
+        // SAFETY: the original fd is duplicated onto stdin and no longer needed.
         unsafe { libc::close(fd) };
     }
     Ok(())
