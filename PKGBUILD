@@ -57,6 +57,11 @@ package() {
     install -Dm644 dist/door/greeter.toml  "$pkgdir/usr/share/door/greeter.toml"
     install -Dm644 dist/door/wallpaper.png "$pkgdir/usr/share/door/wallpaper.png"
 
+    # Built-in theme presets (loadable in door-settings).
+    for preset in dist/door/presets/*.toml; do
+        install -Dm644 "$preset" "$pkgdir/usr/share/door/presets/$(basename "$preset")"
+    done
+
     # Settings editor launcher (appears under Settings in the app menu).
     install -Dm644 dist/door/door-settings.desktop \
         "$pkgdir/usr/share/applications/door-settings.desktop"

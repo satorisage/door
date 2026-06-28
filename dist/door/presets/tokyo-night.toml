@@ -1,0 +1,73 @@
+# door greeter theme — written by door-settings. Edit here or in
+# door-settings; keys are documented in the packaged default at
+# /usr/share/door/greeter.toml. Colors are "#rrggbb" or "#rrggbbaa".
+
+# wallpaper =   # (none — solid background)
+background  = "#1a1b26"
+card        = "#16161ed8"
+field       = "#292e42"
+accent      = "#7aa2f7"
+foreground  = "#c0caf5"
+muted       = "#565f89"
+# font =   # (stock)
+# logo =
+corner_radius = 16
+card_width    = 300
+show_clock    = true
+animate       = true
+spinner_glow  = 1
+spinner_speed = 2.5
+spinner_comet = "#7dcfff"
+spinner_track = "#7aa2f7"
+spinner_trail = 1
+comet_color   = "#7dcfff"
+
+# Sky
+glow_color    = "#3d59a1"
+sky_glow      = 0.5
+star_density  = 0.47
+star_twinkle  = 1
+comet_enabled = true
+comet_interval = 9.5
+cloud_amount  = 1
+cloud_speed   = 1
+# Spinner / card / behavior
+spinner_size  = 52
+spinner_pulse = 1
+card_shadow_blur    = 34
+card_shadow_opacity = 0.45
+accent_breathing = 1
+field_radius  = 10
+error_color   = "#f7768e"
+logo_box      = "#00000000"
+logo_box_radius = 14
+clock_24h     = true
+fade_ms       = 384
+# Expert
+glow_falloff  = 3.2
+nebula_amount = 0.12
+comet_tail_decay = 9
+spinner_ring  = 0.1
+day_start  = "07:00"
+day_end    = "19:00"
+
+# Day variant overrides (light). Structural keys (font, sizes,
+# behaviour) are shared from above; only colors/assets differ.
+[day]
+background  = "#e1e2e7"
+card        = "#f4f6fb26"
+field       = "#ffffff99"
+accent      = "#2e7de9"
+foreground  = "#343b58"
+muted       = "#545c7e"
+# wallpaper =
+# logo =
+spinner_glow = 0
+spinner_comet = "#214693"
+spinner_track = "#2e7de9"
+spinner_trail = 0.55
+comet_color = "#6f9fe0"
+glow_color = "#8fb6ff"
+sky_glow = 0.55
+error_color = "#c0334d"
+logo_box = "#00000000"

@@ -10,8 +10,8 @@ use std::path::PathBuf;
 use std::time::Instant;
 
 use iced::widget::{
-    button, column, container, image, row, scrollable, shader, slider, text, text_input,
-    toggler, Space,
+    button, column, container, image, pick_list, row, scrollable, shader, slider, text,
+    text_input, toggler, Space,
 };
 use iced::{
     Alignment, Background, Border, Color as IColor, ContentFit, Element, Length, Shadow,
@@ -58,7 +58,8 @@ struct Palette {
     glow: f32,
     // The background-sky comet color (per variant).
     comet_color: String,
-    // Per-variant sky glow strength + login-error color.
+    // Per-variant sky glow color + strength + login-error color.
+    glow_color: String,
     sky_glow: f32,
     error_color: String,
     // Backdrop tile behind the logo / spinner (per variant; transparent = off).
@@ -84,6 +85,7 @@ impl Palette {
             trail: t.spinner_trail,
             glow: t.spinner_glow,
             comet_color: t.comet_color.to_hex(),
+            glow_color: t.glow_color.to_hex(),
             sky_glow: t.sky_glow,
             error_color: t.error_color.to_hex(),
             logo_box: t.logo_box.to_hex(),
@@ -106,6 +108,7 @@ enum Param {
     SpinnerComet,
     SpinnerTrack,
     SkyComet,
+    GlowColor,
     ErrorColor,
     LogoBox,
     Font,
@@ -168,6 +171,10 @@ enum Message {
     OpenInGreeter,
     Save,
     Reset,
+    // Presets
+    PresetPicked(Preset),
+    PresetNameChanged(String),
+    SavePreset,
 }
 
 struct State {
@@ -207,6 +214,10 @@ struct State {
     expert: bool,
     // Show one-line help under each control.
     help_on: bool,
+    // Saved presets (both variants) + the name field for saving a new one.
+    presets: Vec<Preset>,
+    selected_preset: Option<Preset>,
+    preset_name: String,
     // Which variant is being edited / previewed.
     editing_day: bool,
     // Which control tab is showing.
@@ -221,6 +232,88 @@ struct State {
 
 fn minutes_to_hhmm(m: u32) -> String {
     format!("{:02}:{:02}", m / 60, m % 60)
+}
+
+/// A saved theme preset (both variants + window), backed by a `.toml` file.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Preset {
+    name: String,
+    path: PathBuf,
+}
+
+impl std::fmt::Display for Preset {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.name)
+    }
+}
+
+/// `~/.config/door/presets` — the writable preset dir (created on save).
+fn user_preset_dir() -> Option<PathBuf> {
+    std::env::var_os("XDG_CONFIG_HOME")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")))
+        .map(|c| c.join("door/presets"))
+}
+
+/// Discover presets: user dir (wins on name clash), then the packaged built-ins, plus
+/// a `DOOR_PRESETS_DIR` override and the repo `dist/` for dev. Sorted, de-duped by name.
+fn scan_presets() -> Vec<Preset> {
+    let mut dirs: Vec<PathBuf> = Vec::new();
+    if let Some(d) = std::env::var_os("DOOR_PRESETS_DIR") {
+        dirs.push(PathBuf::from(d));
+    }
+    if let Some(d) = user_preset_dir() {
+        dirs.push(d);
+    }
+    dirs.push(PathBuf::from("/usr/share/door/presets"));
+    dirs.push(PathBuf::from("dist/door/presets"));
+
+    let mut out: Vec<Preset> = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    for dir in dirs {
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) != Some("toml") {
+                continue;
+            }
+            let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("preset");
+            let name = prettify(stem);
+            if seen.insert(name.clone()) {
+                out.push(Preset { name, path });
+            }
+        }
+    }
+    out.sort_by(|a, b| a.name.cmp(&b.name));
+    out
+}
+
+/// `tokyo-night` → `Tokyo Night` (filename stem → display name).
+fn prettify(stem: &str) -> String {
+    stem.split(['-', '_'])
+        .filter(|w| !w.is_empty())
+        .map(|w| {
+            let mut ch = w.chars();
+            match ch.next() {
+                Some(c) => c.to_uppercase().chain(ch).collect::<String>(),
+                None => String::new(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// `My Theme!` → `my-theme` (display name → safe filename stem).
+fn slugify(name: &str) -> String {
+    let s: String = name
+        .trim()
+        .to_lowercase()
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
+        .collect();
+    s.split('-').filter(|w| !w.is_empty()).collect::<Vec<_>>().join("-")
 }
 
 impl State {
@@ -258,6 +351,9 @@ impl State {
             spinner_ring: night.spinner_ring,
             expert: std::env::args().any(|a| a == "--expert"),
             help_on: false,
+            presets: scan_presets(),
+            selected_preset: None,
+            preset_name: String::new(),
             // Dev: start on the day variant when DOOR_SETTINGS_DAY is set.
             editing_day: std::env::var_os("DOOR_SETTINGS_DAY").is_some(),
             tab: Tab::Colors,
@@ -268,6 +364,39 @@ impl State {
         };
         s.rebuild_preview();
         s
+    }
+
+    /// Replace every variant + shared field from a loaded pair (a preset or reload).
+    fn apply_pair(&mut self, night: &Theme, day: &Theme, window: (u32, u32)) {
+        self.night = Palette::from_theme(night);
+        self.day = Palette::from_theme(day);
+        self.font = night.font.clone().unwrap_or_default();
+        self.corner_radius = night.corner_radius.to_string();
+        self.card_width = night.card_width.to_string();
+        self.day_start = minutes_to_hhmm(window.0);
+        self.day_end = minutes_to_hhmm(window.1);
+        self.spinner_speed = night.spinner_speed;
+        self.show_clock = night.show_clock;
+        self.animate = night.animate;
+        self.star_density = night.star_density;
+        self.star_twinkle = night.star_twinkle;
+        self.comet_enabled = night.comet_enabled;
+        self.comet_interval = night.comet_interval;
+        self.cloud_amount = night.cloud_amount;
+        self.cloud_speed = night.cloud_speed;
+        self.spinner_size = night.spinner_size;
+        self.spinner_pulse = night.spinner_pulse;
+        self.card_shadow_blur = night.card_shadow_blur;
+        self.card_shadow_opacity = night.card_shadow_opacity;
+        self.accent_breathing = night.accent_breathing;
+        self.field_radius = night.field_radius;
+        self.logo_box_radius = night.logo_box_radius;
+        self.clock_24h = night.clock_24h;
+        self.fade_ms = night.fade_ms;
+        self.glow_falloff = night.glow_falloff;
+        self.nebula_amount = night.nebula_amount;
+        self.comet_tail_decay = night.comet_tail_decay;
+        self.spinner_ring = night.spinner_ring;
     }
 
     /// Recompute the cached preview theme (call after any edit that affects it).
@@ -299,6 +428,7 @@ impl State {
             Param::SpinnerComet => pal.comet = value,
             Param::SpinnerTrack => pal.track = value,
             Param::SkyComet => pal.comet_color = value,
+            Param::GlowColor => pal.glow_color = value,
             Param::ErrorColor => pal.error_color = value,
             Param::LogoBox => pal.logo_box = value,
             Param::Font => self.font = value,
@@ -348,6 +478,7 @@ impl State {
             spinner_track: color("Track", &pal.track)?,
             spinner_trail: pal.trail,
             comet_color: color("Sky comet", &pal.comet_color)?,
+            glow_color: color("Glow color", &pal.glow_color)?,
             sky_glow: pal.sky_glow,
             error_color: color("Error", &pal.error_color)?,
             logo_box: color("Logo box", &pal.logo_box)?,
@@ -390,7 +521,12 @@ fn update(state: &mut State, message: Message) -> Task<Message> {
     // rebuild the cached preview for those (not 60×/s) so the day flip stays smooth.
     let touches_theme = !matches!(
         message,
-        Message::Tick | Message::SelectTab(_) | Message::ToggleHelp(_) | Message::ToggleExpert(_)
+        Message::Tick
+            | Message::SelectTab(_)
+            | Message::ToggleHelp(_)
+            | Message::ToggleExpert(_)
+            | Message::PresetNameChanged(_)
+            | Message::SavePreset
     );
     match message {
         Message::Set(param, value) => state.set(param, value),
@@ -448,6 +584,53 @@ fn update(state: &mut State, message: Message) -> Task<Message> {
             *state = State::new();
             state.editing_day = keep;
             state.status = "Reloaded the saved themes.".to_string();
+        }
+        Message::PresetNameChanged(s) => state.preset_name = s,
+        Message::PresetPicked(p) => match std::fs::read_to_string(&p.path) {
+            Ok(contents) => match Theme::parse_pair(&contents) {
+                Ok((night, day, window)) => {
+                    state.apply_pair(&night, &day, window);
+                    state.preset_name = p.name.clone();
+                    state.selected_preset = Some(p.clone());
+                    state.status = format!("Loaded preset '{}'.", p.name);
+                }
+                Err(e) => state.status = format!("Preset '{}' is malformed: {e}", p.name),
+            },
+            Err(e) => state.status = format!("Could not read preset: {e}"),
+        },
+        Message::SavePreset => {
+            let slug = slugify(&state.preset_name);
+            if slug.is_empty() {
+                state.status = "Name the preset before saving.".into();
+            } else {
+                match (state.build(false), state.build(true)) {
+                    (Ok(night), Ok(day)) => {
+                        let body =
+                            Theme::render_pair(&night, &day, &state.day_start, &state.day_end);
+                        match user_preset_dir() {
+                            Some(dir) => {
+                                let path = dir.join(format!("{slug}.toml"));
+                                match std::fs::create_dir_all(&dir)
+                                    .and_then(|_| std::fs::write(&path, body))
+                                {
+                                    Ok(_) => {
+                                        state.presets = scan_presets();
+                                        state.selected_preset =
+                                            state.presets.iter().find(|p| p.path == path).cloned();
+                                        state.status =
+                                            format!("Saved preset '{}'.", prettify(&slug));
+                                    }
+                                    Err(e) => {
+                                        state.status = format!("Could not save preset: {e}")
+                                    }
+                                }
+                            }
+                            None => state.status = "No HOME to save the preset into.".into(),
+                        }
+                    }
+                    (Err(e), _) | (_, Err(e)) => state.status = format!("Fix before saving: {e}"),
+                }
+            }
         }
         Message::OpenInGreeter => match write_draft(state) {
             Ok(path) => {
@@ -606,8 +789,37 @@ fn controls(state: &State) -> Element<'_, Message> {
     ]
     .spacing(8);
 
+    // Presets: load a saved day+night theme, or save the current one by name.
+    let presets = group(
+        "PRESETS",
+        column![
+            pick_list(
+                &state.presets[..],
+                state.selected_preset.clone(),
+                Message::PresetPicked,
+            )
+            .placeholder("Load a preset…")
+            .text_size(13)
+            .padding(6)
+            .width(Length::Fill),
+            row![
+                text_input("name this preset", &state.preset_name)
+                    .on_input(Message::PresetNameChanged)
+                    .padding(6)
+                    .size(13)
+                    .style(input_style),
+                ghost_button("Save preset", Message::SavePreset),
+            ]
+            .spacing(8)
+            .align_y(Alignment::Center),
+        ]
+        .spacing(8)
+        .into(),
+    );
+
     column![
         header,
+        presets,
         tabbar,
         body,
         actions,
@@ -652,8 +864,9 @@ fn sky_tab<'a>(state: &'a State, pal: &'a Palette, h: bool) -> Element<'a, Messa
         "SKY",
         column![
             helped(color_cell("Comet color", &pal.comet_color, Param::SkyComet), "Color of the comet that drifts across the background.", h),
-            helped(slider_row("Sky glow", pal.sky_glow, 0.0..=1.5, 0.01, format!("{:.2}", pal.sky_glow), Message::SkyGlow),
-                "Night indigo haze / daytime sun-halo strength.", h),
+            helped(color_cell("Glow color", &pal.glow_color, Param::GlowColor), "Tint of the sky glow / daytime sun-haze.", h),
+            helped(slider_row("Sky glow", pal.sky_glow, 0.0..=2.0, 0.01, format!("{:.2}", pal.sky_glow), Message::SkyGlow),
+                "Strength of that glow (night haze / daytime sun-halo).", h),
             helped(slider_row("Star density", state.star_density, 0.0..=1.0, 0.01, format!("{}%", (state.star_density * 100.0).round() as u32), Message::StarDensity),
                 "How many stars fill the night sky.", h),
             helped(slider_row("Twinkle", state.star_twinkle, 0.0..=4.0, 0.1, format!("{:.1}×", state.star_twinkle), Message::StarTwinkle),

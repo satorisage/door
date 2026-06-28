@@ -45,7 +45,8 @@ spinner_trail = 1.0         # trail length 0.15–1.0 (shorter = crisper on a li
 #
 # Sky
 # comet_color    = "#7dcfff"  # the background-sky comet (separate from the spinner)
-# sky_glow       = 0.5        # night indigo haze / daytime sun-halo strength (0–1)
+# glow_color     = "#3d59a1"  # sky-glow tint (night haze / daytime sun-haze)
+# sky_glow       = 0.5        # strength of that glow (0–2)
 # star_density   = 0.47       # how many stars (0–1)
 # star_twinkle   = 1.0        # twinkle-speed multiplier
 # comet_enabled  = true       # the drifting background comet

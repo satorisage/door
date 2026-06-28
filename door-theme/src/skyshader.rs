@@ -68,12 +68,9 @@ impl SkyShader {
     pub fn from_theme(t: &Theme, anim: f32, fade: f32) -> Self {
         let day = t.is_day;
         let bg = t.background.iced();
-        // The glow / sun-haze tint: a soft sky-blue by day, deep indigo by night.
-        let glow_tint = if day {
-            srgb8(0x8f, 0xb6, 0xff)
-        } else {
-            srgb8(0x3d, 0x59, 0xa1)
-        };
+        // The glow / sun-haze tint — themeable per variant (sky-blue by day, indigo by
+        // night by default), so cranking `sky_glow` recolors the whole atmosphere.
+        let glow_tint = t.glow_color.iced();
         // Vertical gradient: the top lifts toward the glow tint, the bottom is the
         // solid background — a smooth per-pixel sky, not three flat bands.
         let bg_top = mix(bg, glow_tint, if day { 0.40 } else { 0.20 });

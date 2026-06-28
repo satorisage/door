@@ -130,7 +130,10 @@ pub struct Theme {
     pub comet_color: Color,
 
     // ── Sky controls ──
-    /// Sky glow strength: the indigo haze at night, the sun-halo by day (0–1). Per variant.
+    /// The sky glow/haze tint — the night sky-glow color and the daytime sun/zenith
+    /// tint. Per variant (indigo by night, sky-blue by day by default).
+    pub glow_color: Color,
+    /// Sky glow strength: the haze at night, the sun-halo by day (0–1+). Per variant.
     pub sky_glow: f32,
     /// Star field density, 0–1 (higher = more stars). Shared.
     pub star_density: f32,
@@ -209,6 +212,7 @@ impl Default for Theme {
             spinner_track: Color::rgb(0x7a, 0xa2, 0xf7),
             spinner_trail: 1.0,
             comet_color: Color::rgb(0x7d, 0xcf, 0xff),
+            glow_color: Color::rgb(0x3d, 0x59, 0xa1),
             sky_glow: 0.50,
             star_density: 0.47,
             star_twinkle: 1.0,
@@ -266,6 +270,7 @@ impl Theme {
             // A brighter sky comet so it reads against the luminous day sky.
             comet_color: Color::rgb(0x6f, 0x9f, 0xe0),
             // Per-variant: a touch more sun-halo by day; a darker red on the light card.
+            glow_color: Color::rgb(0x8f, 0xb6, 0xff),
             sky_glow: 0.55,
             error_color: Color::rgb(0xc0, 0x33, 0x4d),
             logo_box: Color::rgba(0x00, 0x00, 0x00, 0x00),
@@ -317,6 +322,7 @@ struct ThemeFile {
     spinner_track: Option<String>,
     spinner_trail: Option<f32>,
     comet_color: Option<String>,
+    glow_color: Option<String>,
     sky_glow: Option<f32>,
     star_density: Option<f32>,
     star_twinkle: Option<f32>,
@@ -366,6 +372,7 @@ struct DayFile {
     spinner_trail: Option<f32>,
     comet_color: Option<String>,
     // Per-variant sky/behavior overrides.
+    glow_color: Option<String>,
     sky_glow: Option<f32>,
     error_color: Option<String>,
     logo_box: Option<String>,
@@ -467,6 +474,7 @@ impl Theme {
         }
         self.comet_color = color("comet_color", file.comet_color, self.comet_color);
         // New control surface (night values from the top level).
+        self.glow_color = color("glow_color", file.glow_color, self.glow_color);
         merge_f32(&mut self.sky_glow, file.sky_glow);
         merge_f32(&mut self.star_density, file.star_density);
         merge_f32(&mut self.star_twinkle, file.star_twinkle);
@@ -597,6 +605,7 @@ impl Theme {
             self.spinner_trail = tr;
         }
         self.comet_color = color("comet_color", d.comet_color, self.comet_color);
+        self.glow_color = color("glow_color", d.glow_color, self.glow_color);
         merge_f32(&mut self.sky_glow, d.sky_glow);
         self.error_color = color("error_color", d.error_color, self.error_color);
         self.logo_box = color("logo_box", d.logo_box, self.logo_box);
@@ -616,6 +625,17 @@ impl Theme {
         let night = Theme::default().merged(file.clone());
         let day = Theme::day().merged_structural(&file).merged_day(file.day.clone());
         (night, day, window)
+    }
+
+    /// Parse both variants + the day window from a config string (a preset file), the
+    /// same way `load_pair` resolves the live config. `Err` on a malformed file so the
+    /// caller can surface it (a preset the user explicitly picked shouldn't fail silent).
+    pub fn parse_pair(contents: &str) -> Result<(Theme, Theme, (u32, u32)), String> {
+        let file = toml::from_str::<ThemeFile>(contents).map_err(|e| e.to_string())?;
+        let window = day_window(&file);
+        let night = Theme::default().merged(file.clone());
+        let day = Theme::day().merged_structural(&file).merged_day(file.day.clone());
+        Ok((night, day, window))
     }
 
     /// Render a full `greeter.toml` with both palettes — the night top-level, the
@@ -646,6 +666,7 @@ impl Theme {
         out.push_str(&format!("spinner_track = {:?}\n", day.spinner_track.to_hex()));
         out.push_str(&format!("spinner_trail = {}\n", day.spinner_trail));
         out.push_str(&format!("comet_color = {:?}\n", day.comet_color.to_hex()));
+        out.push_str(&format!("glow_color = {:?}\n", day.glow_color.to_hex()));
         out.push_str(&format!("sky_glow = {}\n", day.sky_glow));
         out.push_str(&format!("error_color = {:?}\n", day.error_color.to_hex()));
         out.push_str(&format!("logo_box = {:?}\n", day.logo_box.to_hex()));
@@ -690,6 +711,7 @@ impl Theme {
         out.push_str(&format!("comet_color   = {:?}\n", self.comet_color.to_hex()));
         out.push('\n');
         out.push_str("# Sky\n");
+        out.push_str(&format!("glow_color    = {:?}\n", self.glow_color.to_hex()));
         out.push_str(&format!("sky_glow      = {}\n", self.sky_glow));
         out.push_str(&format!("star_density  = {}\n", self.star_density));
         out.push_str(&format!("star_twinkle  = {}\n", self.star_twinkle));
@@ -825,6 +847,17 @@ mod tests {
         assert!(theme.animate);
         assert!(theme.show_clock);
         assert_eq!(theme.accent, Color::rgb(0x7a, 0xa2, 0xf7));
+    }
+
+    #[test]
+    fn shipped_presets_parse_as_pairs() {
+        for (name, raw) in [
+            ("tokyo-night", include_str!("../../dist/door/presets/tokyo-night.toml")),
+            ("supernova", include_str!("../../dist/door/presets/supernova.toml")),
+            ("nebula", include_str!("../../dist/door/presets/nebula.toml")),
+        ] {
+            Theme::parse_pair(raw).unwrap_or_else(|e| panic!("preset {name} must parse: {e}"));
+        }
     }
 
     #[test]
