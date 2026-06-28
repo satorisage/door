@@ -526,7 +526,7 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
   let cometc = u.comet.rgb;
   let pulse = 0.86 + 0.14 * sin(u.time * 3.0 * u.params.w);
 
-  let R = 0.36;                       // orbit radius (matches the canvas spinner)
+  let R = 0.30;                       // orbit radius — pulled in so the glow has margin
   let r = length(p);
   let ang = atan2(p.y, p.x);
   let headA = u.time * speed;
@@ -538,7 +538,7 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
   var cov = 0.0;                      // coverage / alpha
 
   // Faint orbit ring the comet rides.
-  let ringI = exp(-(r - R) * (r - R) * 1400.0) * u.params2.x;
+  let ringI = exp(-(r - R) * (r - R) * 1900.0) * u.params2.x;
   acc += u.track.rgb * ringI;
   cov += ringI;
 
@@ -549,7 +549,7 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
   var d = headA - ang;
   d = d - floor(d / TAU) * TAU;       // angle behind the head, [0, TAU)
   let decay = mix(6.5, 1.4, (trailLen - 0.15) / 0.85);
-  let radial = exp(-(r - R) * (r - R) * 900.0);
+  let radial = exp(-(r - R) * (r - R) * 1200.0);
   let trailI = radial * exp(-d * decay) * 0.95;
   let kw = clamp(1.0 - d / 1.2, 0.0, 1.0);
   let trailCol = mix(cometc, white, hot * kw * kw * 0.85);
@@ -558,32 +558,32 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
 
   // Coma halo (night only — broad soft bloom; banded on the light day card).
   if (glow > 0.0) {
-    let halo = (exp(-nd * 120.0) * 0.5 + exp(-nd * 42.0) * 0.30 + exp(-nd * 16.0) * 0.16)
+    let halo = (exp(-nd * 150.0) * 0.5 + exp(-nd * 60.0) * 0.30 + exp(-nd * 30.0) * 0.16)
                * glow * pulse;
     acc += mix(cometc, white, hot * 0.5) * halo;
     cov += halo;
   }
 
   // Bright nucleus + a tiny white center pip.
-  let core = exp(-nd * 520.0) * pulse;
+  let core = exp(-nd * 700.0) * pulse;
   acc += mix(cometc, white, hot * 0.85) * core;
   cov += core;
-  let pip = exp(-nd * 1900.0) * (0.35 + 0.55 * hot) * pulse;
+  let pip = exp(-nd * 2400.0) * (0.35 + 0.55 * hot) * pulse;
   acc += white * pip;
   cov += pip;
 
   // 4-point star glint over the head — spikes lengthen with `glow`.
-  let longf = mix(48.0, 20.0, hot);
-  let horiz = exp(-lp.y * lp.y * 4200.0) * exp(-abs(lp.x) * longf);
-  let vert  = exp(-lp.x * lp.x * 4200.0) * exp(-abs(lp.y) * longf);
+  let longf = mix(40.0, 28.0, hot);
+  let horiz = exp(-lp.y * lp.y * 5200.0) * exp(-abs(lp.x) * longf);
+  let vert  = exp(-lp.x * lp.x * 5200.0) * exp(-abs(lp.y) * longf);
   let glint = (horiz + vert) * (0.22 + 0.4 * hot) * pulse;
   acc += mix(cometc, white, 0.4 + 0.5 * hot) * glint;
   cov += glint;
 
-  // Fade to nothing toward the widget edge so a wide glow never hard-clips into a
-  // visible square at the box boundary (the head/orbit sit well inside 0.40).
-  let cheb = max(abs(in.uv.x - 0.5), abs(in.uv.y - 0.5));
-  let edge = 1.0 - smoothstep(0.40, 0.5, cheb);
+  // Fade out *radially* (a circle, never a square) so the orbiting glow reads as a
+  // free-floating spinner, not something happening inside a box. The orbit (0.30) and
+  // its glow sit inside 0.42, so this only softens the faint outer tail.
+  let edge = 1.0 - smoothstep(0.42, 0.49, r);
   acc = acc * edge;
   cov = cov * edge;
 
