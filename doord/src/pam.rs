@@ -30,7 +30,9 @@ use protocol::{read_frame, write_frame, AuthPrompt, Request, Response};
 use crate::config::SeatTarget;
 use crate::sessions::{DiscoveredSession, SessionKind};
 use crate::spawn::{LaunchError, SessionChild};
-use crate::worker::{self, Verdict, WorkerCommand, WorkerEvent, WorkerSeat, WorkerSession, CONTROL_FD};
+use crate::worker::{
+    self, Verdict, WorkerCommand, WorkerEvent, WorkerSeat, WorkerSession, CONTROL_FD,
+};
 
 /// The result of an authentication attempt, as the daemon will report it.
 #[derive(Debug, PartialEq, Eq)]
@@ -184,11 +186,16 @@ impl Login for WorkerLogin {
                     }
                 }
                 WorkerEvent::Info { text } => {
-                    let _ = write_frame(&mut self.greeter, &Response::Auth(AuthPrompt::Info { text }));
+                    let _ = write_frame(
+                        &mut self.greeter,
+                        &Response::Auth(AuthPrompt::Info { text }),
+                    );
                 }
                 WorkerEvent::Error { text } => {
-                    let _ =
-                        write_frame(&mut self.greeter, &Response::Auth(AuthPrompt::Error { text }));
+                    let _ = write_frame(
+                        &mut self.greeter,
+                        &Response::Auth(AuthPrompt::Error { text }),
+                    );
                 }
                 WorkerEvent::Auth(verdict) => {
                     let outcome = AuthOutcome::from(verdict);

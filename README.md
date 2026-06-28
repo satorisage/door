@@ -82,6 +82,16 @@ the advanced controls.
 The config is `/etc/door/greeter.toml` (copy from `/usr/share/door/greeter.toml`);
 every key is documented there.
 
+## Reporting issues
+
+- **Bugs in door** (greeter, daemon, login, theming) → [GitHub Issues](https://github.com/satorisage/door/issues).
+- **Packaging problems** (AUR build fails, bad checksum, stale version) → the
+  [AUR package comments](https://aur.archlinux.org/packages/door), or *Flag package out-of-date*.
+- **Security vulnerabilities** → **privately**, via the [security policy](SECURITY.md) —
+  please don't open a public issue.
+
+Contributions welcome — see [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## License
 
 [MPL-2.0](LICENSE).

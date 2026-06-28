@@ -260,7 +260,9 @@ fn launch_greeter(config: &Config) -> io::Result<Option<std::process::ExitStatus
             // Close the session we opened before bailing.
             let session = context.unleak_session(token);
             let _ = session.close(Flag::NONE);
-            return Err(io::Error::other(format!("launching the greeter failed: {e}")));
+            return Err(io::Error::other(format!(
+                "launching the greeter failed: {e}"
+            )));
         }
     };
 
@@ -356,7 +358,10 @@ fn serve(mut control: UnixStream, config: &Config) -> io::Result<()> {
                         return Ok(());
                     }
                     Err(e) => {
-                        eprintln!("doord-worker: could not start session '{}': {e}", session.id);
+                        eprintln!(
+                            "doord-worker: could not start session '{}': {e}",
+                            session.id
+                        );
                         let _ = write_frame(&mut control, &WorkerEvent::StartFailed);
                     }
                 }
@@ -392,7 +397,10 @@ fn authenticate(
     let mut context = match Context::new(&config.pam_service, Some(username), conv) {
         Ok(ctx) => ctx,
         Err(e) => {
-            eprintln!("doord-worker: pam_start failed for '{}': {e}", config.pam_service);
+            eprintln!(
+                "doord-worker: pam_start failed for '{}': {e}",
+                config.pam_service
+            );
             return Verdict::Failure;
         }
     };

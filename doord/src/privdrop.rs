@@ -194,7 +194,10 @@ mod tests {
         // Anything after it is locale, and only locale — no other inherited var
         // is admitted (the allowlist's whole job).
         for (k, _) in env.iter().skip(5) {
-            assert!(LOCALE_VARS.contains(&k.as_str()), "unexpected non-locale key: {k}");
+            assert!(
+                LOCALE_VARS.contains(&k.as_str()),
+                "unexpected non-locale key: {k}"
+            );
         }
     }
 
@@ -210,7 +213,10 @@ mod tests {
         let get = |key: &str| env.iter().find(|(k, _)| k == key).map(|(_, v)| v.clone());
         assert_eq!(get("LANG").as_deref(), Some("en_US.UTF-8"));
         assert_eq!(get("LC_TIME").as_deref(), Some("de_DE.UTF-8"));
-        assert!(get("LC_ALL").is_none(), "empty value must not be passed through");
+        assert!(
+            get("LC_ALL").is_none(),
+            "empty value must not be passed through"
+        );
     }
 
     #[test]
@@ -226,8 +232,16 @@ mod tests {
     fn locale_env_does_not_override_an_existing_ctype() {
         // LANG present → no fallback appended (we honor the configured locale).
         let env = locale_env(|k| (k == "LANG").then(|| "fr_FR.UTF-8".to_string()));
-        let langs: Vec<&str> = env.iter().filter(|(k, _)| k == "LANG").map(|(_, v)| v.as_str()).collect();
-        assert_eq!(langs, ["fr_FR.UTF-8"], "must not duplicate or override LANG");
+        let langs: Vec<&str> = env
+            .iter()
+            .filter(|(k, _)| k == "LANG")
+            .map(|(_, v)| v.as_str())
+            .collect();
+        assert_eq!(
+            langs,
+            ["fr_FR.UTF-8"],
+            "must not duplicate or override LANG"
+        );
     }
 
     #[test]

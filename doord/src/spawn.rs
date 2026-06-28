@@ -301,7 +301,10 @@ mod tests {
     #[test]
     fn command_runs_in_the_users_home() {
         let cmd = build_command(&exec(&["Hyprland"]), &target(), &[]);
-        assert_eq!(cmd.get_current_dir(), Some(std::path::Path::new("/home/stephen")));
+        assert_eq!(
+            cmd.get_current_dir(),
+            Some(std::path::Path::new("/home/stephen"))
+        );
     }
 
     fn env_of(cmd: &Command) -> HashMap<String, String> {
@@ -309,7 +312,9 @@ mod tests {
             .map(|(k, v)| {
                 (
                     k.to_string_lossy().into_owned(),
-                    v.expect("every entry is explicitly set").to_string_lossy().into_owned(),
+                    v.expect("every entry is explicitly set")
+                        .to_string_lossy()
+                        .into_owned(),
                 )
             })
             .collect()
@@ -324,12 +329,27 @@ mod tests {
         // through deliberately) — and nothing else inherited.
         let env = env_of(&cmd);
         for required in ["HOME", "USER", "LOGNAME", "SHELL", "PATH"] {
-            assert!(env.contains_key(required), "missing allowlist key: {required}");
+            assert!(
+                env.contains_key(required),
+                "missing allowlist key: {required}"
+            );
         }
         let locale = [
-            "LANG", "LANGUAGE", "LC_ALL", "LC_CTYPE", "LC_NUMERIC", "LC_TIME", "LC_COLLATE",
-            "LC_MONETARY", "LC_MESSAGES", "LC_PAPER", "LC_NAME", "LC_ADDRESS", "LC_TELEPHONE",
-            "LC_MEASUREMENT", "LC_IDENTIFICATION",
+            "LANG",
+            "LANGUAGE",
+            "LC_ALL",
+            "LC_CTYPE",
+            "LC_NUMERIC",
+            "LC_TIME",
+            "LC_COLLATE",
+            "LC_MONETARY",
+            "LC_MESSAGES",
+            "LC_PAPER",
+            "LC_NAME",
+            "LC_ADDRESS",
+            "LC_TELEPHONE",
+            "LC_MEASUREMENT",
+            "LC_IDENTIFICATION",
         ];
         let allowed = ["HOME", "USER", "LOGNAME", "SHELL", "PATH"];
         for key in env.keys() {
@@ -354,7 +374,10 @@ mod tests {
         // inherited — only what PAM/the allowlist explicitly provide.
         let pam_env = vec![
             (OsString::from("XDG_SESSION_ID"), OsString::from("7")),
-            (OsString::from("XDG_RUNTIME_DIR"), OsString::from("/run/user/1000")),
+            (
+                OsString::from("XDG_RUNTIME_DIR"),
+                OsString::from("/run/user/1000"),
+            ),
             (OsString::from("PATH"), OsString::from("/pam/bin")),
         ];
         let cmd = build_command(&exec(&["Hyprland"]), &target(), &pam_env);

@@ -10,8 +10,8 @@ use std::path::PathBuf;
 use std::time::Instant;
 
 use iced::widget::{
-    button, column, container, image, pick_list, row, scrollable, shader, slider, text,
-    text_input, toggler, Space,
+    button, column, container, image, pick_list, row, scrollable, shader, slider, text, text_input,
+    toggler, Space,
 };
 use iced::{
     Alignment, Background, Border, Color as IColor, ContentFit, Element, Length, Shadow,
@@ -69,7 +69,9 @@ struct Palette {
 impl Palette {
     fn from_theme(t: &Theme) -> Self {
         let path = |p: &Option<PathBuf>| {
-            p.as_ref().map(|p| p.display().to_string()).unwrap_or_default()
+            p.as_ref()
+                .map(|p| p.display().to_string())
+                .unwrap_or_default()
         };
         Palette {
             wallpaper: path(&t.wallpaper),
@@ -279,7 +281,10 @@ fn scan_presets() -> Vec<Preset> {
             if path.extension().and_then(|e| e.to_str()) != Some("toml") {
                 continue;
             }
-            let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("preset");
+            let stem = path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("preset");
             let name = prettify(stem);
             if seen.insert(name.clone()) {
                 out.push(Preset { name, path });
@@ -313,7 +318,10 @@ fn slugify(name: &str) -> String {
         .chars()
         .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
         .collect();
-    s.split('-').filter(|w| !w.is_empty()).collect::<Vec<_>>().join("-")
+    s.split('-')
+        .filter(|w| !w.is_empty())
+        .collect::<Vec<_>>()
+        .join("-")
 }
 
 impl State {
@@ -411,11 +419,19 @@ impl State {
     }
 
     fn active(&self) -> &Palette {
-        if self.editing_day { &self.day } else { &self.night }
+        if self.editing_day {
+            &self.day
+        } else {
+            &self.night
+        }
     }
 
     fn set(&mut self, param: Param, value: String) {
-        let pal = if self.editing_day { &mut self.day } else { &mut self.night };
+        let pal = if self.editing_day {
+            &mut self.day
+        } else {
+            &mut self.night
+        };
         match param {
             Param::Wallpaper => pal.wallpaper = value,
             Param::Background => pal.background = value,
@@ -503,7 +519,6 @@ impl State {
             spinner_ring: self.spinner_ring,
         })
     }
-
 }
 
 /// Render both palettes to a full `greeter.toml`, returning the temp path.
@@ -531,19 +546,31 @@ fn update(state: &mut State, message: Message) -> Task<Message> {
     match message {
         Message::Set(param, value) => state.set(param, value),
         Message::CardAlpha(v) => {
-            let pal = if state.editing_day { &mut state.day } else { &mut state.night };
+            let pal = if state.editing_day {
+                &mut state.day
+            } else {
+                &mut state.night
+            };
             if let Some(mut col) = Color::parse(pal.card.trim()) {
                 col.a = (v.clamp(0.0, 1.0) * 255.0).round() as u8;
                 pal.card = col.to_hex();
             }
         }
         Message::SpinnerGlow(v) => {
-            let pal = if state.editing_day { &mut state.day } else { &mut state.night };
+            let pal = if state.editing_day {
+                &mut state.day
+            } else {
+                &mut state.night
+            };
             pal.glow = v.clamp(0.0, 1.0);
         }
         Message::SpinnerSpeed(v) => state.spinner_speed = v.clamp(0.0, 8.0),
         Message::SpinnerTrail(v) => {
-            let pal = if state.editing_day { &mut state.day } else { &mut state.night };
+            let pal = if state.editing_day {
+                &mut state.day
+            } else {
+                &mut state.night
+            };
             pal.trail = v.clamp(0.15, 1.0);
         }
         Message::EditDay(on) => state.editing_day = on,
@@ -554,7 +581,11 @@ fn update(state: &mut State, message: Message) -> Task<Message> {
         Message::ToggleAnimate(on) => state.animate = on,
         // Per-variant sky glow.
         Message::SkyGlow(v) => {
-            let pal = if state.editing_day { &mut state.day } else { &mut state.night };
+            let pal = if state.editing_day {
+                &mut state.day
+            } else {
+                &mut state.night
+            };
             pal.sky_glow = v.clamp(0.0, 2.0);
         }
         // Shared sky/spinner/card/behavior controls.
@@ -620,9 +651,7 @@ fn update(state: &mut State, message: Message) -> Task<Message> {
                                         state.status =
                                             format!("Saved preset '{}'.", prettify(&slug));
                                     }
-                                    Err(e) => {
-                                        state.status = format!("Could not save preset: {e}")
-                                    }
+                                    Err(e) => state.status = format!("Could not save preset: {e}"),
                                 }
                             }
                             None => state.status = "No HOME to save the preset into.".into(),
@@ -833,28 +862,89 @@ fn controls(state: &State) -> Element<'_, Message> {
 
 // ── Per-tab content ─────────────────────────────────────────────────────────
 
-fn colors_tab<'a>(state: &'a State, pal: &'a Palette, card_a: f32, h: bool) -> Element<'a, Message> {
+fn colors_tab<'a>(
+    state: &'a State,
+    pal: &'a Palette,
+    card_a: f32,
+    h: bool,
+) -> Element<'a, Message> {
     let assets = group(
         "LOGO & ASSETS",
         column![
-            helped(plain_row("Wallpaper", &pal.wallpaper, "(animated sky)", Param::Wallpaper), "Full-screen image; blank uses the animated sky.", h),
-            helped(plain_row("Logo", &pal.logo, "(comet spinner)", Param::Logo), "Image shown on the card; blank uses the comet spinner.", h),
-            helped(color_cell("Logo box", &pal.logo_box, Param::LogoBox), "Backdrop tile behind the logo/spinner. Transparent (alpha 00) = invisible.", h),
-            helped(slider_row("Box rounding", state.logo_box_radius, 0.0..=40.0, 1.0, format!("{:.0}px", state.logo_box_radius), Message::LogoBoxRadius),
-                "Corner radius of the logo backdrop tile.", h),
-        ].spacing(9).into(),
+            helped(
+                plain_row(
+                    "Wallpaper",
+                    &pal.wallpaper,
+                    "(animated sky)",
+                    Param::Wallpaper
+                ),
+                "Full-screen image; blank uses the animated sky.",
+                h
+            ),
+            helped(
+                plain_row("Logo", &pal.logo, "(comet spinner)", Param::Logo),
+                "Image shown on the card; blank uses the comet spinner.",
+                h
+            ),
+            helped(
+                color_cell("Logo box", &pal.logo_box, Param::LogoBox),
+                "Backdrop tile behind the logo/spinner. Transparent (alpha 00) = invisible.",
+                h
+            ),
+            helped(
+                slider_row(
+                    "Box rounding",
+                    state.logo_box_radius,
+                    0.0..=40.0,
+                    1.0,
+                    format!("{:.0}px", state.logo_box_radius),
+                    Message::LogoBoxRadius
+                ),
+                "Corner radius of the logo backdrop tile.",
+                h
+            ),
+        ]
+        .spacing(9)
+        .into(),
     );
     let colors = group(
         "COLORS",
         column![
-            row![color_cell("BG", &pal.background, Param::Background), color_cell("Card", &pal.card, Param::Card)].spacing(10),
-            row![color_cell("Field", &pal.field, Param::Field), color_cell("Accent", &pal.accent, Param::Accent)].spacing(10),
-            row![color_cell("Text", &pal.foreground, Param::Foreground), color_cell("Muted", &pal.muted, Param::Muted)].spacing(10),
-            helped(color_cell("Error", &pal.error_color, Param::ErrorColor), "Status-line color when a login fails.", h),
+            row![
+                color_cell("BG", &pal.background, Param::Background),
+                color_cell("Card", &pal.card, Param::Card)
+            ]
+            .spacing(10),
+            row![
+                color_cell("Field", &pal.field, Param::Field),
+                color_cell("Accent", &pal.accent, Param::Accent)
+            ]
+            .spacing(10),
+            row![
+                color_cell("Text", &pal.foreground, Param::Foreground),
+                color_cell("Muted", &pal.muted, Param::Muted)
+            ]
+            .spacing(10),
             helped(
-                slider_row("Card opacity", card_a, 0.0..=1.0, 0.01, format!("{}%", (card_a * 100.0).round() as u32), Message::CardAlpha),
-                "How see-through the login card is.", h),
-        ].spacing(9).into(),
+                color_cell("Error", &pal.error_color, Param::ErrorColor),
+                "Status-line color when a login fails.",
+                h
+            ),
+            helped(
+                slider_row(
+                    "Card opacity",
+                    card_a,
+                    0.0..=1.0,
+                    0.01,
+                    format!("{}%", (card_a * 100.0).round() as u32),
+                    Message::CardAlpha
+                ),
+                "How see-through the login card is.",
+                h
+            ),
+        ]
+        .spacing(9)
+        .into(),
     );
     column![assets, colors].spacing(14).into()
 }
@@ -863,35 +953,146 @@ fn sky_tab<'a>(state: &'a State, pal: &'a Palette, h: bool) -> Element<'a, Messa
     let main = group(
         "SKY",
         column![
-            helped(color_cell("Comet color", &pal.comet_color, Param::SkyComet), "Color of the comet that drifts across the background.", h),
-            helped(color_cell("Glow color", &pal.glow_color, Param::GlowColor), "Tint of the sky glow / daytime sun-haze.", h),
-            helped(slider_row("Sky glow", pal.sky_glow, 0.0..=2.0, 0.01, format!("{:.2}", pal.sky_glow), Message::SkyGlow),
-                "Strength of that glow (night haze / daytime sun-halo).", h),
-            helped(slider_row("Star density", state.star_density, 0.0..=1.0, 0.01, format!("{}%", (state.star_density * 100.0).round() as u32), Message::StarDensity),
-                "How many stars fill the night sky.", h),
-            helped(slider_row("Twinkle", state.star_twinkle, 0.0..=4.0, 0.1, format!("{:.1}×", state.star_twinkle), Message::StarTwinkle),
-                "How fast the stars sparkle.", h),
-            helped(toggle_row("Background comet", state.comet_enabled, Message::CometEnabled),
-                "Show the comet that sweeps across the sky.", h),
-            helped(slider_row("Comet every", state.comet_interval, 3.5..=30.0, 0.5, format!("{:.0}s", state.comet_interval), Message::CometInterval),
-                "Seconds between comet sweeps.", h),
-            helped(slider_row("Cloud cover", state.cloud_amount, 0.0..=2.0, 0.05, format!("{:.0}%", state.cloud_amount * 100.0), Message::CloudAmount),
-                "Daytime cloud coverage (day theme only).", h),
-            helped(slider_row("Cloud drift", state.cloud_speed, 0.0..=4.0, 0.1, format!("{:.1}×", state.cloud_speed), Message::CloudSpeed),
-                "How fast daytime clouds move.", h),
-        ].spacing(9).into(),
+            helped(
+                color_cell("Comet color", &pal.comet_color, Param::SkyComet),
+                "Color of the comet that drifts across the background.",
+                h
+            ),
+            helped(
+                color_cell("Glow color", &pal.glow_color, Param::GlowColor),
+                "Tint of the sky glow / daytime sun-haze.",
+                h
+            ),
+            helped(
+                slider_row(
+                    "Sky glow",
+                    pal.sky_glow,
+                    0.0..=2.0,
+                    0.01,
+                    format!("{:.2}", pal.sky_glow),
+                    Message::SkyGlow
+                ),
+                "Strength of that glow (night haze / daytime sun-halo).",
+                h
+            ),
+            helped(
+                slider_row(
+                    "Star density",
+                    state.star_density,
+                    0.0..=1.0,
+                    0.01,
+                    format!("{}%", (state.star_density * 100.0).round() as u32),
+                    Message::StarDensity
+                ),
+                "How many stars fill the night sky.",
+                h
+            ),
+            helped(
+                slider_row(
+                    "Twinkle",
+                    state.star_twinkle,
+                    0.0..=4.0,
+                    0.1,
+                    format!("{:.1}×", state.star_twinkle),
+                    Message::StarTwinkle
+                ),
+                "How fast the stars sparkle.",
+                h
+            ),
+            helped(
+                toggle_row(
+                    "Background comet",
+                    state.comet_enabled,
+                    Message::CometEnabled
+                ),
+                "Show the comet that sweeps across the sky.",
+                h
+            ),
+            helped(
+                slider_row(
+                    "Comet every",
+                    state.comet_interval,
+                    3.5..=30.0,
+                    0.5,
+                    format!("{:.0}s", state.comet_interval),
+                    Message::CometInterval
+                ),
+                "Seconds between comet sweeps.",
+                h
+            ),
+            helped(
+                slider_row(
+                    "Cloud cover",
+                    state.cloud_amount,
+                    0.0..=2.0,
+                    0.05,
+                    format!("{:.0}%", state.cloud_amount * 100.0),
+                    Message::CloudAmount
+                ),
+                "Daytime cloud coverage (day theme only).",
+                h
+            ),
+            helped(
+                slider_row(
+                    "Cloud drift",
+                    state.cloud_speed,
+                    0.0..=4.0,
+                    0.1,
+                    format!("{:.1}×", state.cloud_speed),
+                    Message::CloudSpeed
+                ),
+                "How fast daytime clouds move.",
+                h
+            ),
+        ]
+        .spacing(9)
+        .into(),
     );
-    let advanced = state.expert.then(|| group(
-        "SKY · ADVANCED",
-        column![
-            helped(slider_row("Glow falloff", state.glow_falloff, 0.5..=10.0, 0.1, format!("{:.1}", state.glow_falloff), Message::GlowFalloff),
-                "Tightness of the night sky-glow (higher = smaller).", h),
-            helped(slider_row("Nebula", state.nebula_amount, 0.0..=0.5, 0.01, format!("{:.2}", state.nebula_amount), Message::NebulaAmount),
-                "Amount of cloudy nebula haze at night.", h),
-            helped(slider_row("Comet tail", state.comet_tail_decay, 2.0..=30.0, 0.5, format!("{:.1}", state.comet_tail_decay), Message::CometTailDecay),
-                "How fast the sky comet's tail fades (higher = shorter).", h),
-        ].spacing(9).into(),
-    ));
+    let advanced = state.expert.then(|| {
+        group(
+            "SKY · ADVANCED",
+            column![
+                helped(
+                    slider_row(
+                        "Glow falloff",
+                        state.glow_falloff,
+                        0.5..=10.0,
+                        0.1,
+                        format!("{:.1}", state.glow_falloff),
+                        Message::GlowFalloff
+                    ),
+                    "Tightness of the night sky-glow (higher = smaller).",
+                    h
+                ),
+                helped(
+                    slider_row(
+                        "Nebula",
+                        state.nebula_amount,
+                        0.0..=0.5,
+                        0.01,
+                        format!("{:.2}", state.nebula_amount),
+                        Message::NebulaAmount
+                    ),
+                    "Amount of cloudy nebula haze at night.",
+                    h
+                ),
+                helped(
+                    slider_row(
+                        "Comet tail",
+                        state.comet_tail_decay,
+                        2.0..=30.0,
+                        0.5,
+                        format!("{:.1}", state.comet_tail_decay),
+                        Message::CometTailDecay
+                    ),
+                    "How fast the sky comet's tail fades (higher = shorter).",
+                    h
+                ),
+            ]
+            .spacing(9)
+            .into(),
+        )
+    });
     let mut col = column![main].spacing(14);
     if let Some(adv) = advanced {
         col = col.push(adv);
@@ -903,26 +1104,94 @@ fn spinner_tab<'a>(state: &'a State, pal: &'a Palette, h: bool) -> Element<'a, M
     let main = group(
         "SPINNER",
         column![
-            row![color_cell("Comet", &pal.comet, Param::SpinnerComet), color_cell("Track", &pal.track, Param::SpinnerTrack)].spacing(10),
-            helped(slider_row("Trail", pal.trail, 0.15..=1.0, 0.01, format!("{}%", (pal.trail * 100.0).round() as u32), Message::SpinnerTrail),
-                "Length of the comet's tail.", h),
-            helped(slider_row("Glow", pal.glow, 0.0..=1.0, 0.01, format!("{}%", (pal.glow * 100.0).round() as u32), Message::SpinnerGlow),
-                "Head bloom (0 = crisp; bands on a light card).", h),
-            helped(slider_row("Speed", state.spinner_speed, 0.0..=6.0, 0.1, format!("{:.1}", state.spinner_speed), Message::SpinnerSpeed),
-                "Rotation speed.", h),
-            helped(slider_row("Size", state.spinner_size, 24.0..=120.0, 1.0, format!("{:.0}px", state.spinner_size), Message::SpinnerSize),
-                "Diameter of the card's comet spinner.", h),
-            helped(slider_row("Pulse", state.spinner_pulse, 0.0..=3.0, 0.1, format!("{:.1}×", state.spinner_pulse), Message::SpinnerPulse),
-                "How fast the spinner head breathes (0 = steady).", h),
-        ].spacing(9).into(),
+            row![
+                color_cell("Comet", &pal.comet, Param::SpinnerComet),
+                color_cell("Track", &pal.track, Param::SpinnerTrack)
+            ]
+            .spacing(10),
+            helped(
+                slider_row(
+                    "Trail",
+                    pal.trail,
+                    0.15..=1.0,
+                    0.01,
+                    format!("{}%", (pal.trail * 100.0).round() as u32),
+                    Message::SpinnerTrail
+                ),
+                "Length of the comet's tail.",
+                h
+            ),
+            helped(
+                slider_row(
+                    "Glow",
+                    pal.glow,
+                    0.0..=1.0,
+                    0.01,
+                    format!("{}%", (pal.glow * 100.0).round() as u32),
+                    Message::SpinnerGlow
+                ),
+                "Head bloom (0 = crisp; bands on a light card).",
+                h
+            ),
+            helped(
+                slider_row(
+                    "Speed",
+                    state.spinner_speed,
+                    0.0..=6.0,
+                    0.1,
+                    format!("{:.1}", state.spinner_speed),
+                    Message::SpinnerSpeed
+                ),
+                "Rotation speed.",
+                h
+            ),
+            helped(
+                slider_row(
+                    "Size",
+                    state.spinner_size,
+                    24.0..=120.0,
+                    1.0,
+                    format!("{:.0}px", state.spinner_size),
+                    Message::SpinnerSize
+                ),
+                "Diameter of the card's comet spinner.",
+                h
+            ),
+            helped(
+                slider_row(
+                    "Pulse",
+                    state.spinner_pulse,
+                    0.0..=3.0,
+                    0.1,
+                    format!("{:.1}×", state.spinner_pulse),
+                    Message::SpinnerPulse
+                ),
+                "How fast the spinner head breathes (0 = steady).",
+                h
+            ),
+        ]
+        .spacing(9)
+        .into(),
     );
-    let advanced = state.expert.then(|| group(
-        "SPINNER · ADVANCED",
-        column![
-            helped(slider_row("Orbit ring", state.spinner_ring, 0.0..=0.5, 0.01, format!("{:.2}", state.spinner_ring), Message::SpinnerRing),
-                "Brightness of the spinner's static orbit ring.", h),
-        ].spacing(9).into(),
-    ));
+    let advanced = state.expert.then(|| {
+        group(
+            "SPINNER · ADVANCED",
+            column![helped(
+                slider_row(
+                    "Orbit ring",
+                    state.spinner_ring,
+                    0.0..=0.5,
+                    0.01,
+                    format!("{:.2}", state.spinner_ring),
+                    Message::SpinnerRing
+                ),
+                "Brightness of the spinner's static orbit ring.",
+                h
+            ),]
+            .spacing(9)
+            .into(),
+        )
+    });
     let mut col = column![main].spacing(14);
     if let Some(adv) = advanced {
         col = col.push(adv);
@@ -934,17 +1203,72 @@ fn card_tab<'a>(state: &'a State, h: bool) -> Element<'a, Message> {
     let g = group(
         "CARD",
         column![
-            helped(plain_row("Card rounding", &state.corner_radius, "16", Param::CornerRadius), "Corner radius of the login card (px).", h),
-            helped(plain_row("Card width", &state.card_width, "300", Param::CardWidth), "Width of the login card (px).", h),
-            helped(slider_row("Field rounding", state.field_radius, 0.0..=30.0, 1.0, format!("{:.0}px", state.field_radius), Message::FieldRadius),
-                "Corner radius of inputs and buttons (px).", h),
-            helped(slider_row("Shadow blur", state.card_shadow_blur, 0.0..=80.0, 1.0, format!("{:.0}px", state.card_shadow_blur), Message::CardShadowBlur),
-                "Softness of the card's drop shadow.", h),
-            helped(slider_row("Shadow strength", state.card_shadow_opacity, 0.0..=1.0, 0.01, format!("{}%", (state.card_shadow_opacity * 100.0).round() as u32), Message::CardShadowOpacity),
-                "Darkness of the card's drop shadow.", h),
-            helped(slider_row("Accent pulse", state.accent_breathing, 0.0..=4.0, 0.1, format!("{:.1}×", state.accent_breathing), Message::AccentBreathing),
-                "Speed of the card's glowing accent edge (0 = steady).", h),
-        ].spacing(9).into(),
+            helped(
+                plain_row(
+                    "Card rounding",
+                    &state.corner_radius,
+                    "16",
+                    Param::CornerRadius
+                ),
+                "Corner radius of the login card (px).",
+                h
+            ),
+            helped(
+                plain_row("Card width", &state.card_width, "300", Param::CardWidth),
+                "Width of the login card (px).",
+                h
+            ),
+            helped(
+                slider_row(
+                    "Field rounding",
+                    state.field_radius,
+                    0.0..=30.0,
+                    1.0,
+                    format!("{:.0}px", state.field_radius),
+                    Message::FieldRadius
+                ),
+                "Corner radius of inputs and buttons (px).",
+                h
+            ),
+            helped(
+                slider_row(
+                    "Shadow blur",
+                    state.card_shadow_blur,
+                    0.0..=80.0,
+                    1.0,
+                    format!("{:.0}px", state.card_shadow_blur),
+                    Message::CardShadowBlur
+                ),
+                "Softness of the card's drop shadow.",
+                h
+            ),
+            helped(
+                slider_row(
+                    "Shadow strength",
+                    state.card_shadow_opacity,
+                    0.0..=1.0,
+                    0.01,
+                    format!("{}%", (state.card_shadow_opacity * 100.0).round() as u32),
+                    Message::CardShadowOpacity
+                ),
+                "Darkness of the card's drop shadow.",
+                h
+            ),
+            helped(
+                slider_row(
+                    "Accent pulse",
+                    state.accent_breathing,
+                    0.0..=4.0,
+                    0.1,
+                    format!("{:.1}×", state.accent_breathing),
+                    Message::AccentBreathing
+                ),
+                "Speed of the card's glowing accent edge (0 = steady).",
+                h
+            ),
+        ]
+        .spacing(9)
+        .into(),
     );
     column![g].spacing(14).into()
 }
@@ -953,21 +1277,62 @@ fn behavior_tab<'a>(state: &'a State, h: bool) -> Element<'a, Message> {
     let g = group(
         "BEHAVIOR",
         column![
-            helped(plain_row("Font", &state.font, "(stock font)", Param::Font), "Installed font family; blank = stock.", h),
-            helped(toggle_row("Clock + date", state.show_clock, Message::ToggleClock), "Show the time and date on the card.", h),
-            helped(toggle_row("24-hour clock", state.clock_24h, Message::Clock24h), "Use 24-hour time instead of AM/PM.", h),
-            helped(toggle_row("Animate sky", state.animate, Message::ToggleAnimate), "Run the stars + comet animation.", h),
-            helped(slider_row("Launch fade", state.fade_ms, 0.0..=2000.0, 10.0, format!("{:.0}ms", state.fade_ms), Message::FadeMs),
-                "Fade-in time when the greeter opens.", h),
+            helped(
+                plain_row("Font", &state.font, "(stock font)", Param::Font),
+                "Installed font family; blank = stock.",
+                h
+            ),
+            helped(
+                toggle_row("Clock + date", state.show_clock, Message::ToggleClock),
+                "Show the time and date on the card.",
+                h
+            ),
+            helped(
+                toggle_row("24-hour clock", state.clock_24h, Message::Clock24h),
+                "Use 24-hour time instead of AM/PM.",
+                h
+            ),
+            helped(
+                toggle_row("Animate sky", state.animate, Message::ToggleAnimate),
+                "Run the stars + comet animation.",
+                h
+            ),
+            helped(
+                slider_row(
+                    "Launch fade",
+                    state.fade_ms,
+                    0.0..=2000.0,
+                    10.0,
+                    format!("{:.0}ms", state.fade_ms),
+                    Message::FadeMs
+                ),
+                "Fade-in time when the greeter opens.",
+                h
+            ),
             helped(
                 row![
                     color_label("Day window"),
-                    text_input("07:00", &state.day_start).on_input(|v| Message::Set(Param::DayStart, v)).padding(6).size(14).style(input_style),
+                    text_input("07:00", &state.day_start)
+                        .on_input(|v| Message::Set(Param::DayStart, v))
+                        .padding(6)
+                        .size(14)
+                        .style(input_style),
                     color_label("to"),
-                    text_input("19:00", &state.day_end).on_input(|v| Message::Set(Param::DayEnd, v)).padding(6).size(14).style(input_style),
-                ].spacing(8).align_y(Alignment::Center).into(),
-                "Local times when the day theme is used.", h),
-        ].spacing(9).into(),
+                    text_input("19:00", &state.day_end)
+                        .on_input(|v| Message::Set(Param::DayEnd, v))
+                        .padding(6)
+                        .size(14)
+                        .style(input_style),
+                ]
+                .spacing(8)
+                .align_y(Alignment::Center)
+                .into(),
+                "Local times when the day theme is used.",
+                h
+            ),
+        ]
+        .spacing(9)
+        .into(),
     );
     column![g].spacing(14).into()
 }
@@ -1078,7 +1443,9 @@ fn slider_row<'a>(
 
 fn subcard(_t: &iced::Theme) -> container::Style {
     container::Style {
-        background: Some(Background::Color(IColor::from_rgba8(0xff, 0xff, 0xff, 0.022))),
+        background: Some(Background::Color(IColor::from_rgba8(
+            0xff, 0xff, 0xff, 0.022,
+        ))),
         border: Border {
             radius: 13.0.into(),
             width: 1.0,
@@ -1090,7 +1457,9 @@ fn subcard(_t: &iced::Theme) -> container::Style {
 
 fn hairline(_t: &iced::Theme) -> container::Style {
     container::Style {
-        background: Some(Background::Color(IColor::from_rgba8(0x7a, 0xa2, 0xf7, 0.14))),
+        background: Some(Background::Color(IColor::from_rgba8(
+            0x7a, 0xa2, 0xf7, 0.14,
+        ))),
         ..Default::default()
     }
 }
@@ -1304,9 +1673,15 @@ fn preview_card(t: &Theme, anim: f32) -> Element<'static, Message> {
         ..Default::default()
     });
 
-    let body = column![header, logo, field("user", t), field("password", t), sign_in]
-        .spacing(12)
-        .align_x(Alignment::Center);
+    let body = column![
+        header,
+        logo,
+        field("user", t),
+        field("password", t),
+        sign_in
+    ]
+    .spacing(12)
+    .align_x(Alignment::Center);
 
     let card = t.card;
     let accent = t.accent;
@@ -1334,7 +1709,9 @@ fn preview_card(t: &Theme, anim: f32) -> Element<'static, Message> {
 /// The frosted control panel.
 fn glass_panel(_theme: &iced::Theme) -> container::Style {
     container::Style {
-        background: Some(Background::Color(iced::Color::from_rgba8(0x0e, 0x0f, 0x16, 0.74))),
+        background: Some(Background::Color(iced::Color::from_rgba8(
+            0x0e, 0x0f, 0x16, 0.74,
+        ))),
         border: Border {
             radius: 18.0.into(),
             width: 1.0,

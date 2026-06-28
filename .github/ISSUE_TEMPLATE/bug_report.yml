@@ -1,0 +1,59 @@
+name: Bug report
+description: A bug in door itself (greeter, daemon, login, theming)
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! For **packaging** problems (AUR build, checksums, version)
+        please use the AUR package comments instead. For **security** issues, see the
+        security policy — do not file them here.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What went wrong, and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. enable doord
+        2. pick session X, sign in
+        3. ...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: door version
+      placeholder: "0.1.0 (pacman -Q door) or commit sha"
+    validations:
+      required: true
+  - type: dropdown
+    id: session
+    attributes:
+      label: Session you were logging into
+      options:
+        - KDE Plasma (Wayland)
+        - GNOME (Wayland)
+        - sway / Hyprland / other wlroots
+        - Other Wayland
+        - X11 (note: not yet supported)
+    validations:
+      required: true
+  - type: input
+    id: env
+    attributes:
+      label: Environment
+      placeholder: "distro + version, GPU/driver, was door the active DM?"
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: "Relevant output, e.g. `journalctl -u doord -b` (redact anything sensitive)."
+      render: shell

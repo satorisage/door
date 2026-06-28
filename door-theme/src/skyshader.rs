@@ -11,8 +11,8 @@
 //! `Theme`, so re-theming re-tints the sky with no shader change.
 
 use crate::Theme;
-use iced::widget::shader::{self, Primitive};
 use iced::wgpu;
+use iced::widget::shader::{self, Primitive};
 use iced::{mouse, Color, Rectangle};
 
 /// The shader program. Carries everything the fragment shader needs as plain data;
@@ -104,7 +104,12 @@ impl SkyShader {
                 t.comet_interval.max(3.0), // guard: period must exceed the 2.5s pause
                 t.cloud_amount,
             ],
-            params3: [t.cloud_speed, t.glow_falloff, t.nebula_amount, t.comet_tail_decay],
+            params3: [
+                t.cloud_speed,
+                t.glow_falloff,
+                t.nebula_amount,
+                t.comet_tail_decay,
+            ],
         };
         Self { uniforms }
     }
@@ -303,7 +308,12 @@ impl SpinnerShader {
             fade,
             comet: t.spinner_comet.iced().into_linear(),
             track: t.spinner_track.iced().into_linear(),
-            params: [t.spinner_glow, t.spinner_trail, t.spinner_speed, t.spinner_pulse],
+            params: [
+                t.spinner_glow,
+                t.spinner_trail,
+                t.spinner_speed,
+                t.spinner_pulse,
+            ],
             params2: [t.spinner_ring, 0.0, 0.0, 0.0],
         };
         Self { uniforms }

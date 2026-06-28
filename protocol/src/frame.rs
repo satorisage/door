@@ -42,9 +42,14 @@ impl std::fmt::Display for FrameError {
         match self {
             FrameError::Io(e) => write!(f, "frame i/o error: {e}"),
             FrameError::TooLarge { declared } => {
-                write!(f, "frame too large: {declared} bytes exceeds {MAX_FRAME_BYTES} cap")
+                write!(
+                    f,
+                    "frame too large: {declared} bytes exceeds {MAX_FRAME_BYTES} cap"
+                )
             }
-            FrameError::Malformed => f.write_str("malformed frame (not valid for the expected message)"),
+            FrameError::Malformed => {
+                f.write_str("malformed frame (not valid for the expected message)")
+            }
         }
     }
 }
@@ -64,7 +69,9 @@ impl From<io::Error> for FrameError {
 pub fn write_frame<W: Write, T: Serialize>(w: &mut W, msg: &T) -> Result<(), FrameError> {
     let body = serde_json::to_vec(msg).map_err(|_| FrameError::Malformed)?;
     if body.len() > MAX_FRAME_BYTES {
-        return Err(FrameError::TooLarge { declared: body.len() });
+        return Err(FrameError::TooLarge {
+            declared: body.len(),
+        });
     }
     let len = (body.len() as u32).to_be_bytes();
     w.write_all(&len)?;
@@ -96,7 +103,9 @@ mod tests {
 
     #[test]
     fn round_trips_a_request() {
-        let msg = Request::Hello { protocol_version: 1 };
+        let msg = Request::Hello {
+            protocol_version: 1,
+        };
         let mut buf = Vec::new();
         write_frame(&mut buf, &msg).unwrap();
         // 4-byte header + body.
@@ -131,7 +140,9 @@ mod tests {
 
     #[test]
     fn responses_frame_too() {
-        let msg = Response::Welcome { protocol_version: 1 };
+        let msg = Response::Welcome {
+            protocol_version: 1,
+        };
         let mut buf = Vec::new();
         write_frame(&mut buf, &msg).unwrap();
         let mut cursor = io::Cursor::new(buf);

@@ -56,7 +56,10 @@ fn main() -> ExitCode {
     match ipc::serve(&config, &logins) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
-            eprintln!("doord: fatal: could not serve on {}: {e}", config.socket_path.display());
+            eprintln!(
+                "doord: fatal: could not serve on {}: {e}",
+                config.socket_path.display()
+            );
             ExitCode::FAILURE
         }
     }

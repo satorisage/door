@@ -66,7 +66,10 @@ fn connect(socket: &PathBuf) -> UnixStream {
     loop {
         match UnixStream::connect(socket) {
             Ok(s) => return s,
-            Err(e) if e.kind() == io::ErrorKind::NotFound || e.kind() == io::ErrorKind::ConnectionRefused => {
+            Err(e)
+                if e.kind() == io::ErrorKind::NotFound
+                    || e.kind() == io::ErrorKind::ConnectionRefused =>
+            {
                 if Instant::now() > deadline {
                     panic!("daemon never came up on {}: {e}", socket.display());
                 }
@@ -91,7 +94,12 @@ fn handshake_then_serves_requests() {
     )
     .unwrap();
     let resp: Response = read_frame(&mut conn).unwrap();
-    assert_eq!(resp, Response::Welcome { protocol_version: PROTOCOL_VERSION });
+    assert_eq!(
+        resp,
+        Response::Welcome {
+            protocol_version: PROTOCOL_VERSION
+        }
+    );
 
     // ListSessions discovers the controlled session root and returns the wire
     // projection (id/name/comment) — the daemon-side `Exec` never crosses.

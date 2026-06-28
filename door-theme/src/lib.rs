@@ -623,7 +623,9 @@ impl Theme {
         };
         let window = day_window(&file);
         let night = Theme::default().merged(file.clone());
-        let day = Theme::day().merged_structural(&file).merged_day(file.day.clone());
+        let day = Theme::day()
+            .merged_structural(&file)
+            .merged_day(file.day.clone());
         (night, day, window)
     }
 
@@ -634,7 +636,9 @@ impl Theme {
         let file = toml::from_str::<ThemeFile>(contents).map_err(|e| e.to_string())?;
         let window = day_window(&file);
         let night = Theme::default().merged(file.clone());
-        let day = Theme::day().merged_structural(&file).merged_day(file.day.clone());
+        let day = Theme::day()
+            .merged_structural(&file)
+            .merged_day(file.day.clone());
         Ok((night, day, window))
     }
 
@@ -662,8 +666,14 @@ impl Theme {
             None => out.push_str("# logo =\n"),
         }
         out.push_str(&format!("spinner_glow = {}\n", day.spinner_glow));
-        out.push_str(&format!("spinner_comet = {:?}\n", day.spinner_comet.to_hex()));
-        out.push_str(&format!("spinner_track = {:?}\n", day.spinner_track.to_hex()));
+        out.push_str(&format!(
+            "spinner_comet = {:?}\n",
+            day.spinner_comet.to_hex()
+        ));
+        out.push_str(&format!(
+            "spinner_track = {:?}\n",
+            day.spinner_track.to_hex()
+        ));
         out.push_str(&format!("spinner_trail = {}\n", day.spinner_trail));
         out.push_str(&format!("comet_color = {:?}\n", day.comet_color.to_hex()));
         out.push_str(&format!("glow_color = {:?}\n", day.glow_color.to_hex()));
@@ -680,7 +690,9 @@ impl Theme {
         let mut out = String::new();
         out.push_str("# door greeter theme — written by door-settings. Edit here or in\n");
         out.push_str("# door-settings; keys are documented in the packaged default at\n");
-        out.push_str("# /usr/share/door/greeter.toml. Colors are \"#rrggbb\" or \"#rrggbbaa\".\n\n");
+        out.push_str(
+            "# /usr/share/door/greeter.toml. Colors are \"#rrggbb\" or \"#rrggbbaa\".\n\n",
+        );
         match &self.wallpaper {
             Some(w) => out.push_str(&format!("wallpaper = {:?}\n", w.display().to_string())),
             None => out.push_str("# wallpaper =   # (none — solid background)\n"),
@@ -705,10 +717,19 @@ impl Theme {
         out.push_str(&format!("animate       = {}\n", self.animate));
         out.push_str(&format!("spinner_glow  = {}\n", self.spinner_glow));
         out.push_str(&format!("spinner_speed = {}\n", self.spinner_speed));
-        out.push_str(&format!("spinner_comet = {:?}\n", self.spinner_comet.to_hex()));
-        out.push_str(&format!("spinner_track = {:?}\n", self.spinner_track.to_hex()));
+        out.push_str(&format!(
+            "spinner_comet = {:?}\n",
+            self.spinner_comet.to_hex()
+        ));
+        out.push_str(&format!(
+            "spinner_track = {:?}\n",
+            self.spinner_track.to_hex()
+        ));
         out.push_str(&format!("spinner_trail = {}\n", self.spinner_trail));
-        out.push_str(&format!("comet_color   = {:?}\n", self.comet_color.to_hex()));
+        out.push_str(&format!(
+            "comet_color   = {:?}\n",
+            self.comet_color.to_hex()
+        ));
         out.push('\n');
         out.push_str("# Sky\n");
         out.push_str(&format!("glow_color    = {:?}\n", self.glow_color.to_hex()));
@@ -722,11 +743,20 @@ impl Theme {
         out.push_str("# Spinner / card / behavior\n");
         out.push_str(&format!("spinner_size  = {}\n", self.spinner_size));
         out.push_str(&format!("spinner_pulse = {}\n", self.spinner_pulse));
-        out.push_str(&format!("card_shadow_blur    = {}\n", self.card_shadow_blur));
-        out.push_str(&format!("card_shadow_opacity = {}\n", self.card_shadow_opacity));
+        out.push_str(&format!(
+            "card_shadow_blur    = {}\n",
+            self.card_shadow_blur
+        ));
+        out.push_str(&format!(
+            "card_shadow_opacity = {}\n",
+            self.card_shadow_opacity
+        ));
         out.push_str(&format!("accent_breathing = {}\n", self.accent_breathing));
         out.push_str(&format!("field_radius  = {}\n", self.field_radius));
-        out.push_str(&format!("error_color   = {:?}\n", self.error_color.to_hex()));
+        out.push_str(&format!(
+            "error_color   = {:?}\n",
+            self.error_color.to_hex()
+        ));
         out.push_str(&format!("logo_box      = {:?}\n", self.logo_box.to_hex()));
         out.push_str(&format!("logo_box_radius = {}\n", self.logo_box_radius));
         out.push_str(&format!("clock_24h     = {}\n", self.clock_24h));
@@ -750,8 +780,16 @@ fn parse_hhmm(s: &str) -> Option<u32> {
 
 /// The configured day window in minutes (default 07:00–19:00).
 fn day_window(file: &ThemeFile) -> (u32, u32) {
-    let start = file.day_start.as_deref().and_then(parse_hhmm).unwrap_or(7 * 60);
-    let end = file.day_end.as_deref().and_then(parse_hhmm).unwrap_or(19 * 60);
+    let start = file
+        .day_start
+        .as_deref()
+        .and_then(parse_hhmm)
+        .unwrap_or(7 * 60);
+    let end = file
+        .day_end
+        .as_deref()
+        .and_then(parse_hhmm)
+        .unwrap_or(19 * 60);
     (start, end)
 }
 
@@ -770,8 +808,14 @@ mod tests {
 
     #[test]
     fn parses_six_and_eight_digit_hex() {
-        assert_eq!(Color::parse("#7aa2f7"), Some(Color::rgba(0x7a, 0xa2, 0xf7, 0xff)));
-        assert_eq!(Color::parse("#24283bd0"), Some(Color::rgba(0x24, 0x28, 0x3b, 0xd0)));
+        assert_eq!(
+            Color::parse("#7aa2f7"),
+            Some(Color::rgba(0x7a, 0xa2, 0xf7, 0xff))
+        );
+        assert_eq!(
+            Color::parse("#24283bd0"),
+            Some(Color::rgba(0x24, 0x28, 0x3b, 0xd0))
+        );
         assert_eq!(Color::parse("#FFFFFF"), Some(Color::rgb(255, 255, 255)));
     }
 
@@ -810,7 +854,10 @@ mod tests {
         assert_eq!(merged.accent, Color::rgb(0xff, 0, 0));
         assert_eq!(merged.card_width, 420.0);
         assert!(!merged.show_clock);
-        assert_eq!(merged.wallpaper, Some(PathBuf::from("/usr/share/door/bg.png")));
+        assert_eq!(
+            merged.wallpaper,
+            Some(PathBuf::from("/usr/share/door/bg.png"))
+        );
         assert_eq!(merged.background, Theme::default().background);
         assert_eq!(merged.foreground, Theme::default().foreground);
     }
@@ -843,7 +890,10 @@ mod tests {
         let file: ThemeFile = toml::from_str(raw).expect("shipped greeter.toml must parse");
         let theme = Theme::default().merged(file);
         // Default is the clean animated sky on a solid bg (no static wallpaper).
-        assert!(theme.wallpaper.is_none(), "default uses the animated sky, no image");
+        assert!(
+            theme.wallpaper.is_none(),
+            "default uses the animated sky, no image"
+        );
         assert!(theme.animate);
         assert!(theme.show_clock);
         assert_eq!(theme.accent, Color::rgb(0x7a, 0xa2, 0xf7));
@@ -852,9 +902,18 @@ mod tests {
     #[test]
     fn shipped_presets_parse_as_pairs() {
         for (name, raw) in [
-            ("tokyo-night", include_str!("../../dist/door/presets/tokyo-night.toml")),
-            ("supernova", include_str!("../../dist/door/presets/supernova.toml")),
-            ("nebula", include_str!("../../dist/door/presets/nebula.toml")),
+            (
+                "tokyo-night",
+                include_str!("../../dist/door/presets/tokyo-night.toml"),
+            ),
+            (
+                "supernova",
+                include_str!("../../dist/door/presets/supernova.toml"),
+            ),
+            (
+                "nebula",
+                include_str!("../../dist/door/presets/nebula.toml"),
+            ),
         ] {
             Theme::parse_pair(raw).unwrap_or_else(|e| panic!("preset {name} must parse: {e}"));
         }
@@ -870,7 +929,7 @@ mod tests {
         assert!(in_window(12 * 60, 420, 1140)); // noon = day
         assert!(!in_window(6 * 60, 420, 1140)); // 06:00 = night
         assert!(!in_window(20 * 60, 420, 1140)); // 20:00 = night
-        // a window that wraps midnight
+                                                 // a window that wraps midnight
         assert!(in_window(23 * 60, 22 * 60, 5 * 60));
         assert!(in_window(2 * 60, 22 * 60, 5 * 60));
         assert!(!in_window(12 * 60, 22 * 60, 5 * 60));

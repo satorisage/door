@@ -172,7 +172,10 @@ fn parse_entry(path: &Path, kind: SessionKind) -> Option<DiscoveredSession> {
     let exec = match entry.value("Exec").map(tokenize_exec) {
         Some(argv) if !argv.is_empty() => argv,
         _ => {
-            eprintln!("doord: skipping session {} (no runnable Exec=)", path.display());
+            eprintln!(
+                "doord: skipping session {} (no runnable Exec=)",
+                path.display()
+            );
             return None;
         }
     };
@@ -337,11 +340,8 @@ mod tests {
     impl TempRoot {
         fn new() -> Self {
             let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-            let path = std::env::temp_dir().join(format!(
-                "doord-sesstest-{}-{}",
-                std::process::id(),
-                n
-            ));
+            let path =
+                std::env::temp_dir().join(format!("doord-sesstest-{}-{}", std::process::id(), n));
             std::fs::create_dir_all(path.join("wayland-sessions")).unwrap();
             std::fs::create_dir_all(path.join("xsessions")).unwrap();
             TempRoot { path }
@@ -398,7 +398,11 @@ mod tests {
             "sway.desktop",
             "[Desktop Entry]\nName=Sway\nExec=sway\n",
         );
-        root.write("xsessions", "i3.desktop", "[Desktop Entry]\nName=i3\nExec=i3\n");
+        root.write(
+            "xsessions",
+            "i3.desktop",
+            "[Desktop Entry]\nName=i3\nExec=i3\n",
+        );
 
         // The default (no DOORD_ALLOW_X11) offers only the Wayland session — door
         // starts no X server, so an X11 entry would be a login that can't succeed.
@@ -431,7 +435,11 @@ mod tests {
             "noexec.desktop",
             "[Desktop Entry]\nName=NoExec\n",
         );
-        root.write("wayland-sessions", "good.desktop", "[Desktop Entry]\nName=Good\nExec=good\n");
+        root.write(
+            "wayland-sessions",
+            "good.desktop",
+            "[Desktop Entry]\nName=Good\nExec=good\n",
+        );
 
         let sessions = discover(std::slice::from_ref(&root.path));
         assert_eq!(sessions.len(), 1);
@@ -442,8 +450,16 @@ mod tests {
     fn earlier_root_shadows_later_on_id_collision() {
         let first = TempRoot::new();
         let second = TempRoot::new();
-        first.write("wayland-sessions", "sway.desktop", "[Desktop Entry]\nName=Sway Override\nExec=sway-wrapped\n");
-        second.write("wayland-sessions", "sway.desktop", "[Desktop Entry]\nName=Sway\nExec=sway\n");
+        first.write(
+            "wayland-sessions",
+            "sway.desktop",
+            "[Desktop Entry]\nName=Sway Override\nExec=sway-wrapped\n",
+        );
+        second.write(
+            "wayland-sessions",
+            "sway.desktop",
+            "[Desktop Entry]\nName=Sway\nExec=sway\n",
+        );
 
         let sessions = discover(&[first.path.clone(), second.path.clone()]);
         assert_eq!(sessions.len(), 1);
@@ -456,8 +472,16 @@ mod tests {
         // A root that does not exist at all is fine.
         let bogus = PathBuf::from("/nonexistent-doord-data-dir");
         let root = TempRoot::new();
-        root.write("wayland-sessions", "junk.desktop", "this is not\na desktop file\n");
-        root.write("wayland-sessions", "ok.desktop", "[Desktop Entry]\nName=OK\nExec=ok\n");
+        root.write(
+            "wayland-sessions",
+            "junk.desktop",
+            "this is not\na desktop file\n",
+        );
+        root.write(
+            "wayland-sessions",
+            "ok.desktop",
+            "[Desktop Entry]\nName=OK\nExec=ok\n",
+        );
 
         let sessions = discover(&[bogus, root.path.clone()]);
         assert_eq!(sessions.len(), 1);
@@ -481,7 +505,10 @@ mod tests {
 
     #[test]
     fn tokenize_handles_quotes_escapes_and_field_codes() {
-        assert_eq!(tokenize_exec("env A=b start-hyprland"), vec!["env", "A=b", "start-hyprland"]);
+        assert_eq!(
+            tokenize_exec("env A=b start-hyprland"),
+            vec!["env", "A=b", "start-hyprland"]
+        );
         assert_eq!(tokenize_exec("gnome-session %U"), vec!["gnome-session"]);
         assert_eq!(
             tokenize_exec("\"/opt/My Session/run\" --flag"),

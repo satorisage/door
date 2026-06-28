@@ -174,7 +174,8 @@ impl<Message> Program<Message> for Spinner {
         let center = Point::new(bounds.width / 2.0, bounds.height / 2.0);
         let ring = size * 0.36;
         let dot = size * 0.075;
-        let at = |angle: f32| Point::new(center.x + angle.cos() * ring, center.y + angle.sin() * ring);
+        let at =
+            |angle: f32| Point::new(center.x + angle.cos() * ring, center.y + angle.sin() * ring);
 
         // `hot` ties the white-hot/bloom look to `glow`: on the dark night card a
         // glowing comet over a bright white-blue nucleus reads beautifully; the day
@@ -198,7 +199,10 @@ impl<Message> Program<Message> for Spinner {
         const TRACK: usize = 12;
         for i in 0..TRACK {
             let a = i as f32 / TRACK as f32 * TAU;
-            frame.fill(&Path::circle(at(a), dot * 0.4), with_alpha(self.track, 0.16 * self.fade));
+            frame.fill(
+                &Path::circle(at(a), dot * 0.4),
+                with_alpha(self.track, 0.16 * self.fade),
+            );
         }
 
         // The comet trail: a dense ribbon of dots from tail → head, each blended from
@@ -224,15 +228,24 @@ impl<Message> Program<Message> for Spinner {
         if self.glow > 0.0 {
             for &(rr, oo) in &[(3.4f32, 0.05f32), (2.5, 0.09), (1.7, 0.16), (1.1, 0.28)] {
                 let c = mix(self.comet, white, hot * 0.5);
-                frame.fill(&Path::circle(h, dot * rr), with_alpha(c, oo * self.glow * pulse * self.fade));
+                frame.fill(
+                    &Path::circle(h, dot * rr),
+                    with_alpha(c, oo * self.glow * pulse * self.fade),
+                );
             }
         }
 
         // The bright nucleus — a hot near-white core (night) / crisp comet dot (day),
         // with a tiny white center pip for sparkle.
         let core = mix(self.comet, white, hot * 0.8);
-        frame.fill(&Path::circle(h, dot * 0.78), with_alpha(core, pulse * self.fade));
-        frame.fill(&Path::circle(h, dot * 0.32), with_alpha(white, (0.35 + 0.55 * hot) * pulse * self.fade));
+        frame.fill(
+            &Path::circle(h, dot * 0.78),
+            with_alpha(core, pulse * self.fade),
+        );
+        frame.fill(
+            &Path::circle(h, dot * 0.32),
+            with_alpha(white, (0.35 + 0.55 * hot) * pulse * self.fade),
+        );
 
         // A 4-point star glint over the head — the classic comet sparkle. Spike reach
         // and brightness grow with `glow`; on the day card it's a small crisp cross.
@@ -242,11 +255,21 @@ impl<Message> Program<Message> for Spinner {
                 let ang = i as f32 / 8.0 * TAU;
                 let rad = if i % 2 == 0 { reach } else { dot * 0.28 };
                 let p = Point::new(h.x + ang.cos() * rad, h.y + ang.sin() * rad);
-                if i == 0 { b.move_to(p); } else { b.line_to(p); }
+                if i == 0 {
+                    b.move_to(p);
+                } else {
+                    b.line_to(p);
+                }
             }
             b.close();
         });
-        frame.fill(&glint, with_alpha(mix(self.comet, white, 0.4 + 0.5 * hot), (0.30 + 0.45 * hot) * pulse * self.fade));
+        frame.fill(
+            &glint,
+            with_alpha(
+                mix(self.comet, white, 0.4 + 0.5 * hot),
+                (0.30 + 0.45 * hot) * pulse * self.fade,
+            ),
+        );
 
         // Shed sparkles — a few tiny twinkling motes riding just off the trail, each on
         // its own phase, for a touch of magic. Subtle and color-matched so they read on
@@ -258,7 +281,10 @@ impl<Message> Program<Message> for Spinner {
             let twk = 0.5 + 0.5 * (self.anim * (3.1 + s as f32) + off * PI).sin();
             let rr = ring + wob * dot * 1.4;
             let p = Point::new(center.x + ka.cos() * rr, center.y + ka.sin() * rr);
-            frame.fill(&Path::circle(p, dot * 0.22), with_alpha(self.comet, 0.5 * twk * self.fade));
+            frame.fill(
+                &Path::circle(p, dot * 0.22),
+                with_alpha(self.comet, 0.5 * twk * self.fade),
+            );
         }
 
         vec![frame.into_geometry()]
@@ -297,7 +323,11 @@ impl<Message> Program<Message> for Sky {
         // sky-blue haze (a soft sun) to stay luminous against the light wash.
         let glow_center = Point::new(w * 0.5, h * 0.42);
         let glow_r = w.min(h) * if self.day { 0.78 } else { 0.6 };
-        let glow_col = if self.day { rgb(0x8f, 0xb6, 0xff) } else { indigo };
+        let glow_col = if self.day {
+            rgb(0x8f, 0xb6, 0xff)
+        } else {
+            indigo
+        };
         let glow_alpha = if self.day { 0.020 } else { 0.012 };
         for i in 0..16 {
             let _t = i as f32 / 15.0; // 0 = widest/faintest .. 1 = innermost
@@ -326,7 +356,10 @@ impl<Message> Program<Message> for Sky {
             } else {
                 0.85
             };
-            let col = with_alpha(tier_color(s.tier, core, blue, cyan), bright * self.fade * star_mul);
+            let col = with_alpha(
+                tier_color(s.tier, core, blue, cyan),
+                bright * self.fade * star_mul,
+            );
             frame.fill(&Path::circle(Point::new(s.x * w + dx, s.y * h), s.r), col);
         }
 
@@ -353,9 +386,15 @@ impl<Message> Program<Message> for Sky {
             }
             // Head glow (stacked translucent circles) + a bright core.
             for &(r, o) in &[(34.0f32, 0.16f32), (20.0, 0.28), (11.0, 0.5)] {
-                frame.fill(&Path::circle(Point::new(hx, hy), r), with_alpha(cyan, o * self.fade));
+                frame.fill(
+                    &Path::circle(Point::new(hx, hy), r),
+                    with_alpha(cyan, o * self.fade),
+                );
             }
-            frame.fill(&Path::circle(Point::new(hx, hy), 5.0), with_alpha(core, self.fade));
+            frame.fill(
+                &Path::circle(Point::new(hx, hy), 5.0),
+                with_alpha(core, self.fade),
+            );
         }
 
         vec![frame.into_geometry()]

@@ -17,8 +17,7 @@ use std::time::{Duration, Instant};
 
 use futures::SinkExt;
 use iced::widget::{
-    button, column, container, image, pick_list, row, shader, stack, text, text_input,
-    Space,
+    button, column, container, image, pick_list, row, shader, stack, text, text_input, Space,
 };
 use iced::{
     keyboard, window, Alignment, Background, Border, ContentFit, Element, Font, Length, Shadow,
@@ -110,18 +109,21 @@ fn subscription(state: &State) -> Subscription<Message> {
 /// thread sleeps and pushes through the Iced channel (same shape as the daemon
 /// worker) — avoids pulling an async timer/runtime feature onto the greeter.
 fn clock_ticker() -> impl futures::Stream<Item = Message> {
-    iced_futures::stream::channel(4, |output: futures::channel::mpsc::Sender<Message>| async move {
-        std::thread::spawn(move || {
-            let mut output = output;
-            loop {
-                std::thread::sleep(Duration::from_secs(1));
-                if futures::executor::block_on(output.send(Message::Tick)).is_err() {
-                    break;
+    iced_futures::stream::channel(
+        4,
+        |output: futures::channel::mpsc::Sender<Message>| async move {
+            std::thread::spawn(move || {
+                let mut output = output;
+                loop {
+                    std::thread::sleep(Duration::from_secs(1));
+                    if futures::executor::block_on(output.send(Message::Tick)).is_err() {
+                        break;
+                    }
                 }
-            }
-        });
-        std::future::pending::<()>().await;
-    })
+            });
+            std::future::pending::<()>().await;
+        },
+    )
 }
 
 /// Drive the launch fade-in: ~24 [`Message::Fade`] ticks over ~380 ms, then the
@@ -129,18 +131,21 @@ fn clock_ticker() -> impl futures::Stream<Item = Message> {
 fn fade_ticker() -> impl futures::Stream<Item = Message> {
     // ~16 ms steps over the configured fade duration (one extra step lands fade at 1.0).
     let ticks = (theme().fade_ms / 16.0).ceil() as usize + 1;
-    iced_futures::stream::channel(4, move |output: futures::channel::mpsc::Sender<Message>| async move {
-        std::thread::spawn(move || {
-            let mut output = output;
-            for _ in 0..ticks {
-                std::thread::sleep(Duration::from_millis(16));
-                if futures::executor::block_on(output.send(Message::Fade)).is_err() {
-                    return;
+    iced_futures::stream::channel(
+        4,
+        move |output: futures::channel::mpsc::Sender<Message>| async move {
+            std::thread::spawn(move || {
+                let mut output = output;
+                for _ in 0..ticks {
+                    std::thread::sleep(Duration::from_millis(16));
+                    if futures::executor::block_on(output.send(Message::Fade)).is_err() {
+                        return;
+                    }
                 }
-            }
-        });
-        std::future::pending::<()>().await;
-    })
+            });
+            std::future::pending::<()>().await;
+        },
+    )
 }
 
 /// A startable session, rendered by name in the picker.
@@ -184,7 +189,10 @@ pub enum Message {
     WorkerReady(mpsc::Sender<Command>),
     Sessions(Vec<Session>),
     /// PAM wants input; `secret` ⇒ it is the password (auto-answered if typed).
-    Prompt { text: String, secret: bool },
+    Prompt {
+        text: String,
+        secret: bool,
+    },
     Notice(String),
     AuthSucceeded,
     AuthFailed(String),
@@ -364,9 +372,7 @@ fn update(state: &mut State, message: Message) -> Task<Message> {
             state.clock = now_hm(state.theme.clock_24h);
             state.date = now_date();
         }
-        Message::Fade => {
-            state.fade = (state.fade + 16.0 / state.theme.fade_ms.max(16.0)).min(1.0)
-        }
+        Message::Fade => state.fade = (state.fade + 16.0 / state.theme.fade_ms.max(16.0)).min(1.0),
         // Recompute the clock from real elapsed time each frame — smooth, jitter-free.
         Message::AnimTick => state.anim = state.started.elapsed().as_secs_f32() % 10_000.0,
         Message::FocusNext => task = iced::widget::operation::focus_next(),
@@ -419,11 +425,27 @@ fn now_minutes() -> u32 {
 /// Local date as `Weekday, Month D` (e.g. `Friday, June 27`).
 fn now_date() -> String {
     const DAYS: [&str; 7] = [
-        "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday",
+        "Sunday",
+        "Monday",
+        "Tuesday",
+        "Wednesday",
+        "Thursday",
+        "Friday",
+        "Saturday",
     ];
     const MONTHS: [&str; 12] = [
-        "January", "February", "March", "April", "May", "June", "July", "August", "September",
-        "October", "November", "December",
+        "January",
+        "February",
+        "March",
+        "April",
+        "May",
+        "June",
+        "July",
+        "August",
+        "September",
+        "October",
+        "November",
+        "December",
     ];
     match local_tm() {
         Some(tm) => {
@@ -520,7 +542,11 @@ fn view(state: &State) -> Element<'_, Message> {
     let status: Element<Message> = if state.status.is_empty() {
         Space::new().into()
     } else {
-        let tone = if state.status_error { t.error_color.iced_alpha(f) } else { muted };
+        let tone = if state.status_error {
+            t.error_color.iced_alpha(f)
+        } else {
+            muted
+        };
         text(state.status.clone()).size(12).color(tone).into()
     };
 
@@ -533,7 +559,9 @@ fn view(state: &State) -> Element<'_, Message> {
         .width(Length::Fixed(t.card_width))
         .style(card_style(t, f, state.anim));
 
-    let centered = container(card).center_x(Length::Fill).center_y(Length::Fill);
+    let centered = container(card)
+        .center_x(Length::Fill)
+        .center_y(Length::Fill);
 
     // Power controls: subtle, outside the card, bottom-right of the screen.
     let power = container(
@@ -587,7 +615,10 @@ fn lighten(c: Color, amt: f32) -> Color {
 }
 
 /// Slim rounded input: a lifted field fill with an accent border on focus.
-fn field_style(t: &Theme, fade: f32) -> impl Fn(&iced::Theme, text_input::Status) -> text_input::Style {
+fn field_style(
+    t: &Theme,
+    fade: f32,
+) -> impl Fn(&iced::Theme, text_input::Status) -> text_input::Style {
     let field = t.field.iced_alpha(fade);
     let fg = t.foreground.iced_alpha(fade);
     let muted = t.muted.iced_alpha(fade);
@@ -668,14 +699,20 @@ fn card_style(t: &Theme, fade: f32, phase: f32) -> impl Fn(&iced::Theme) -> cont
 }
 
 /// The slim session selector, matched to the field styling.
-fn picker_style(t: &Theme, fade: f32) -> impl Fn(&iced::Theme, pick_list::Status) -> pick_list::Style {
+fn picker_style(
+    t: &Theme,
+    fade: f32,
+) -> impl Fn(&iced::Theme, pick_list::Status) -> pick_list::Style {
     let field = t.field.iced_alpha(fade);
     let fg = t.foreground.iced_alpha(fade);
     let muted = t.muted.iced_alpha(fade);
     let accent = t.accent.iced_alpha(fade);
     let radius = t.field_radius;
     move |_theme, status| {
-        let focused = matches!(status, pick_list::Status::Hovered | pick_list::Status::Opened { .. });
+        let focused = matches!(
+            status,
+            pick_list::Status::Hovered | pick_list::Status::Opened { .. }
+        );
         pick_list::Style {
             text_color: fg,
             placeholder_color: muted,
@@ -726,15 +763,18 @@ fn power_button<'a>(
 /// once by Iced; `Subscription::run` keys it by this function so it is not
 /// restarted on every frame.
 fn daemon_worker() -> impl futures::Stream<Item = Message> {
-    iced_futures::stream::channel(64, |mut output: futures::channel::mpsc::Sender<Message>| async move {
-        let (cmd_tx, cmd_rx) = mpsc::channel::<Command>();
-        let thread_output = output.clone();
-        std::thread::spawn(move || worker_loop(cmd_rx, thread_output));
-        // Hand the UI its command channel; then idle forever while the worker
-        // pushes events through its own clone of `output`.
-        let _ = output.send(Message::WorkerReady(cmd_tx)).await;
-        std::future::pending::<()>().await;
-    })
+    iced_futures::stream::channel(
+        64,
+        |mut output: futures::channel::mpsc::Sender<Message>| async move {
+            let (cmd_tx, cmd_rx) = mpsc::channel::<Command>();
+            let thread_output = output.clone();
+            std::thread::spawn(move || worker_loop(cmd_rx, thread_output));
+            // Hand the UI its command channel; then idle forever while the worker
+            // pushes events through its own clone of `output`.
+            let _ = output.send(Message::WorkerReady(cmd_tx)).await;
+            std::future::pending::<()>().await;
+        },
+    )
 }
 
 /// The blocking worker: owns the protocol client and turns UI commands into
@@ -757,7 +797,9 @@ fn worker_loop(cmd_rx: mpsc::Receiver<Command>, mut out: futures::channel::mpsc:
 
     match client.list_sessions() {
         Ok(sessions) => emit(Message::Sessions(sessions)),
-        Err(e) => emit(Message::DaemonError(format!("Could not list sessions: {e}"))),
+        Err(e) => emit(Message::DaemonError(format!(
+            "Could not list sessions: {e}"
+        ))),
     }
 
     while let Ok(command) = cmd_rx.recv() {

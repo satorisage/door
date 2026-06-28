@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Packaging / AUR issue
+    url: https://aur.archlinux.org/packages/door
+    about: Build failures, checksums, or out-of-date version belong in the AUR package comments (or use "Flag package out-of-date").
+  - name: Security vulnerability
+    url: https://github.com/satorisage/door/security/advisories/new
+    about: Report privately — please do not open a public issue. See SECURITY.md.

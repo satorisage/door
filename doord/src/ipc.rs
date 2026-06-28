@@ -449,7 +449,9 @@ pub fn serve(config: &Config, logins: &dyn LoginFactory) -> io::Result<()> {
                 }
             }
             Ok(AcceptOutcome::GreeterDied) => {
-                eprintln!("doord: greeter exited before connecting; resetting the VT and backing off");
+                eprintln!(
+                    "doord: greeter exited before connecting; resetting the VT and backing off"
+                );
                 if let Some(vtnr) = config.seat.vtnr {
                     restore_text_vt(vtnr);
                 }
@@ -848,7 +850,10 @@ fn handle_connection(
         );
         return Ok(());
     }
-    eprintln!("doord: greeter connected (pid {}, uid {})", cred.pid, cred.uid);
+    eprintln!(
+        "doord: greeter connected (pid {}, uid {})",
+        cred.pid, cred.uid
+    );
 
     stream.set_read_timeout(Some(READ_TIMEOUT))?;
     let mut conn = stream;
@@ -1093,7 +1098,10 @@ fn run_start(
             Ok(StartFlow::Started)
         }
         Err(e) => {
-            eprintln!("doord: could not start session '{}' for '{username}': {e}", session.id);
+            eprintln!(
+                "doord: could not start session '{}' for '{username}': {e}",
+                session.id
+            );
             write_frame(
                 conn,
                 &Response::Error {
@@ -1276,11 +1284,8 @@ mod tests {
     /// tiny and live under the temp dir; keeping the helper trivial matters more.
     fn session_dir_with(id: &str) -> Vec<PathBuf> {
         let n = SESSION_ROOT_COUNTER.fetch_add(1, Ordering::Relaxed);
-        let root = std::env::temp_dir().join(format!(
-            "doord-ipc-sesstest-{}-{}",
-            std::process::id(),
-            n
-        ));
+        let root =
+            std::env::temp_dir().join(format!("doord-ipc-sesstest-{}-{}", std::process::id(), n));
         let wayland = root.join("wayland-sessions");
         std::fs::create_dir_all(&wayland).unwrap();
         std::fs::write(
@@ -1365,7 +1370,10 @@ mod tests {
         for node in drm_card_nodes() {
             let name = node.file_name().unwrap().to_string_lossy().into_owned();
             assert!(name.starts_with("card"), "unexpected non-card node: {name}");
-            assert!(!name.starts_with("renderD"), "render node leaked in: {name}");
+            assert!(
+                !name.starts_with("renderD"),
+                "render node leaked in: {name}"
+            );
         }
     }
 

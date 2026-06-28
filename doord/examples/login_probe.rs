@@ -12,18 +12,28 @@
 use std::io::{self, BufRead, Write};
 use std::os::unix::net::UnixStream;
 
-use protocol::{read_frame, write_frame, AuthPrompt, Request, Response, PROTOCOL_VERSION, Secret};
+use protocol::{read_frame, write_frame, AuthPrompt, Request, Response, Secret, PROTOCOL_VERSION};
 
 fn main() {
-    let socket = std::env::var("DOORD_SOCKET").unwrap_or_else(|_| "/run/doord/door.sock".to_string());
-    let mut conn = UnixStream::connect(&socket)
-        .unwrap_or_else(|e| panic!("connect to {socket}: {e} (is doord running, and can your uid reach the socket?)"));
+    let socket =
+        std::env::var("DOORD_SOCKET").unwrap_or_else(|_| "/run/doord/door.sock".to_string());
+    let mut conn = UnixStream::connect(&socket).unwrap_or_else(|e| {
+        panic!("connect to {socket}: {e} (is doord running, and can your uid reach the socket?)")
+    });
     println!("connected to {socket}");
 
     // Handshake.
-    write_frame(&mut conn, &Request::Hello { protocol_version: PROTOCOL_VERSION }).unwrap();
+    write_frame(
+        &mut conn,
+        &Request::Hello {
+            protocol_version: PROTOCOL_VERSION,
+        },
+    )
+    .unwrap();
     match read_frame::<_, Response>(&mut conn).unwrap() {
-        Response::Welcome { protocol_version } => println!("handshake ok (daemon speaks v{protocol_version})"),
+        Response::Welcome { protocol_version } => {
+            println!("handshake ok (daemon speaks v{protocol_version})")
+        }
         other => {
             eprintln!("handshake failed: {other:?}");
             return;
@@ -61,7 +71,13 @@ fn main() {
                 print!("{text} {}", if secret { "(input echoes!) " } else { "" });
                 io::stdout().flush().unwrap();
                 let reply = lines.next().and_then(|l| l.ok()).unwrap_or_default();
-                write_frame(&mut conn, &Request::AuthReply { response: Secret::new(reply) }).unwrap();
+                write_frame(
+                    &mut conn,
+                    &Request::AuthReply {
+                        response: Secret::new(reply),
+                    },
+                )
+                .unwrap();
             }
             Response::Auth(AuthPrompt::Info { text }) => println!("[info] {text}"),
             Response::Auth(AuthPrompt::Error { text }) => println!("[error] {text}"),
@@ -90,7 +106,9 @@ fn main() {
 
     write_frame(&mut conn, &Request::Start { session_id }).unwrap();
     match read_frame::<_, Response>(&mut conn).unwrap() {
-        Response::Started => println!("✓ SESSION STARTED (daemon now owns it; watch doord's output)"),
+        Response::Started => {
+            println!("✓ SESSION STARTED (daemon now owns it; watch doord's output)")
+        }
         Response::Error { message } => println!("✗ START REFUSED: {message}"),
         other => eprintln!("unexpected response: {other:?}"),
     }
