@@ -61,6 +61,8 @@ spinner_trail = 1.0         # trail length 0.15–1.0 (shorter = crisper on a li
 # accent_breathing    = 1.0   # card accent-edge pulse speed (0 = steady)
 # field_radius   = 10.0       # input/button corner radius (px)
 # error_color    = "#f7768e"  # status-line color on a failed login
+# logo_box       = "#00000000" # backdrop tile behind the logo/spinner; alpha 00 = off
+# logo_box_radius = 14.0       # corner radius of that tile (px)
 # clock_24h      = true       # 24-hour clock vs 12-hour AM/PM
 # fade_ms        = 384.0      # launch fade-in duration (ms)
 #

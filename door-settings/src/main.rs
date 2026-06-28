@@ -61,6 +61,8 @@ struct Palette {
     // Per-variant sky glow strength + login-error color.
     sky_glow: f32,
     error_color: String,
+    // Backdrop tile behind the logo / spinner (per variant; transparent = off).
+    logo_box: String,
 }
 
 impl Palette {
@@ -84,6 +86,7 @@ impl Palette {
             comet_color: t.comet_color.to_hex(),
             sky_glow: t.sky_glow,
             error_color: t.error_color.to_hex(),
+            logo_box: t.logo_box.to_hex(),
         }
     }
 }
@@ -104,6 +107,7 @@ enum Param {
     SpinnerTrack,
     SkyComet,
     ErrorColor,
+    LogoBox,
     Font,
     CornerRadius,
     CardWidth,
@@ -151,6 +155,7 @@ enum Message {
     CardShadowOpacity(f32),
     AccentBreathing(f32),
     FieldRadius(f32),
+    LogoBoxRadius(f32),
     // Behavior
     Clock24h(bool),
     FadeMs(f32),
@@ -190,6 +195,7 @@ struct State {
     card_shadow_opacity: f32,
     accent_breathing: f32,
     field_radius: f32,
+    logo_box_radius: f32,
     clock_24h: bool,
     fade_ms: f32,
     // Expert (advanced) shared controls (Tier 3).
@@ -243,6 +249,7 @@ impl State {
             card_shadow_opacity: night.card_shadow_opacity,
             accent_breathing: night.accent_breathing,
             field_radius: night.field_radius,
+            logo_box_radius: night.logo_box_radius,
             clock_24h: night.clock_24h,
             fade_ms: night.fade_ms,
             glow_falloff: night.glow_falloff,
@@ -293,6 +300,7 @@ impl State {
             Param::SpinnerTrack => pal.track = value,
             Param::SkyComet => pal.comet_color = value,
             Param::ErrorColor => pal.error_color = value,
+            Param::LogoBox => pal.logo_box = value,
             Param::Font => self.font = value,
             Param::CornerRadius => self.corner_radius = value,
             Param::CardWidth => self.card_width = value,
@@ -342,6 +350,8 @@ impl State {
             comet_color: color("Sky comet", &pal.comet_color)?,
             sky_glow: pal.sky_glow,
             error_color: color("Error", &pal.error_color)?,
+            logo_box: color("Logo box", &pal.logo_box)?,
+            logo_box_radius: self.logo_box_radius,
             star_density: self.star_density,
             star_twinkle: self.star_twinkle,
             comet_enabled: self.comet_enabled,
@@ -424,6 +434,7 @@ fn update(state: &mut State, message: Message) -> Task<Message> {
         Message::CardShadowOpacity(v) => state.card_shadow_opacity = v.clamp(0.0, 1.0),
         Message::AccentBreathing(v) => state.accent_breathing = v.clamp(0.0, 4.0),
         Message::FieldRadius(v) => state.field_radius = v.clamp(0.0, 30.0),
+        Message::LogoBoxRadius(v) => state.logo_box_radius = v.clamp(0.0, 40.0),
         Message::Clock24h(on) => state.clock_24h = on,
         Message::FadeMs(v) => state.fade_ms = v.clamp(0.0, 2000.0),
         // Expert.
@@ -610,12 +621,15 @@ fn controls(state: &State) -> Element<'_, Message> {
 
 // ── Per-tab content ─────────────────────────────────────────────────────────
 
-fn colors_tab<'a>(_state: &'a State, pal: &'a Palette, card_a: f32, h: bool) -> Element<'a, Message> {
+fn colors_tab<'a>(state: &'a State, pal: &'a Palette, card_a: f32, h: bool) -> Element<'a, Message> {
     let assets = group(
-        "ASSETS",
+        "LOGO & ASSETS",
         column![
             helped(plain_row("Wallpaper", &pal.wallpaper, "(animated sky)", Param::Wallpaper), "Full-screen image; blank uses the animated sky.", h),
             helped(plain_row("Logo", &pal.logo, "(comet spinner)", Param::Logo), "Image shown on the card; blank uses the comet spinner.", h),
+            helped(color_cell("Logo box", &pal.logo_box, Param::LogoBox), "Backdrop tile behind the logo/spinner. Transparent (alpha 00) = invisible.", h),
+            helped(slider_row("Box rounding", state.logo_box_radius, 0.0..=40.0, 1.0, format!("{:.0}px", state.logo_box_radius), Message::LogoBoxRadius),
+                "Corner radius of the logo backdrop tile.", h),
         ].spacing(9).into(),
     );
     let colors = group(
@@ -1024,10 +1038,23 @@ fn preview_card(t: &Theme, anim: f32) -> Element<'static, Message> {
             .height(Length::Fixed(56.0))
             .into(),
         None => shader(SpinnerShader::from_theme(t, anim, 1.0))
-            .width(Length::Fixed(52.0))
-            .height(Length::Fixed(52.0))
+            .width(Length::Fixed(t.spinner_size))
+            .height(Length::Fixed(t.spinner_size))
             .into(),
     };
+    let logo_bg = t.logo_box.iced();
+    let logo_radius = t.logo_box_radius;
+    let logo: Element<Message> = container(logo)
+        .padding(6)
+        .style(move |_theme| container::Style {
+            background: Some(Background::Color(logo_bg)),
+            border: Border {
+                radius: logo_radius.into(),
+                ..Default::default()
+            },
+            ..Default::default()
+        })
+        .into();
 
     let field = |placeholder: &'static str, t: &Theme| {
         let muted = t.muted.iced();

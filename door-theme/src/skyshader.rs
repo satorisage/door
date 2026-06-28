@@ -580,6 +580,13 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
   acc += mix(cometc, white, 0.4 + 0.5 * hot) * glint;
   cov += glint;
 
+  // Fade to nothing toward the widget edge so a wide glow never hard-clips into a
+  // visible square at the box boundary (the head/orbit sit well inside 0.40).
+  let cheb = max(abs(in.uv.x - 0.5), abs(in.uv.y - 0.5));
+  let edge = 1.0 - smoothstep(0.40, 0.5, cheb);
+  acc = acc * edge;
+  cov = cov * edge;
+
   acc = acc * u.fade;
   cov = clamp(cov, 0.0, 1.0) * u.fade;
   return vec4(acc, cov);

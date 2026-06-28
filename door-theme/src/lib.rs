@@ -162,6 +162,11 @@ pub struct Theme {
     pub field_radius: f32,
     /// Status-line color when a login fails (a warm red by default). Per variant.
     pub error_color: Color,
+    /// Backdrop fill behind the logo / comet spinner — a rounded box. Transparent by
+    /// default (invisible); set an alpha to show a tile behind the emblem. Per variant.
+    pub logo_box: Color,
+    /// Corner radius of the logo backdrop box (px). Shared.
+    pub logo_box_radius: f32,
     /// 24-hour clock (`true`) vs 12-hour. Shared.
     pub clock_24h: bool,
     /// Launch fade-in duration (ms). Shared.
@@ -218,6 +223,8 @@ impl Default for Theme {
             accent_breathing: 1.0,
             field_radius: 10.0,
             error_color: Color::rgb(0xf7, 0x76, 0x8e),
+            logo_box: Color::rgba(0x00, 0x00, 0x00, 0x00),
+            logo_box_radius: 14.0,
             clock_24h: true,
             fade_ms: 384.0,
             glow_falloff: 3.2,
@@ -261,7 +268,9 @@ impl Theme {
             // Per-variant: a touch more sun-halo by day; a darker red on the light card.
             sky_glow: 0.55,
             error_color: Color::rgb(0xc0, 0x33, 0x4d),
+            logo_box: Color::rgba(0x00, 0x00, 0x00, 0x00),
             // Shared keys: same defaults (the config's top-level values win at load).
+            logo_box_radius: 14.0,
             star_density: 0.47,
             star_twinkle: 1.0,
             comet_enabled: true,
@@ -322,6 +331,8 @@ struct ThemeFile {
     accent_breathing: Option<f32>,
     field_radius: Option<f32>,
     error_color: Option<String>,
+    logo_box: Option<String>,
+    logo_box_radius: Option<f32>,
     clock_24h: Option<bool>,
     fade_ms: Option<f32>,
     glow_falloff: Option<f32>,
@@ -357,6 +368,7 @@ struct DayFile {
     // Per-variant sky/behavior overrides.
     sky_glow: Option<f32>,
     error_color: Option<String>,
+    logo_box: Option<String>,
 }
 
 /// Overwrite `slot` with `v` if the file provided one (the merge idiom for every
@@ -469,6 +481,8 @@ impl Theme {
         merge_f32(&mut self.accent_breathing, file.accent_breathing);
         merge_f32(&mut self.field_radius, file.field_radius);
         self.error_color = color("error_color", file.error_color, self.error_color);
+        self.logo_box = color("logo_box", file.logo_box, self.logo_box);
+        merge_f32(&mut self.logo_box_radius, file.logo_box_radius);
         merge_bool(&mut self.clock_24h, file.clock_24h);
         merge_f32(&mut self.fade_ms, file.fade_ms);
         merge_f32(&mut self.glow_falloff, file.glow_falloff);
@@ -514,6 +528,7 @@ impl Theme {
         merge_f32(&mut self.card_shadow_opacity, file.card_shadow_opacity);
         merge_f32(&mut self.accent_breathing, file.accent_breathing);
         merge_f32(&mut self.field_radius, file.field_radius);
+        merge_f32(&mut self.logo_box_radius, file.logo_box_radius);
         merge_bool(&mut self.clock_24h, file.clock_24h);
         merge_f32(&mut self.fade_ms, file.fade_ms);
         merge_f32(&mut self.glow_falloff, file.glow_falloff);
@@ -584,6 +599,7 @@ impl Theme {
         self.comet_color = color("comet_color", d.comet_color, self.comet_color);
         merge_f32(&mut self.sky_glow, d.sky_glow);
         self.error_color = color("error_color", d.error_color, self.error_color);
+        self.logo_box = color("logo_box", d.logo_box, self.logo_box);
         self
     }
 
@@ -632,6 +648,7 @@ impl Theme {
         out.push_str(&format!("comet_color = {:?}\n", day.comet_color.to_hex()));
         out.push_str(&format!("sky_glow = {}\n", day.sky_glow));
         out.push_str(&format!("error_color = {:?}\n", day.error_color.to_hex()));
+        out.push_str(&format!("logo_box = {:?}\n", day.logo_box.to_hex()));
         out
     }
 
@@ -688,6 +705,8 @@ impl Theme {
         out.push_str(&format!("accent_breathing = {}\n", self.accent_breathing));
         out.push_str(&format!("field_radius  = {}\n", self.field_radius));
         out.push_str(&format!("error_color   = {:?}\n", self.error_color.to_hex()));
+        out.push_str(&format!("logo_box      = {:?}\n", self.logo_box.to_hex()));
+        out.push_str(&format!("logo_box_radius = {}\n", self.logo_box_radius));
         out.push_str(&format!("clock_24h     = {}\n", self.clock_24h));
         out.push_str(&format!("fade_ms       = {}\n", self.fade_ms));
         out.push_str("# Expert\n");

@@ -465,6 +465,20 @@ fn view(state: &State) -> Element<'_, Message> {
             .height(Length::Fixed(t.spinner_size))
             .into(),
     };
+    // Optional backdrop tile behind the emblem — transparent by default (invisible).
+    let logo_bg = t.logo_box.iced_alpha(f);
+    let logo_radius = t.logo_box_radius;
+    let logo: Element<Message> = container(logo)
+        .padding(6)
+        .style(move |_theme| container::Style {
+            background: Some(Background::Color(logo_bg)),
+            border: Border {
+                radius: logo_radius.into(),
+                ..Default::default()
+            },
+            ..Default::default()
+        })
+        .into();
 
     let username = text_input("user", &state.username)
         .on_input(Message::UsernameChanged)
