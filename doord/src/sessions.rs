@@ -82,11 +82,25 @@ pub const DEFAULT_DATA_DIRS: [&str; 2] = ["/usr/local/share", "/usr/share"];
 /// shadows the packaged one under `/usr/share`). A malformed or unreadable entry
 /// is logged and skipped, never fatal.
 pub fn discover(data_dirs: &[PathBuf]) -> Vec<DiscoveredSession> {
+    // X11 sessions need an X server started for them; door only hands off the seat to
+    // a Wayland session (which is its own display server). Offering an X11 entry would
+    // produce a login that can't succeed, so skip them unless explicitly allowed.
+    discover_inner(data_dirs, std::env::var_os("DOORD_ALLOW_X11").is_some())
+}
+
+fn discover_inner(data_dirs: &[PathBuf], allow_x11: bool) -> Vec<DiscoveredSession> {
     let mut found = Vec::new();
     let mut seen: HashSet<String> = HashSet::new();
+    let mut skipped_x11 = false;
 
     for root in data_dirs {
         for (subdir, kind) in SESSION_SUBDIRS {
+            if matches!(kind, SessionKind::X11) && !allow_x11 {
+                if root.join(subdir).is_dir() {
+                    skipped_x11 = true;
+                }
+                continue;
+            }
             let dir = root.join(subdir);
             let entries = match std::fs::read_dir(&dir) {
                 Ok(entries) => entries,
@@ -115,6 +129,13 @@ pub fn discover(data_dirs: &[PathBuf]) -> Vec<DiscoveredSession> {
                 }
             }
         }
+    }
+
+    if skipped_x11 {
+        eprintln!(
+            "doord: X11 sessions found but not offered — door starts no X server yet \
+             (set DOORD_ALLOW_X11=1 to list them anyway)"
+        );
     }
 
     found
@@ -351,7 +372,8 @@ mod tests {
             "[Desktop Entry]\nName=i3\nExec=/usr/bin/i3\n",
         );
 
-        let mut sessions = discover(std::slice::from_ref(&root.path));
+        // With X11 allowed, both kinds parse with the right metadata.
+        let mut sessions = discover_inner(std::slice::from_ref(&root.path), true);
         sessions.sort_by(|a, b| a.id.cmp(&b.id));
 
         assert_eq!(sessions.len(), 2);
@@ -366,6 +388,24 @@ mod tests {
         assert_eq!(i3.comment, None);
         assert_eq!(i3.exec, vec!["/usr/bin/i3"]);
         assert_eq!(i3.kind, SessionKind::X11);
+    }
+
+    #[test]
+    fn x11_sessions_are_filtered_out_by_default() {
+        let root = TempRoot::new();
+        root.write(
+            "wayland-sessions",
+            "sway.desktop",
+            "[Desktop Entry]\nName=Sway\nExec=sway\n",
+        );
+        root.write("xsessions", "i3.desktop", "[Desktop Entry]\nName=i3\nExec=i3\n");
+
+        // The default (no DOORD_ALLOW_X11) offers only the Wayland session — door
+        // starts no X server, so an X11 entry would be a login that can't succeed.
+        let sessions = discover_inner(std::slice::from_ref(&root.path), false);
+        assert_eq!(sessions.len(), 1);
+        assert_eq!(sessions[0].id, "sway");
+        assert_eq!(sessions[0].kind, SessionKind::Wayland);
     }
 
     #[test]

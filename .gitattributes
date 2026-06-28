@@ -1,0 +1,9 @@
+# Keep these tracked in the repo, but exclude them from `git archive` exports — i.e.
+# the source tarballs GitHub generates for a tag and that the AUR PKGBUILD downloads.
+# So the published/installed source is clean of the private governance + tooling, with
+# no need to gitignore (they stay versioned here).
+.agent/         export-ignore
+.claude/        export-ignore
+CLAUDE.md       export-ignore
+scratch/        export-ignore
+.gitattributes  export-ignore
