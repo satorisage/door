@@ -21,3 +21,5 @@ door.log
 
 # local scratch / temp scripts (survives reboot, unlike /tmp)
 /scratch/
+.agent/
+CLAUDE.md
