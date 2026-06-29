@@ -1,0 +1,11 @@
+# Thunderstorm — charcoal skies split by electric light.
+sky_mode      = "storm"
+background    = "#0a0c10"
+card          = "#11151ccc"
+field         = "#1c222c"
+accent        = "#7dd3fc"
+foreground    = "#e6edf5"
+muted         = "#5b6675"
+glow_color    = "#1e3a5f"
+spinner_comet = "#bae6fd"
+spinner_track = "#38bdf8"

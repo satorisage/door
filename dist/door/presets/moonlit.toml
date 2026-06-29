@@ -1,0 +1,9 @@
+# Moonlit — a silver moon over the still of night.
+sky_mode      = "moon"
+background    = "#070b14"
+card          = "#101723cc"
+field         = "#1a2433"
+accent        = "#cbd5e1"
+foreground    = "#eef2f8"
+muted         = "#64748b"
+glow_color    = "#1e293b"

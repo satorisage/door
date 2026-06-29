@@ -1,0 +1,11 @@
+# Deep Ocean — light dancing through the deep.
+sky_mode      = "water"
+background    = "#03121a"
+card          = "#06202acc"
+field         = "#0d2e3a"
+accent        = "#22d3ee"
+foreground    = "#d6fbff"
+muted         = "#4a8090"
+glow_color    = "#0e4a5a"
+spinner_comet = "#67e8f9"
+spinner_track = "#06b6d4"

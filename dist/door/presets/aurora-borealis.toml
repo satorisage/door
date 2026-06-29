@@ -1,0 +1,13 @@
+# Aurora Borealis — emerald curtains drifting over an arctic night.
+sky_mode      = "aurora"
+background    = "#04070f"
+card          = "#0a1320d0"
+field         = "#13243a"
+accent        = "#5eead4"
+foreground    = "#d7fbef"
+muted         = "#5f8c84"
+glow_color    = "#134e4a"
+comet_color   = "#7dd3fc"
+spinner_comet = "#5eead4"
+spinner_track = "#a78bfa"
+star_density  = 0.7

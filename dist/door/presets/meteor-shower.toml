@@ -1,0 +1,10 @@
+# Meteor Shower — streaks across deep space.
+sky_mode      = "meteor"
+background    = "#05060f"
+card          = "#0c0e1ccc"
+field         = "#161a2e"
+accent        = "#c4b5fd"
+foreground    = "#e8e6ff"
+muted         = "#6a6790"
+glow_color    = "#1e1b4b"
+star_density  = 0.85

@@ -1,0 +1,9 @@
+# Plasma Dream — a living field of color.
+sky_mode            = "plasma"
+background          = "#0a0a12"
+card                = "#101019e8"
+field               = "#1a1a26"
+accent              = "#e5e7eb"
+foreground          = "#f5f5fa"
+muted               = "#8a8aa0"
+card_shadow_opacity = 0.7

@@ -1,0 +1,10 @@
+# Rainy Night — soft rain on a deep blue evening.
+sky_mode      = "rain"
+background    = "#0b1018"
+card          = "#121a26cc"
+field         = "#1b2532"
+accent        = "#93c5fd"
+foreground    = "#dbe7f5"
+muted         = "#5a6678"
+spinner_comet = "#bfdbfe"
+spinner_track = "#60a5fa"

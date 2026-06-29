@@ -1,0 +1,8 @@
+# Wanderer — the sky follows the seasons (snow, rain, meteors, fog).
+sky_mode      = "seasonal"
+background    = "#0b0e16"
+card          = "#141826cc"
+field         = "#1e2533"
+accent        = "#7aa2f7"
+foreground    = "#dde3f4"
+muted         = "#5d6680"

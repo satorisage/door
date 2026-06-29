@@ -1,0 +1,12 @@
+# Ember — warmth rising in the dark.
+sky_mode      = "fire"
+background    = "#120804"
+card          = "#1c0f08d8"
+field         = "#2a160c"
+accent        = "#fb923c"
+foreground    = "#ffe8d6"
+muted         = "#9a6a4a"
+glow_color    = "#7c2d12"
+spinner_comet = "#fdba74"
+spinner_track = "#f97316"
+error_color   = "#ff6b4a"

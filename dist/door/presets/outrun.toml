@@ -1,0 +1,12 @@
+# Outrun — 1984 forever: a neon sun over an endless grid.
+sky_mode         = "synthwave"
+background       = "#0c0118"
+card             = "#1a0628cc"
+field            = "#2a0e3a"
+accent           = "#ff2d95"
+foreground       = "#ffd9f5"
+muted            = "#a063a0"
+spinner_comet    = "#ff5cf0"
+spinner_track    = "#00e5ff"
+spinner_glow     = 1
+accent_breathing = 2.2

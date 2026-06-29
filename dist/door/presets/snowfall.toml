@@ -1,0 +1,10 @@
+# Snowfall — drifting flakes over a quiet dusk.
+sky_mode      = "snow"
+background    = "#0e1420"
+card          = "#161e2cd8"
+field         = "#202a3a"
+accent        = "#a5d8ff"
+foreground    = "#eaf2fb"
+muted         = "#6b7787"
+spinner_comet = "#dbeafe"
+spinner_track = "#7dd3fc"

@@ -1,0 +1,8 @@
+# Misty Morning — soft fog and muted light.
+sky_mode      = "fog"
+background    = "#141821"
+card          = "#1c2330cc"
+field         = "#262e3c"
+accent        = "#9db2ce"
+foreground    = "#dde4ee"
+muted         = "#6b7585"

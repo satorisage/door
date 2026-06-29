@@ -1197,22 +1197,20 @@ mod tests {
 
     #[test]
     fn shipped_presets_parse_as_pairs() {
-        for (name, raw) in [
-            (
-                "tokyo-night",
-                include_str!("../../dist/door/presets/tokyo-night.toml"),
-            ),
-            (
-                "supernova",
-                include_str!("../../dist/door/presets/supernova.toml"),
-            ),
-            (
-                "nebula",
-                include_str!("../../dist/door/presets/nebula.toml"),
-            ),
-        ] {
-            Theme::parse_pair(raw).unwrap_or_else(|e| panic!("preset {name} must parse: {e}"));
+        // Every packaged preset must parse as a day+night pair (auto-covers new ones).
+        let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../dist/door/presets");
+        let mut count = 0;
+        for entry in std::fs::read_dir(dir).expect("presets dir must exist").flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) != Some("toml") {
+                continue;
+            }
+            let raw = std::fs::read_to_string(&path).expect("read preset");
+            Theme::parse_pair(&raw)
+                .unwrap_or_else(|e| panic!("preset {:?} must parse: {e}", path.file_name().unwrap()));
+            count += 1;
         }
+        assert!(count >= 12, "expected the preset library, found only {count}");
     }
 
     #[test]
