@@ -690,12 +690,14 @@ fn day_sky(uv: vec2<f32>, p: vec2<f32>, aspect: f32) -> vec3<f32> {
   let height = 1.0 - uv.y;
   var col = mix(horizon, zenith, smoothstep(0.0, 1.0, height));
 
-  // Sun (upper-left) — a warm halo plus a near-white core.
+  // Sun (upper-left) — a contained warm halo plus a defined near-white core. The
+  // halo is kept tight (falloff) and gentle (intensity) so it reads as a sun rather
+  // than washing the whole upper-left quadrant to white.
   var sp = vec2(0.24, 0.18) - vec2(0.5, 0.5);
   sp.x = sp.x * aspect;
   let sd = length(p - sp);
-  col = col + vec3(1.0, 0.91, 0.69) * exp(-sd * sd * 7.0) * 0.55;
-  col = mix(col, vec3(1.0, 0.99, 0.96), smoothstep(0.05, 0.03, sd) * 0.9);
+  col = col + vec3(1.0, 0.91, 0.69) * exp(-sd * sd * 16.0) * 0.38;
+  col = mix(col, vec3(1.0, 0.99, 0.96), smoothstep(0.045, 0.028, sd) * 0.85);
   let sundir = normalize(sp);
 
   // Two parallax cloud layers, far/soft then near/detailed.
