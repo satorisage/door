@@ -47,6 +47,14 @@ struct Uniforms {
     sun_col: [f32; 4],
     /// x = night glow center x (0–1), y = glow center y (0–1), z = day haze, w unused.
     params5: [f32; 4],
+    /// x = star layers, y = star size mult, z = nebula drift speed, w unused.
+    params6: [f32; 4],
+    /// x = comet tilt (rad), y = comet pause (s), z = comet width mult, w unused.
+    params7: [f32; 4],
+    /// Daytime cloud sun-lit color (rgb).
+    cloud_lit: [f32; 4],
+    /// Daytime cloud shadowed color (rgb).
+    cloud_shadow: [f32; 4],
 }
 
 fn srgb8(r: u8, g: u8, b: u8) -> Color {
@@ -119,6 +127,10 @@ impl SkyShader {
             params4: [t.sun_x, t.sun_y, t.sun_size, t.sun_intensity],
             sun_col: t.sun_color.iced().into_linear(),
             params5: [t.glow_x, t.glow_y, t.day_haze, 0.0],
+            params6: [t.star_layers, t.star_size, t.nebula_speed, 0.0],
+            params7: [t.comet_tilt, t.comet_pause, t.comet_width, 0.0],
+            cloud_lit: t.cloud_lit.iced().into_linear(),
+            cloud_shadow: t.cloud_shadow.iced().into_linear(),
         };
         Self { uniforms }
     }
@@ -303,7 +315,7 @@ struct SpinUniforms {
     track: [f32; 4],
     /// x = glow, y = trail length, z = speed (rad/s), w = pulse-speed mult.
     params: [f32; 4],
-    /// x = orbit-ring intensity, y/z/w = unused.
+    /// x = orbit-ring intensity, y = comet orbit radius, z/w unused.
     params2: [f32; 4],
 }
 
@@ -323,7 +335,7 @@ impl SpinnerShader {
                 t.spinner_speed,
                 t.spinner_pulse,
             ],
-            params2: [t.spinner_ring, 0.0, 0.0, 0.0],
+            params2: [t.spinner_ring, t.spinner_orbit, 0.0, 0.0],
         };
         Self { uniforms }
     }
@@ -542,7 +554,7 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
   let cometc = u.comet.rgb;
   let pulse = 0.86 + 0.14 * sin(u.time * 3.0 * u.params.w);
 
-  let R = 0.30;                       // orbit radius — pulled in so the glow has margin
+  let R = max(u.params2.y, 0.05);     // orbit radius (themeable; pulled in for glow margin)
   let r = length(p);
   let ang = atan2(p.y, p.x);
   let headA = u.time * speed;
@@ -628,6 +640,10 @@ struct U {
   params4: vec4<f32>,
   sun_col: vec4<f32>,
   params5: vec4<f32>,
+  params6: vec4<f32>,
+  params7: vec4<f32>,
+  cloud_lit: vec4<f32>,
+  cloud_shadow: vec4<f32>,
 };
 @group(0) @binding(0) var<uniform> u: U;
 
@@ -715,8 +731,8 @@ fn day_sky(uv: vec2<f32>, p: vec2<f32>, aspect: f32) -> vec3<f32> {
   let sundir = normalize(sp);
 
   // Two parallax cloud layers, far/soft then near/detailed.
-  let lit = vec3(1.0, 1.0, 1.0);
-  let sh = vec3(0.706, 0.761, 0.859);
+  let lit = u.cloud_lit.rgb;
+  let sh = u.cloud_shadow.rgb;
   let cspd = u.params3.x;       // cloud speed mult
   let camt = u.params2.w;       // cloud amount mult
   col = cloud_layer(col, p, sundir, 3.0, 1.5, 0.013 * cspd, 0.65 * camt, 0.40, 0.74, lit, sh);
@@ -749,7 +765,8 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     col = col + u.glow.rgb * exp(-gd * gd * u.params3.y) * u.params.w;
 
     // fbm nebula for depth, concentrated near the glow.
-    let neb = fbm(p * 2.2 + vec2(u.time * 0.015, u.time * -0.010));
+    let nbs = u.params6.z;
+    let neb = fbm(p * 2.2 + vec2(u.time * 0.015 * nbs, u.time * -0.010 * nbs));
     col = col + u.glow.rgb * neb * u.params3.z * smoothstep(0.95, 0.0, gd);
 
     // Twinkling stars across three scaled layers — denser, each with its own pulse
@@ -757,7 +774,8 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     // brightest carry a faint cross-glint.
     var stars = 0.0;
     var spark = 0.0;
-    for (var l = 0; l < 3; l = l + 1) {
+    let layers = i32(u.params6.x);
+    for (var l = 0; l < layers; l = l + 1) {
       let scale = 8.0 * pow(1.9, f32(l));
       let gp = uv * vec2(aspect, 1.0) * scale;
       let cell = floor(gp);
@@ -769,7 +787,7 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
         var tw = 0.5 + 0.5 * sin(u.time * (0.8 + h2 * 3.6) * u.params2.y + h * 40.0);
         tw = tw * tw * tw;
         let bright = (h - thr) / max(1.0 - thr, 0.01);
-        stars = stars + exp(-dot(cp, cp) * 70.0) * tw * bright;
+        stars = stars + exp(-dot(cp, cp) * 70.0 / max(u.params6.y, 0.1)) * tw * bright;
         let cross = exp(-abs(cp.x) * 55.0) * exp(-cp.y * cp.y * 900.0)
                   + exp(-abs(cp.y) * 55.0) * exp(-cp.x * cp.x * 900.0);
         spark = spark + cross * tw * bright * 0.5;
@@ -782,20 +800,25 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
   // Drifting comet: upper-right -> lower-left on an InOutSine ease, then pause.
   let period = u.params2.z;
   let cu = fract(u.time / period);
-  let sf = (period - 2.5) / period;   // a fixed ~2.5s pause after each sweep
+  let sf = (period - u.params7.y) / period;   // params7.y-second pause after each sweep
   if (cu < sf) {
     let pp = ease(cu / sf);
-    var head = vec2(mix(1.08, -0.22, pp), mix(0.10, 0.65, pp));
-    head = head - vec2(0.5, 0.5);
+    // Comet path + tail direction, rotated about screen-center by comet tilt (params7.x).
+    let tilt = u.params7.x;
+    let ctil = cos(tilt);
+    let stil = sin(tilt);
+    let hc = vec2(mix(1.08, -0.22, pp), mix(0.10, 0.65, pp)) - vec2(0.5, 0.5);
+    var head = vec2(hc.x * ctil - hc.y * stil, hc.x * stil + hc.y * ctil);
     head.x = head.x * aspect;
-    let dir = normalize(vec2(0.92, -0.39)); // tail recedes up-right
+    let d0 = vec2(0.92, -0.39); // tail recedes up-right (pre-tilt)
+    let dir = normalize(vec2(d0.x * ctil - d0.y * stil, d0.x * stil + d0.y * ctil));
     let rel = p - head;
     let along = dot(rel, dir);
     let perp = length(rel - along * dir);
     // Teardrop tail: narrow at the head, fanning out and fading along the heading —
     // not a constant-width straight beam.
     let t = max(along, 0.0);
-    let width = 0.010 + t * 0.10;
+    let width = (0.010 + t * 0.10) * u.params7.z;
     let tail = exp(-(perp * perp) / (width * width)) * exp(-t * u.params3.w) * step(0.0, along);
     let nuc = exp(-dot(rel, rel) * 3000.0);   // white-hot nucleus
     let coma = exp(-dot(rel, rel) * 300.0);   // soft round coma

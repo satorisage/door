@@ -61,10 +61,19 @@ spinner_trail = 1.0         # trail length 0.15–1.0 (shorter = crisper on a li
 # glow_x         = 0.5        # night sky-glow center, 0–1 across (0 = left)
 # glow_y         = 0.44       # night sky-glow center, 0–1 down (0 = top)
 # day_haze       = 0.25       # daytime horizon-haze strength (0–1)
+# star_layers    = 3          # number of parallax star layers (1–5)
+# star_size      = 1.0        # star size multiplier (bigger = larger)
+# nebula_speed   = 1.0        # night nebula drift-speed multiplier
+# comet_tilt     = 0.0        # rotate the sky-comet path (radians; 0 = diagonal)
+# comet_pause    = 2.5        # pause (s) after each sky-comet sweep
+# comet_width    = 1.0        # sky-comet width multiplier
+# cloud_lit      = "#ffffff"  # daytime cloud sun-lit color
+# cloud_shadow   = "#b4c2db"  # daytime cloud shadowed-underside color
 #
 # Spinner / card / behavior
 # spinner_size   = 52.0       # card spinner diameter (px)
 # spinner_pulse  = 1.0        # spinner head breathing speed (0 = steady)
+# spinner_orbit  = 0.30       # comet orbit radius within the spinner (0.1–0.45)
 # card_shadow_blur    = 34.0  # card drop-shadow blur (px)
 # card_shadow_opacity = 0.45  # card drop-shadow darkness (0–1)
 # accent_breathing    = 1.0   # card accent-edge pulse speed (0 = steady)

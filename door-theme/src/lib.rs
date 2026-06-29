@@ -164,12 +164,30 @@ pub struct Theme {
     pub glow_y: f32,
     /// Daytime horizon-haze strength, 0–1. Shared (day-only effect).
     pub day_haze: f32,
+    /// Number of night star layers (1–5; rounded). Shared.
+    pub star_layers: f32,
+    /// Star size multiplier (1 = default; bigger = larger stars). Shared.
+    pub star_size: f32,
+    /// Night nebula drift-speed multiplier (1 = default). Shared.
+    pub nebula_speed: f32,
+    /// Sky-comet path rotation in radians (0 = the default diagonal). Shared.
+    pub comet_tilt: f32,
+    /// Pause (seconds) after each sky-comet sweep. Shared.
+    pub comet_pause: f32,
+    /// Sky-comet width multiplier (1 = default). Shared.
+    pub comet_width: f32,
+    /// Daytime cloud sun-lit color. Shared (day-only effect).
+    pub cloud_lit: Color,
+    /// Daytime cloud shadowed-underside color. Shared (day-only effect).
+    pub cloud_shadow: Color,
 
     // ── Spinner controls ──
     /// Card spinner size in px. Shared.
     pub spinner_size: f32,
     /// Spinner head pulse/breathing speed (1 = default). Shared.
     pub spinner_pulse: f32,
+    /// Spinner comet orbit radius (fraction of the emblem; default 0.30). Shared.
+    pub spinner_orbit: f32,
 
     // ── Card / behavior controls ──
     /// Card drop-shadow blur radius (px). Shared.
@@ -245,8 +263,17 @@ impl Default for Theme {
             glow_x: 0.5,
             glow_y: 0.44,
             day_haze: 0.25,
+            star_layers: 3.0,
+            star_size: 1.0,
+            nebula_speed: 1.0,
+            comet_tilt: 0.0,
+            comet_pause: 2.5,
+            comet_width: 1.0,
+            cloud_lit: Color::rgb(0xff, 0xff, 0xff),
+            cloud_shadow: Color::rgb(0xb4, 0xc2, 0xdb),
             spinner_size: 52.0,
             spinner_pulse: 1.0,
+            spinner_orbit: 0.30,
             card_shadow_blur: 34.0,
             card_shadow_opacity: 0.45,
             accent_breathing: 1.0,
@@ -315,8 +342,17 @@ impl Theme {
             glow_x: 0.5,
             glow_y: 0.44,
             day_haze: 0.25,
+            star_layers: 3.0,
+            star_size: 1.0,
+            nebula_speed: 1.0,
+            comet_tilt: 0.0,
+            comet_pause: 2.5,
+            comet_width: 1.0,
+            cloud_lit: Color::rgb(0xff, 0xff, 0xff),
+            cloud_shadow: Color::rgb(0xb4, 0xc2, 0xdb),
             spinner_size: 52.0,
             spinner_pulse: 1.0,
+            spinner_orbit: 0.30,
             card_shadow_blur: 34.0,
             card_shadow_opacity: 0.45,
             accent_breathing: 1.0,
@@ -371,6 +407,15 @@ struct ThemeFile {
     glow_x: Option<f32>,
     glow_y: Option<f32>,
     day_haze: Option<f32>,
+    star_layers: Option<f32>,
+    star_size: Option<f32>,
+    nebula_speed: Option<f32>,
+    comet_tilt: Option<f32>,
+    comet_pause: Option<f32>,
+    comet_width: Option<f32>,
+    cloud_lit: Option<String>,
+    cloud_shadow: Option<String>,
+    spinner_orbit: Option<f32>,
     spinner_size: Option<f32>,
     spinner_pulse: Option<f32>,
     card_shadow_blur: Option<f32>,
@@ -531,6 +576,15 @@ impl Theme {
         merge_f32(&mut self.glow_x, file.glow_x);
         merge_f32(&mut self.glow_y, file.glow_y);
         merge_f32(&mut self.day_haze, file.day_haze);
+        merge_f32(&mut self.star_layers, file.star_layers);
+        merge_f32(&mut self.star_size, file.star_size);
+        merge_f32(&mut self.nebula_speed, file.nebula_speed);
+        merge_f32(&mut self.comet_tilt, file.comet_tilt);
+        merge_f32(&mut self.comet_pause, file.comet_pause);
+        merge_f32(&mut self.comet_width, file.comet_width);
+        self.cloud_lit = color("cloud_lit", file.cloud_lit, self.cloud_lit);
+        self.cloud_shadow = color("cloud_shadow", file.cloud_shadow, self.cloud_shadow);
+        merge_f32(&mut self.spinner_orbit, file.spinner_orbit);
         merge_f32(&mut self.spinner_size, file.spinner_size);
         merge_f32(&mut self.spinner_pulse, file.spinner_pulse);
         merge_f32(&mut self.card_shadow_blur, file.card_shadow_blur);
@@ -593,6 +647,23 @@ impl Theme {
         merge_f32(&mut self.glow_x, file.glow_x);
         merge_f32(&mut self.glow_y, file.glow_y);
         merge_f32(&mut self.day_haze, file.day_haze);
+        merge_f32(&mut self.star_layers, file.star_layers);
+        merge_f32(&mut self.star_size, file.star_size);
+        merge_f32(&mut self.nebula_speed, file.nebula_speed);
+        merge_f32(&mut self.comet_tilt, file.comet_tilt);
+        merge_f32(&mut self.comet_pause, file.comet_pause);
+        merge_f32(&mut self.comet_width, file.comet_width);
+        if let Some(s) = &file.cloud_lit {
+            if let Some(col) = Color::parse(s) {
+                self.cloud_lit = col;
+            }
+        }
+        if let Some(s) = &file.cloud_shadow {
+            if let Some(col) = Color::parse(s) {
+                self.cloud_shadow = col;
+            }
+        }
+        merge_f32(&mut self.spinner_orbit, file.spinner_orbit);
         merge_f32(&mut self.spinner_size, file.spinner_size);
         merge_f32(&mut self.spinner_pulse, file.spinner_pulse);
         merge_f32(&mut self.card_shadow_blur, file.card_shadow_blur);
@@ -811,9 +882,18 @@ impl Theme {
         out.push_str(&format!("glow_x        = {}\n", self.glow_x));
         out.push_str(&format!("glow_y        = {}\n", self.glow_y));
         out.push_str(&format!("day_haze      = {}\n", self.day_haze));
+        out.push_str(&format!("star_layers   = {}\n", self.star_layers));
+        out.push_str(&format!("star_size     = {}\n", self.star_size));
+        out.push_str(&format!("nebula_speed  = {}\n", self.nebula_speed));
+        out.push_str(&format!("comet_tilt    = {}\n", self.comet_tilt));
+        out.push_str(&format!("comet_pause   = {}\n", self.comet_pause));
+        out.push_str(&format!("comet_width   = {}\n", self.comet_width));
+        out.push_str(&format!("cloud_lit     = {:?}\n", self.cloud_lit.to_hex()));
+        out.push_str(&format!("cloud_shadow  = {:?}\n", self.cloud_shadow.to_hex()));
         out.push_str("# Spinner / card / behavior\n");
         out.push_str(&format!("spinner_size  = {}\n", self.spinner_size));
         out.push_str(&format!("spinner_pulse = {}\n", self.spinner_pulse));
+        out.push_str(&format!("spinner_orbit = {}\n", self.spinner_orbit));
         out.push_str(&format!(
             "card_shadow_blur    = {}\n",
             self.card_shadow_blur

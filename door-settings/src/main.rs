@@ -160,6 +160,15 @@ enum Message {
     GlowX(f32),
     GlowY(f32),
     DayHaze(f32),
+    StarLayers(f32),
+    StarSize(f32),
+    NebulaSpeed(f32),
+    CometTilt(f32),
+    CometPause(f32),
+    CometWidth(f32),
+    CloudLit(String),
+    CloudShadow(String),
+    SpinnerOrbit(f32),
     // Spinner
     SpinnerSize(f32),
     SpinnerPulse(f32),
@@ -214,6 +223,15 @@ struct State {
     glow_x: f32,
     glow_y: f32,
     day_haze: f32,
+    star_layers: f32,
+    star_size: f32,
+    nebula_speed: f32,
+    comet_tilt: f32,
+    comet_pause: f32,
+    comet_width: f32,
+    cloud_lit: String,
+    cloud_shadow: String,
+    spinner_orbit: f32,
     spinner_size: f32,
     spinner_pulse: f32,
     card_shadow_blur: f32,
@@ -368,6 +386,15 @@ impl State {
             glow_x: night.glow_x,
             glow_y: night.glow_y,
             day_haze: night.day_haze,
+            star_layers: night.star_layers,
+            star_size: night.star_size,
+            nebula_speed: night.nebula_speed,
+            comet_tilt: night.comet_tilt,
+            comet_pause: night.comet_pause,
+            comet_width: night.comet_width,
+            cloud_lit: night.cloud_lit.to_hex(),
+            cloud_shadow: night.cloud_shadow.to_hex(),
+            spinner_orbit: night.spinner_orbit,
             spinner_size: night.spinner_size,
             spinner_pulse: night.spinner_pulse,
             card_shadow_blur: night.card_shadow_blur,
@@ -424,6 +451,15 @@ impl State {
         self.glow_x = night.glow_x;
         self.glow_y = night.glow_y;
         self.day_haze = night.day_haze;
+        self.star_layers = night.star_layers;
+        self.star_size = night.star_size;
+        self.nebula_speed = night.nebula_speed;
+        self.comet_tilt = night.comet_tilt;
+        self.comet_pause = night.comet_pause;
+        self.comet_width = night.comet_width;
+        self.cloud_lit = night.cloud_lit.to_hex();
+        self.cloud_shadow = night.cloud_shadow.to_hex();
+        self.spinner_orbit = night.spinner_orbit;
         self.spinner_size = night.spinner_size;
         self.spinner_pulse = night.spinner_pulse;
         self.card_shadow_blur = night.card_shadow_blur;
@@ -545,6 +581,15 @@ impl State {
             glow_x: self.glow_x,
             glow_y: self.glow_y,
             day_haze: self.day_haze,
+            star_layers: self.star_layers,
+            star_size: self.star_size,
+            nebula_speed: self.nebula_speed,
+            comet_tilt: self.comet_tilt,
+            comet_pause: self.comet_pause,
+            comet_width: self.comet_width,
+            cloud_lit: color("Cloud lit", &self.cloud_lit)?,
+            cloud_shadow: color("Cloud shadow", &self.cloud_shadow)?,
+            spinner_orbit: self.spinner_orbit,
             spinner_size: self.spinner_size,
             spinner_pulse: self.spinner_pulse,
             card_shadow_blur: self.card_shadow_blur,
@@ -643,6 +688,15 @@ fn update(state: &mut State, message: Message) -> Task<Message> {
         Message::GlowX(v) => state.glow_x = v.clamp(0.0, 1.0),
         Message::GlowY(v) => state.glow_y = v.clamp(0.0, 1.0),
         Message::DayHaze(v) => state.day_haze = v.clamp(0.0, 1.0),
+        Message::StarLayers(v) => state.star_layers = v.round().clamp(1.0, 5.0),
+        Message::StarSize(v) => state.star_size = v.clamp(0.3, 3.0),
+        Message::NebulaSpeed(v) => state.nebula_speed = v.clamp(0.0, 4.0),
+        Message::CometTilt(v) => state.comet_tilt = v.clamp(-1.57, 1.57),
+        Message::CometPause(v) => state.comet_pause = v.clamp(0.0, 6.0),
+        Message::CometWidth(v) => state.comet_width = v.clamp(0.3, 3.0),
+        Message::CloudLit(s) => state.cloud_lit = s,
+        Message::CloudShadow(s) => state.cloud_shadow = s,
+        Message::SpinnerOrbit(v) => state.spinner_orbit = v.clamp(0.1, 0.45),
         Message::SpinnerSize(v) => state.spinner_size = v.clamp(24.0, 120.0),
         Message::SpinnerPulse(v) => state.spinner_pulse = v.clamp(0.0, 3.0),
         Message::CardShadowBlur(v) => state.card_shadow_blur = v.clamp(0.0, 80.0),
@@ -1152,6 +1206,16 @@ fn sky_tab<'a>(state: &'a State, pal: &'a Palette, h: bool) -> Element<'a, Messa
                 "Color of the daytime sun's halo.",
                 h
             ),
+            helped(
+                color_cell_with("Cloud lit", &state.cloud_lit, Message::CloudLit),
+                "Sun-lit (bright) side of the daytime clouds.",
+                h
+            ),
+            helped(
+                color_cell_with("Cloud shade", &state.cloud_shadow, Message::CloudShadow),
+                "Shadowed underside of the daytime clouds.",
+                h
+            ),
         ]
         .spacing(9)
         .into(),
@@ -1230,6 +1294,78 @@ fn sky_tab<'a>(state: &'a State, pal: &'a Palette, h: bool) -> Element<'a, Messa
                         Message::DayHaze
                     ),
                     "Daytime horizon-haze strength.",
+                    h
+                ),
+                helped(
+                    slider_row(
+                        "Star layers",
+                        state.star_layers,
+                        1.0..=5.0,
+                        1.0,
+                        format!("{:.0}", state.star_layers),
+                        Message::StarLayers
+                    ),
+                    "Number of parallax star layers.",
+                    h
+                ),
+                helped(
+                    slider_row(
+                        "Star size",
+                        state.star_size,
+                        0.3..=3.0,
+                        0.1,
+                        format!("{:.1}×", state.star_size),
+                        Message::StarSize
+                    ),
+                    "Size of the stars.",
+                    h
+                ),
+                helped(
+                    slider_row(
+                        "Nebula drift",
+                        state.nebula_speed,
+                        0.0..=4.0,
+                        0.1,
+                        format!("{:.1}×", state.nebula_speed),
+                        Message::NebulaSpeed
+                    ),
+                    "How fast the night nebula drifts.",
+                    h
+                ),
+                helped(
+                    slider_row(
+                        "Comet tilt",
+                        state.comet_tilt,
+                        -1.57..=1.57,
+                        0.01,
+                        format!("{:.2}", state.comet_tilt),
+                        Message::CometTilt
+                    ),
+                    "Rotate the sky comet's path (radians; 0 = default diagonal).",
+                    h
+                ),
+                helped(
+                    slider_row(
+                        "Comet pause",
+                        state.comet_pause,
+                        0.0..=6.0,
+                        0.1,
+                        format!("{:.1}s", state.comet_pause),
+                        Message::CometPause
+                    ),
+                    "Pause after each sky-comet sweep.",
+                    h
+                ),
+                helped(
+                    slider_row(
+                        "Comet width",
+                        state.comet_width,
+                        0.3..=3.0,
+                        0.1,
+                        format!("{:.1}×", state.comet_width),
+                        Message::CometWidth
+                    ),
+                    "Thickness of the sky comet.",
                     h
                 ),
             ]
@@ -1320,18 +1456,32 @@ fn spinner_tab<'a>(state: &'a State, pal: &'a Palette, h: bool) -> Element<'a, M
     let advanced = state.expert.then(|| {
         group(
             "SPINNER · ADVANCED",
-            column![helped(
-                slider_row(
-                    "Orbit ring",
-                    state.spinner_ring,
-                    0.0..=0.5,
-                    0.01,
-                    format!("{:.2}", state.spinner_ring),
-                    Message::SpinnerRing
+            column![
+                helped(
+                    slider_row(
+                        "Orbit ring",
+                        state.spinner_ring,
+                        0.0..=0.5,
+                        0.01,
+                        format!("{:.2}", state.spinner_ring),
+                        Message::SpinnerRing
+                    ),
+                    "Brightness of the spinner's static orbit ring.",
+                    h
                 ),
-                "Brightness of the spinner's static orbit ring.",
-                h
-            ),]
+                helped(
+                    slider_row(
+                        "Orbit radius",
+                        state.spinner_orbit,
+                        0.1..=0.45,
+                        0.01,
+                        format!("{:.2}", state.spinner_orbit),
+                        Message::SpinnerOrbit
+                    ),
+                    "How far the comet orbits from the spinner center.",
+                    h
+                ),
+            ]
             .spacing(9)
             .into(),
         )
