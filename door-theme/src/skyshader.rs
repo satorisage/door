@@ -857,6 +857,110 @@ fn snow_sky(uv: vec2<f32>, p: vec2<f32>, aspect: f32) -> vec3<f32> {
   return col + vec3(1.0, 1.0, 1.0) * snow;
 }
 
+// A faint static starfield, shared by the night-based scenes (meteor, moon).
+fn scene_stars(uv: vec2<f32>, aspect: f32) -> f32 {
+  let gp = uv * vec2(aspect, 1.0) * 22.0;
+  let cell = floor(gp);
+  let h = hash21(cell);
+  if (h > 0.9) {
+    let cp = fract(gp) - vec2(0.5, 0.5);
+    return exp(-dot(cp, cp) * 90.0) * (h - 0.9) * 10.0;
+  }
+  return 0.0;
+}
+
+// Meteor shower: many diagonal shooting stars with tapered trails over a night sky.
+// Each meteor re-spawns at a fresh position every life-cycle (integer part of its
+// phase); the fractional part drives its travel + a fade in/out envelope.
+fn meteor_sky(uv: vec2<f32>, p: vec2<f32>, aspect: f32) -> vec3<f32> {
+  let bg = u.bg_bot.rgb;
+  let top = mix(bg, u.glow.rgb, 0.22);
+  var col = mix(top, bg, smoothstep(0.0, 1.0, uv.y));
+  col = col + vec3(0.75, 0.8, 1.0) * scene_stars(uv, aspect);
+
+  let dir = normalize(vec2(-0.6, 0.55)); // down-left (uv y is down)
+  var m = 0.0;
+  for (var i = 0; i < 10; i = i + 1) {
+    let fi = f32(i);
+    let sp = 0.16 + 0.14 * hash21(vec2(fi, 2.0));
+    let prog = u.time * sp + hash21(vec2(fi, 9.0));
+    let life = floor(prog);
+    let t = fract(prog);
+    let ox = hash21(vec2(fi, life));
+    let oy = -0.15 + 0.35 * hash21(vec2(fi, life + 3.0));
+    let origin = vec2(ox * 1.3, oy);
+    let head = origin + dir * t * 1.7;
+    var rel = uv - head;
+    rel.x = rel.x * aspect;
+    let along = dot(rel, dir);
+    let perp = length(rel - along * dir);
+    let trail = exp(-perp * perp * 9000.0) * exp(along * 26.0) * step(along, 0.0);
+    let headg = exp(-dot(rel, rel) * 5000.0);
+    let env = smoothstep(0.0, 0.08, t) * smoothstep(1.0, 0.75, t);
+    m = m + (trail * 0.85 + headg) * env;
+  }
+  return col + vec3(0.85, 0.92, 1.0) * m;
+}
+
+// Moon: a large phased moon (terminator drifts slowly) with fbm "maria", a soft halo
+// and a starfield. The lit mask is the moon disc minus an offset shadow disc.
+fn moon_sky(uv: vec2<f32>, p: vec2<f32>, aspect: f32) -> vec3<f32> {
+  let bg = u.bg_bot.rgb;
+  var col = mix(mix(bg, u.glow.rgb, 0.18), bg, smoothstep(0.0, 1.0, uv.y));
+  col = col + vec3(0.75, 0.8, 1.0) * scene_stars(uv, aspect);
+
+  let mc = vec2(0.32, 0.30);
+  var rel = uv - mc;
+  rel.x = rel.x * aspect;
+  let r = length(rel);
+  let rad = 0.16;
+  let disc = smoothstep(rad, rad - 0.006, r);
+  // Phase: an offset shadow disc sweeps across (slow).
+  let phase = sin(u.time * 0.06);
+  let sr = length(rel - vec2(phase * 0.20, 0.0));
+  let lit = smoothstep(rad - 0.006, rad, sr);
+  let maria = 0.82 + 0.18 * fbm(rel * 22.0);
+  col = col + vec3(0.93, 0.93, 0.86) * disc * lit * maria;
+  // Soft halo.
+  col = col + vec3(0.5, 0.55, 0.72) * exp(-r * r * 26.0) * 0.28;
+  return col;
+}
+
+// Synthwave: a deep purple→pink dusk, a striped neon sun on the horizon, and a glowing
+// cyan perspective grid on the "ground" (lower half), scrolling toward the viewer.
+fn synthwave_sky(uv: vec2<f32>, p: vec2<f32>, aspect: f32) -> vec3<f32> {
+  let horizon = 0.56;
+  let purple = vec3(0.16, 0.05, 0.28);
+  let pink = vec3(0.95, 0.27, 0.55);
+  var col = mix(purple, pink, smoothstep(0.0, horizon, uv.y) * smoothstep(1.0, 0.3, uv.y / horizon));
+  col = mix(purple * 0.6, col, smoothstep(0.0, 0.5, uv.y));
+
+  // Striped sun above the horizon.
+  let sc = vec2(0.5, horizon);
+  var sr = uv - sc;
+  sr.x = sr.x * aspect;
+  let sd = length(sr);
+  let sun = smoothstep(0.22, 0.215, sd);
+  let stripes = step(0.0, sin(uv.y * 120.0)) * step(uv.y, horizon); // dark bands, upper sun
+  let suncol = mix(vec3(1.0, 0.85, 0.3), vec3(1.0, 0.25, 0.55), smoothstep(horizon - 0.22, horizon, uv.y));
+  col = mix(col, suncol, sun * (1.0 - stripes * 0.85));
+  col = col + vec3(1.0, 0.4, 0.6) * exp(-sd * sd * 9.0) * 0.25; // sun glow
+
+  // Neon perspective grid on the ground (uv.y > horizon).
+  if (uv.y > horizon) {
+    let gy = uv.y - horizon + 0.02;
+    let z = 1.0 / gy;
+    let scroll = u.time * 1.2;
+    let lh = abs(fract(z * 0.55 - scroll) - 0.5);
+    let px = (uv.x - 0.5) * z * 0.6;
+    let lv = abs(fract(px) - 0.5);
+    let grid = smoothstep(0.06, 0.0, lh) + smoothstep(0.05, 0.0, lv);
+    let depth = smoothstep(0.0, 0.25, gy);
+    col = col + vec3(0.0, 0.9, 1.0) * grid * depth * 0.7;
+  }
+  return col;
+}
+
 @fragment
 fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
   let uv = in.uv;
@@ -875,8 +979,14 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
       col = storm_sky(uv, p, aspect);
     } else if (mode < 3.5) {
       col = rain_sky(uv, p, aspect);
-    } else {
+    } else if (mode < 4.5) {
       col = snow_sky(uv, p, aspect);
+    } else if (mode < 5.5) {
+      col = meteor_sky(uv, p, aspect);
+    } else if (mode < 6.5) {
+      col = moon_sky(uv, p, aspect);
+    } else {
+      col = synthwave_sky(uv, p, aspect);
     }
   } else if (day > 0.5) {
     col = day_sky(uv, p, aspect);

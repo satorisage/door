@@ -97,16 +97,25 @@ pub enum SkyMode {
     Rain,
     /// Soft winter sky with drifting snowflakes.
     Snow,
+    /// A frequent diagonal meteor shower over a night sky.
+    Meteor,
+    /// A large phased moon (slowly cycling) over a starfield.
+    Moon,
+    /// Retro synthwave: a striped sun over a neon perspective grid.
+    Synthwave,
 }
 
 impl SkyMode {
     /// Every mode, for the settings picker.
-    pub const ALL: [SkyMode; 5] = [
+    pub const ALL: [SkyMode; 8] = [
         SkyMode::Auto,
         SkyMode::Aurora,
         SkyMode::Storm,
         SkyMode::Rain,
         SkyMode::Snow,
+        SkyMode::Meteor,
+        SkyMode::Moon,
+        SkyMode::Synthwave,
     ];
     /// The shader selector value (0 = auto → the day/night renderer).
     pub fn shader_id(self) -> f32 {
@@ -116,6 +125,9 @@ impl SkyMode {
             SkyMode::Storm => 2.0,
             SkyMode::Rain => 3.0,
             SkyMode::Snow => 4.0,
+            SkyMode::Meteor => 5.0,
+            SkyMode::Moon => 6.0,
+            SkyMode::Synthwave => 7.0,
         }
     }
     /// The lowercase name used in the config and the picker.
@@ -126,6 +138,9 @@ impl SkyMode {
             SkyMode::Storm => "storm",
             SkyMode::Rain => "rain",
             SkyMode::Snow => "snow",
+            SkyMode::Meteor => "meteor",
+            SkyMode::Moon => "moon",
+            SkyMode::Synthwave => "synthwave",
         }
     }
 }
