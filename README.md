@@ -41,7 +41,7 @@ session, hands off the seat/VT, and starts the chosen session.
 
 ## Install
 
-From the [AUR](https://aur.archlinux.org/) (once published):
+From the [AUR](https://aur.archlinux.org/packages/door):
 
 ```sh
 yay -S door     # or: paru -S door
