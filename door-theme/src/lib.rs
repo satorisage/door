@@ -184,6 +184,16 @@ impl SkyMode {
             other => other,
         }
     }
+    /// Which card palette a mode pins, if any. `None` = follow the day/night clock
+    /// (Auto/Seasonal). Every explicit scene pins **night** (`Some(false)`): the dark
+    /// card stays readable over any scene, and it avoids a light day-card landing over
+    /// a dark scene (e.g. daytime + aurora). The light day palette is for the day sky.
+    pub fn prefers_day(self) -> Option<bool> {
+        match self {
+            SkyMode::Auto | SkyMode::Seasonal => None,
+            _ => Some(false),
+        }
+    }
 }
 
 impl std::fmt::Display for SkyMode {
@@ -824,7 +834,12 @@ impl Theme {
         // the caller owns the clock, so door-theme stays calendar-free.
         let mode = file.sky_mode.unwrap_or_default().resolved(month);
         let (start, end) = day_window(&file);
-        let mut theme = if in_window(now_minutes, start, end) {
+        // An explicit scene pins its card palette (night); auto/seasonal follow the clock.
+        let use_day = match mode.prefers_day() {
+            Some(day) => day,
+            None => in_window(now_minutes, start, end),
+        };
+        let mut theme = if use_day {
             Theme::day().merged_structural(&file).merged_day(file.day)
         } else if have {
             Theme::default().merged(file)
