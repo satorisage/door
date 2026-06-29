@@ -141,6 +141,7 @@ enum Message {
     EditDay(bool),
     ToggleClock(bool),
     ToggleAnimate(bool),
+    ToggleReducedMotion(bool),
     SkyModePicked(SkyMode),
     SelectTab(Tab),
     CardPosPicked(CardPos),
@@ -219,6 +220,7 @@ struct State {
     show_clock: bool,
     animate: bool,
     sky_mode: SkyMode,
+    reduced_motion: bool,
     // Shared sky / spinner / card / behavior controls (Tier 1+2).
     star_density: f32,
     star_twinkle: f32,
@@ -392,6 +394,7 @@ impl State {
             show_clock: night.show_clock,
             animate: night.animate,
             sky_mode: night.sky_mode,
+            reduced_motion: night.reduced_motion,
             star_density: night.star_density,
             star_twinkle: night.star_twinkle,
             comet_enabled: night.comet_enabled,
@@ -466,6 +469,7 @@ impl State {
         self.show_clock = night.show_clock;
         self.animate = night.animate;
         self.sky_mode = night.sky_mode;
+        self.reduced_motion = night.reduced_motion;
         self.star_density = night.star_density;
         self.star_twinkle = night.star_twinkle;
         self.comet_enabled = night.comet_enabled;
@@ -520,6 +524,9 @@ impl State {
                 Theme::default()
             }
         });
+        // The preview reflects reduced-motion stillness; the saved config keeps the
+        // real values (build() returns them raw for render_pair).
+        self.preview.apply_reduced_motion();
     }
 
     fn active(&self) -> &Palette {
@@ -594,6 +601,7 @@ impl State {
             animate: self.animate,
             is_day: day,
             sky_mode: self.sky_mode,
+            reduced_motion: self.reduced_motion,
             spinner_glow: pal.glow,
             spinner_speed: self.spinner_speed,
             spinner_comet: color("Comet", &pal.comet)?,
@@ -710,6 +718,7 @@ fn update(state: &mut State, message: Message) -> Task<Message> {
         Message::ToggleExpert(on) => state.expert = on,
         Message::ToggleClock(on) => state.show_clock = on,
         Message::ToggleAnimate(on) => state.animate = on,
+        Message::ToggleReducedMotion(on) => state.reduced_motion = on,
         Message::SkyModePicked(m) => state.sky_mode = m,
         // Per-variant sky glow.
         Message::SkyGlow(v) => {
@@ -1766,6 +1775,15 @@ fn behavior_tab<'a>(state: &'a State, h: bool) -> Element<'a, Message> {
             helped(
                 toggle_row("Animate sky", state.animate, Message::ToggleAnimate),
                 "Run the stars + comet animation.",
+                h
+            ),
+            helped(
+                toggle_row(
+                    "Reduced motion",
+                    state.reduced_motion,
+                    Message::ToggleReducedMotion
+                ),
+                "Accessibility: still all motion (animation, breathing, parallax, fade).",
                 h
             ),
             helped(

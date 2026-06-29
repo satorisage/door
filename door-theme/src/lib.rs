@@ -280,6 +280,9 @@ pub struct Theme {
     /// Which sky scene to render. `Auto` = day/night by clock; others force a scene.
     /// Shared.
     pub sky_mode: SkyMode,
+    /// Accessibility: when true, all motion is stilled at load (no sky animation,
+    /// breathing, parallax, grain, fade, or spinner motion). Shared.
+    pub reduced_motion: bool,
     /// Comet-spinner head-glow intensity (0–1). Per variant: bright glow blends on a
     /// dark card but bands on a light one, so day defaults low. 0 = crisp, no bloom.
     pub spinner_glow: f32,
@@ -425,6 +428,7 @@ impl Default for Theme {
             animate: true,
             is_day: false,
             sky_mode: SkyMode::Auto,
+            reduced_motion: false,
             spinner_glow: 1.0,
             spinner_speed: 2.5,
             spinner_comet: Color::rgb(0x7d, 0xcf, 0xff),
@@ -505,6 +509,7 @@ impl Theme {
             animate: true,
             is_day: true,
             sky_mode: SkyMode::Auto,
+            reduced_motion: false,
             // No head bloom on the bright card (the bloom bands on light); crisp.
             spinner_glow: 0.0,
             spinner_speed: 2.5,
@@ -587,6 +592,7 @@ struct ThemeFile {
     show_clock: Option<bool>,
     animate: Option<bool>,
     sky_mode: Option<SkyMode>,
+    reduced_motion: Option<bool>,
     spinner_glow: Option<f32>,
     spinner_speed: Option<f32>,
     spinner_comet: Option<String>,
@@ -762,6 +768,7 @@ impl Theme {
         if let Some(m) = file.sky_mode {
             self.sky_mode = m;
         }
+        merge_bool(&mut self.reduced_motion, file.reduced_motion);
         if let Some(g) = file.spinner_glow {
             self.spinner_glow = g;
         }
@@ -849,6 +856,7 @@ impl Theme {
         if let Some(m) = file.sky_mode {
             self.sky_mode = m;
         }
+        merge_bool(&mut self.reduced_motion, file.reduced_motion);
         // spinner_speed is shared across variants; spinner_glow is per-variant ([day]).
         if let Some(s) = file.spinner_speed {
             self.spinner_speed = s;
@@ -948,7 +956,25 @@ impl Theme {
             Theme::default()
         };
         theme.sky_mode = mode;
+        theme.apply_reduced_motion();
         theme
+    }
+
+    /// Accessibility: still all motion. A no-op unless `reduced_motion` is set; called
+    /// after load so the config keeps its real values but the rendered theme is calm.
+    pub fn apply_reduced_motion(&mut self) {
+        if !self.reduced_motion {
+            return;
+        }
+        self.animate = false;
+        self.accent_breathing = 0.0;
+        self.grain = 0.0;
+        self.cursor_parallax = 0.0;
+        self.fade_ms = 0.0;
+        self.spinner_speed = 0.0;
+        self.spinner_pulse = 0.0;
+        self.star_twinkle = 0.0;
+        self.comet_enabled = false;
     }
 
     /// Apply the `[day]` color/wallpaper/logo overrides over the built-in day palette.
@@ -1096,6 +1122,7 @@ impl Theme {
         out.push_str(&format!("show_clock    = {}\n", self.show_clock));
         out.push_str(&format!("animate       = {}\n", self.animate));
         out.push_str(&format!("sky_mode      = {:?}\n", self.sky_mode.name()));
+        out.push_str(&format!("reduced_motion = {}\n", self.reduced_motion));
         out.push_str(&format!("spinner_glow  = {}\n", self.spinner_glow));
         out.push_str(&format!("spinner_speed = {}\n", self.spinner_speed));
         out.push_str(&format!(

@@ -34,6 +34,7 @@ show_clock    = true       # show the clock + date in the card
 # Animated sky: a twinkling Tokyo Night starfield + a drifting comet (a native
 # port of the com.genny.tokyonightcomet Plasma wallpaper). false → still wallpaper.
 animate       = true
+# reduced_motion = false     # accessibility: still all motion (overrides the above)
 # Sky scene: "auto" (day/night by the clock, the default), "seasonal" (scene by the
 # calendar — snow/winter, rain/spring, meteor/summer, fog/autumn), or a fixed scene.
 # Scenes: "aurora", "storm", "rain", "snow", "meteor", "moon", "synthwave", "fog",
