@@ -103,11 +103,19 @@ pub enum SkyMode {
     Moon,
     /// Retro synthwave: a striped sun over a neon perspective grid.
     Synthwave,
+    /// Drifting fog banks over a muted sky.
+    Fog,
+    /// Demoscene plasma — swirling psychedelic color fields.
+    Plasma,
+    /// Rising flames from the bottom of the screen.
+    Fire,
+    /// Underwater light caustics rippling over a blue-green deep.
+    Water,
 }
 
 impl SkyMode {
     /// Every mode, for the settings picker.
-    pub const ALL: [SkyMode; 8] = [
+    pub const ALL: [SkyMode; 12] = [
         SkyMode::Auto,
         SkyMode::Aurora,
         SkyMode::Storm,
@@ -116,6 +124,10 @@ impl SkyMode {
         SkyMode::Meteor,
         SkyMode::Moon,
         SkyMode::Synthwave,
+        SkyMode::Fog,
+        SkyMode::Plasma,
+        SkyMode::Fire,
+        SkyMode::Water,
     ];
     /// The shader selector value (0 = auto → the day/night renderer).
     pub fn shader_id(self) -> f32 {
@@ -128,6 +140,10 @@ impl SkyMode {
             SkyMode::Meteor => 5.0,
             SkyMode::Moon => 6.0,
             SkyMode::Synthwave => 7.0,
+            SkyMode::Fog => 8.0,
+            SkyMode::Plasma => 9.0,
+            SkyMode::Fire => 10.0,
+            SkyMode::Water => 11.0,
         }
     }
     /// The lowercase name used in the config and the picker.
@@ -141,6 +157,10 @@ impl SkyMode {
             SkyMode::Meteor => "meteor",
             SkyMode::Moon => "moon",
             SkyMode::Synthwave => "synthwave",
+            SkyMode::Fog => "fog",
+            SkyMode::Plasma => "plasma",
+            SkyMode::Fire => "fire",
+            SkyMode::Water => "water",
         }
     }
 }

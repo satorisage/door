@@ -32,7 +32,8 @@ show_clock    = true       # show the clock + date in the card
 # port of the com.genny.tokyonightcomet Plasma wallpaper). false → still wallpaper.
 animate       = true
 # Sky scene: "auto" (day/night by the clock, the default) or a fixed animated scene.
-# Scenes: "aurora", "storm" (lightning), "rain", "snow", "meteor", "moon", "synthwave".
+# Scenes: "aurora", "storm", "rain", "snow", "meteor", "moon", "synthwave", "fog",
+#         "plasma", "fire", "water".
 # sky_mode      = "auto"
 # Comet-spinner controls. glow = head bloom (0 = crisp; a bright bloom blends on a
 # dark card but bands on a light one, so the day variant below defaults to 0).

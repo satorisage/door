@@ -961,6 +961,72 @@ fn synthwave_sky(uv: vec2<f32>, p: vec2<f32>, aspect: f32) -> vec3<f32> {
   return col;
 }
 
+// Fog: drifting fbm fog banks over a muted gradient, with stars dimmed by the haze.
+fn fog_sky(uv: vec2<f32>, p: vec2<f32>, aspect: f32) -> vec3<f32> {
+  let bg = u.bg_bot.rgb;
+  var col = mix(bg * 1.4 + vec3(0.04), bg, smoothstep(0.0, 1.0, uv.y));
+  var fog = 0.0;
+  for (var i = 0; i < 3; i = i + 1) {
+    let fi = f32(i);
+    let drift = vec2(u.time * (0.02 + fi * 0.012), fi * 1.3);
+    fog = fog + fbm(p * (1.4 + fi * 1.1) + drift) * (0.45 - fi * 0.1);
+  }
+  let fogc = clamp(fog, 0.0, 1.0);
+  col = col + vec3(0.7, 0.74, 0.82) * scene_stars(uv, aspect) * (1.0 - fogc);
+  col = mix(col, vec3(0.66, 0.70, 0.78), fogc * 0.7);
+  return col;
+}
+
+// Plasma: classic demoscene field — summed sines (axis, diagonal, radial) mapped to
+// color through three phase-shifted sines. Vivid and continuously morphing.
+fn plasma_sky(uv: vec2<f32>, p: vec2<f32>, aspect: f32) -> vec3<f32> {
+  let t = u.time * 0.5;
+  let x = uv.x * aspect;
+  let y = uv.y;
+  var v = sin(x * 8.0 + t);
+  v = v + sin((y * 8.0 + t) * 1.1);
+  v = v + sin((x + y) * 6.0 + t);
+  let cx = x - 0.5 * aspect;
+  v = v + sin(length(vec2(cx, y - 0.5)) * 14.0 - t * 1.3);
+  v = v * 0.25;
+  let ph = v * 3.14159265;
+  return vec3(
+    0.5 + 0.5 * sin(ph),
+    0.5 + 0.5 * sin(ph + 2.094),
+    0.5 + 0.5 * sin(ph + 4.188),
+  );
+}
+
+// Fire: scrolling fbm "heat" weighted toward the bottom, mapped through a black→red→
+// orange→white-yellow ramp so flames lick upward.
+fn fire_sky(uv: vec2<f32>, p: vec2<f32>, aspect: f32) -> vec3<f32> {
+  let q = vec2(uv.x * aspect, uv.y);
+  let flow = fbm(q * vec2(3.0, 4.5) + vec2(0.0, u.time * 2.0));   // scroll upward
+  let flow2 = fbm(q * vec2(6.0, 8.0) + vec2(3.0, u.time * 3.0));
+  let n = flow * 0.65 + flow2 * 0.35;
+  // uv.y = 1 at the bottom; weight heat toward it.
+  var heat = clamp((uv.y - 0.22) * 1.25, 0.0, 1.0) * (0.35 + 1.1 * n);
+  heat = pow(clamp(heat, 0.0, 1.0), 1.5);
+  var col = vec3(0.02, 0.005, 0.0);
+  col = col + vec3(1.6, 0.45, 0.08) * heat;
+  col = col + vec3(1.0, 0.9, 0.5) * pow(heat, 3.0);
+  return col;
+}
+
+// Water: animated caustics — a domain-warped sine network over a blue-green depth
+// gradient, the bright web concentrated where the warped product nears zero.
+fn water_sky(uv: vec2<f32>, p: vec2<f32>, aspect: f32) -> vec3<f32> {
+  let t = u.time * 0.6;
+  var q = vec2(uv.x * aspect, uv.y) * 5.0;
+  // Two domain-warp passes for organic ripple.
+  q = q + vec2(sin(q.y * 1.3 + t), cos(q.x * 1.3 + t)) * 0.6;
+  q = q + vec2(sin(q.y * 0.7 - t * 0.8), cos(q.x * 0.7 + t * 0.8)) * 0.4;
+  let web = abs(sin(q.x) * sin(q.y) + 0.5 * sin((q.x + q.y) + t));
+  let caustic = pow(1.0 - clamp(web, 0.0, 1.0), 3.0);
+  let base = mix(vec3(0.0, 0.12, 0.22), vec3(0.0, 0.30, 0.42), smoothstep(0.0, 1.0, uv.y));
+  return base + vec3(0.45, 0.95, 1.0) * caustic * 0.85;
+}
+
 @fragment
 fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
   let uv = in.uv;
@@ -985,8 +1051,16 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
       col = meteor_sky(uv, p, aspect);
     } else if (mode < 6.5) {
       col = moon_sky(uv, p, aspect);
-    } else {
+    } else if (mode < 7.5) {
       col = synthwave_sky(uv, p, aspect);
+    } else if (mode < 8.5) {
+      col = fog_sky(uv, p, aspect);
+    } else if (mode < 9.5) {
+      col = plasma_sky(uv, p, aspect);
+    } else if (mode < 10.5) {
+      col = fire_sky(uv, p, aspect);
+    } else {
+      col = water_sky(uv, p, aspect);
     }
   } else if (day > 0.5) {
     col = day_sky(uv, p, aspect);
