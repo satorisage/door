@@ -204,6 +204,7 @@ enum Message {
     PresetPicked(Preset),
     PresetNameChanged(String),
     SavePreset,
+    Randomize,
 }
 
 struct State {
@@ -782,6 +783,23 @@ fn update(state: &mut State, message: Message) -> Task<Message> {
             state.status = "Reloaded the saved themes.".to_string();
         }
         Message::PresetNameChanged(s) => state.preset_name = s,
+        Message::Randomize => {
+            if !state.presets.is_empty() {
+                let n = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.subsec_nanos() as usize)
+                    .unwrap_or(0);
+                let p = state.presets[n % state.presets.len()].clone();
+                if let Ok(contents) = std::fs::read_to_string(&p.path) {
+                    if let Ok((night, day, window)) = Theme::parse_pair(&contents) {
+                        state.apply_pair(&night, &day, window);
+                        state.preset_name = p.name.clone();
+                        state.selected_preset = Some(p.clone());
+                        state.status = format!("🎲 {}", p.name);
+                    }
+                }
+            }
+        }
         Message::PresetPicked(p) => match std::fs::read_to_string(&p.path) {
             Ok(contents) => match Theme::parse_pair(&contents) {
                 Ok((night, day, window)) => {
@@ -1004,15 +1022,20 @@ fn controls(state: &State) -> Element<'_, Message> {
     let presets = group(
         "PRESETS",
         column![
-            pick_list(
-                &state.presets[..],
-                state.selected_preset.clone(),
-                Message::PresetPicked,
-            )
-            .placeholder("Load a preset…")
-            .text_size(13)
-            .padding(6)
-            .width(Length::Fill),
+            row![
+                pick_list(
+                    &state.presets[..],
+                    state.selected_preset.clone(),
+                    Message::PresetPicked,
+                )
+                .placeholder("Load a preset…")
+                .text_size(13)
+                .padding(6)
+                .width(Length::Fill),
+                ghost_button("🎲", Message::Randomize),
+            ]
+            .spacing(8)
+            .align_y(Alignment::Center),
             row![
                 text_input("name this preset", &state.preset_name)
                     .on_input(Message::PresetNameChanged)
