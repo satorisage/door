@@ -246,7 +246,7 @@ impl State {
     fn new() -> Self {
         // Pick the day or night variant by the local clock — the greeter runs
         // pre-login, so it can't read the user's color scheme; time is the trigger.
-        let theme = Theme::load_at(now_minutes());
+        let theme = Theme::load_at(now_minutes(), now_month());
         let clock = now_hm(theme.clock_24h);
         State {
             phase: Phase::Connecting,
@@ -419,6 +419,14 @@ fn now_minutes() -> u32 {
     match local_tm() {
         Some(tm) => (tm.tm_hour.clamp(0, 23) as u32) * 60 + (tm.tm_min.clamp(0, 59) as u32),
         None => 12 * 60,
+    }
+}
+
+/// Local calendar month, 1–12 (for the seasonal scene selector). June on failure.
+fn now_month() -> u32 {
+    match local_tm() {
+        Some(tm) => (tm.tm_mon.clamp(0, 11) as u32) + 1,
+        None => 6,
     }
 }
 

@@ -89,6 +89,10 @@ pub enum SkyMode {
     /// Day or night by the local clock — the default behavior.
     #[default]
     Auto,
+    /// Auto-pick a scene by the calendar season (snow in winter, meteors in summer…).
+    /// Resolved to a concrete scene by the caller (which owns the clock); falls back
+    /// to the day/night renderer if unresolved.
+    Seasonal,
     /// Flowing aurora curtains over a night sky.
     Aurora,
     /// Dark churning clouds with periodic lightning flashes + a bolt.
@@ -115,8 +119,9 @@ pub enum SkyMode {
 
 impl SkyMode {
     /// Every mode, for the settings picker.
-    pub const ALL: [SkyMode; 12] = [
+    pub const ALL: [SkyMode; 13] = [
         SkyMode::Auto,
+        SkyMode::Seasonal,
         SkyMode::Aurora,
         SkyMode::Storm,
         SkyMode::Rain,
@@ -133,6 +138,8 @@ impl SkyMode {
     pub fn shader_id(self) -> f32 {
         match self {
             SkyMode::Auto => 0.0,
+            // Seasonal is resolved to a concrete scene before render; 0 = auto fallback.
+            SkyMode::Seasonal => 0.0,
             SkyMode::Aurora => 1.0,
             SkyMode::Storm => 2.0,
             SkyMode::Rain => 3.0,
@@ -150,6 +157,7 @@ impl SkyMode {
     pub fn name(self) -> &'static str {
         match self {
             SkyMode::Auto => "auto",
+            SkyMode::Seasonal => "seasonal",
             SkyMode::Aurora => "aurora",
             SkyMode::Storm => "storm",
             SkyMode::Rain => "rain",
@@ -161,6 +169,19 @@ impl SkyMode {
             SkyMode::Plasma => "plasma",
             SkyMode::Fire => "fire",
             SkyMode::Water => "water",
+        }
+    }
+    /// Resolve a selector mode to a concrete scene. Only `Seasonal` changes — mapped to
+    /// a scene by calendar month (1–12); every other mode passes through unchanged.
+    pub fn resolved(self, month: u32) -> SkyMode {
+        match self {
+            SkyMode::Seasonal => match month {
+                3..=5 => SkyMode::Rain,        // spring
+                6..=8 => SkyMode::Meteor,      // summer (Perseids!)
+                9..=11 => SkyMode::Fog,        // autumn
+                _ => SkyMode::Snow,            // winter (12, 1, 2) + fallback
+            },
+            other => other,
         }
     }
 }
@@ -788,7 +809,7 @@ impl Theme {
     /// greeter calls this; it cannot read the user's color scheme (it runs before
     /// login), so the clock is the trigger. Night = the config's top-level palette;
     /// day = the built-in light palette with the config's structural keys.
-    pub fn load_at(now_minutes: u32) -> Theme {
+    pub fn load_at(now_minutes: u32, month: u32) -> Theme {
         let (file, have) = match Self::config_source() {
             Some((path, contents)) => match toml::from_str::<ThemeFile>(&contents) {
                 Ok(file) => (file, true),
@@ -799,14 +820,19 @@ impl Theme {
             },
             None => (ThemeFile::default(), false),
         };
+        // Resolve the scene selector (Seasonal → a concrete scene by month) up front;
+        // the caller owns the clock, so door-theme stays calendar-free.
+        let mode = file.sky_mode.unwrap_or_default().resolved(month);
         let (start, end) = day_window(&file);
-        if in_window(now_minutes, start, end) {
+        let mut theme = if in_window(now_minutes, start, end) {
             Theme::day().merged_structural(&file).merged_day(file.day)
         } else if have {
             Theme::default().merged(file)
         } else {
             Theme::default()
-        }
+        };
+        theme.sky_mode = mode;
+        theme
     }
 
     /// Apply the `[day]` color/wallpaper/logo overrides over the built-in day palette.
