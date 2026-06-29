@@ -56,6 +56,8 @@ struct Uniforms {
     cloud_lit: [f32; 4],
     /// Daytime cloud shadowed color (rgb).
     cloud_shadow: [f32; 4],
+    /// x = cursor dx (−0.5..0.5 of bounds), y = cursor dy, z = parallax strength, w unused.
+    params8: [f32; 4],
 }
 
 fn srgb8(r: u8, g: u8, b: u8) -> Color {
@@ -132,6 +134,7 @@ impl SkyShader {
             params7: [t.comet_tilt, t.comet_pause, t.comet_width, 0.0],
             cloud_lit: t.cloud_lit.iced().into_linear(),
             cloud_shadow: t.cloud_shadow.iced().into_linear(),
+            params8: [0.0, 0.0, t.cursor_parallax, 0.0], // xy set per-frame from the cursor
         };
         Self { uniforms }
     }
@@ -141,9 +144,14 @@ impl<Message> shader::Program<Message> for SkyShader {
     type State = ();
     type Primitive = SkyPrimitive;
 
-    fn draw(&self, _state: &(), _cursor: mouse::Cursor, bounds: Rectangle) -> SkyPrimitive {
+    fn draw(&self, _state: &(), cursor: mouse::Cursor, bounds: Rectangle) -> SkyPrimitive {
         let mut u = self.uniforms;
         u.res = [bounds.width.max(1.0), bounds.height.max(1.0)];
+        // Feed the cursor (normalized to −0.5..0.5 of the bounds) for starfield parallax.
+        if let Some(pos) = cursor.position_in(bounds) {
+            u.params8[0] = pos.x / bounds.width.max(1.0) - 0.5;
+            u.params8[1] = pos.y / bounds.height.max(1.0) - 0.5;
+        }
         SkyPrimitive { u }
     }
 }
@@ -645,6 +653,7 @@ struct U {
   params7: vec4<f32>,
   cloud_lit: vec4<f32>,
   cloud_shadow: vec4<f32>,
+  params8: vec4<f32>,
 };
 @group(0) @binding(0) var<uniform> u: U;
 
@@ -859,7 +868,8 @@ fn snow_sky(uv: vec2<f32>, p: vec2<f32>, aspect: f32) -> vec3<f32> {
 
 // A faint static starfield, shared by the night-based scenes (meteor, moon).
 fn scene_stars(uv: vec2<f32>, aspect: f32) -> f32 {
-  let gp = uv * vec2(aspect, 1.0) * 22.0;
+  let par = u.params8.xy * u.params8.z * 0.05;
+  let gp = (uv - par) * vec2(aspect, 1.0) * 22.0;
   let cell = floor(gp);
   let h = hash21(cell);
   if (h > 0.9) {
@@ -1087,7 +1097,9 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     let layers = i32(u.params6.x);
     for (var l = 0; l < layers; l = l + 1) {
       let scale = 8.0 * pow(1.9, f32(l));
-      let gp = uv * vec2(aspect, 1.0) * scale;
+      // Per-layer cursor parallax: nearer (lower) layers shift more.
+      let par = u.params8.xy * u.params8.z * 0.04 * (f32(l) + 1.0);
+      let gp = (uv - par) * vec2(aspect, 1.0) * scale;
       let cell = floor(gp);
       let thr = u.params2.x;
       let h = hash21(cell + f32(l) * 17.0);

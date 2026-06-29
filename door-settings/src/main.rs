@@ -170,6 +170,7 @@ enum Message {
     CometWidth(f32),
     CloudLit(String),
     CloudShadow(String),
+    CursorParallax(f32),
     SpinnerOrbit(f32),
     // Spinner
     SpinnerSize(f32),
@@ -235,6 +236,7 @@ struct State {
     comet_width: f32,
     cloud_lit: String,
     cloud_shadow: String,
+    cursor_parallax: f32,
     spinner_orbit: f32,
     spinner_size: f32,
     spinner_pulse: f32,
@@ -400,6 +402,7 @@ impl State {
             comet_width: night.comet_width,
             cloud_lit: night.cloud_lit.to_hex(),
             cloud_shadow: night.cloud_shadow.to_hex(),
+            cursor_parallax: night.cursor_parallax,
             spinner_orbit: night.spinner_orbit,
             spinner_size: night.spinner_size,
             spinner_pulse: night.spinner_pulse,
@@ -467,6 +470,7 @@ impl State {
         self.comet_width = night.comet_width;
         self.cloud_lit = night.cloud_lit.to_hex();
         self.cloud_shadow = night.cloud_shadow.to_hex();
+        self.cursor_parallax = night.cursor_parallax;
         self.spinner_orbit = night.spinner_orbit;
         self.spinner_size = night.spinner_size;
         self.spinner_pulse = night.spinner_pulse;
@@ -599,6 +603,7 @@ impl State {
             comet_width: self.comet_width,
             cloud_lit: color("Cloud lit", &self.cloud_lit)?,
             cloud_shadow: color("Cloud shadow", &self.cloud_shadow)?,
+            cursor_parallax: self.cursor_parallax,
             spinner_orbit: self.spinner_orbit,
             spinner_size: self.spinner_size,
             spinner_pulse: self.spinner_pulse,
@@ -708,6 +713,7 @@ fn update(state: &mut State, message: Message) -> Task<Message> {
         Message::CometWidth(v) => state.comet_width = v.clamp(0.3, 3.0),
         Message::CloudLit(s) => state.cloud_lit = s,
         Message::CloudShadow(s) => state.cloud_shadow = s,
+        Message::CursorParallax(v) => state.cursor_parallax = v.clamp(0.0, 3.0),
         Message::SpinnerOrbit(v) => state.spinner_orbit = v.clamp(0.1, 0.45),
         Message::SpinnerSize(v) => state.spinner_size = v.clamp(24.0, 120.0),
         Message::SpinnerPulse(v) => state.spinner_pulse = v.clamp(0.0, 3.0),
@@ -1401,6 +1407,18 @@ fn sky_tab<'a>(state: &'a State, pal: &'a Palette, h: bool) -> Element<'a, Messa
                         Message::CometWidth
                     ),
                     "Thickness of the sky comet.",
+                    h
+                ),
+                helped(
+                    slider_row(
+                        "Parallax",
+                        state.cursor_parallax,
+                        0.0..=3.0,
+                        0.1,
+                        format!("{:.1}×", state.cursor_parallax),
+                        Message::CursorParallax
+                    ),
+                    "How much the stars drift with the mouse (0 = off).",
                     h
                 ),
             ]
