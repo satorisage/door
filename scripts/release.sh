@@ -14,7 +14,8 @@ set -euo pipefail
 
 REPO="satorisage/door"
 VER="$(grep -m1 '^version' Cargo.toml | sed -E 's/.*"([^"]+)".*/\1/')"
-echo "==> door v${VER}  (${REPO})"
+REL="$(grep -m1 '^pkgrel=' PKGBUILD | cut -d= -f2)"
+echo "==> door v${VER}-${REL}  (${REPO})"
 
 # --- 1. Make the repo public (one-time; no-op if it already is) -------------------
 vis="$(gh repo view "$REPO" --json visibility -q .visibility)"
@@ -47,7 +48,7 @@ makepkg --printsrcinfo > .SRCINFO
 makepkg -f --nocheck                    # local build sanity-check before publishing
 
 git add PKGBUILD .SRCINFO door.install
-git commit -m "door ${VER}-1"
+git commit -m "door ${VER}-${REL}"
 git push origin master
 
 echo "==> done → https://aur.archlinux.org/packages/door"
