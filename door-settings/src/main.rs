@@ -286,6 +286,9 @@ struct State {
     status: String,
     anim: f32,
     started: Instant,
+    // Live FPS of the preview (smoothed) + the last frame instant, for the badge.
+    fps: f32,
+    last_tick: Option<Instant>,
     /// Cached built theme for the preview/window — rebuilt on edits, not per frame
     /// (parsing every color twice each vsync frame was the day-flip stutter).
     preview: Theme,
@@ -456,6 +459,8 @@ impl State {
             status: "Loaded night + day themes.".to_string(),
             anim: 0.0,
             started: Instant::now(),
+            fps: 0.0,
+            last_tick: None,
             preview: Theme::default(),
         };
         s.rebuild_preview();
@@ -787,7 +792,23 @@ fn update(state: &mut State, message: Message) -> Task<Message> {
         Message::NebulaAmount(v) => state.nebula_amount = v.clamp(0.0, 0.5),
         Message::CometTailDecay(v) => state.comet_tail_decay = v.clamp(2.0, 30.0),
         Message::SpinnerRing(v) => state.spinner_ring = v.clamp(0.0, 0.5),
-        Message::Tick => state.anim = state.started.elapsed().as_secs_f32() % 10_000.0,
+        Message::Tick => {
+            state.anim = state.started.elapsed().as_secs_f32() % 10_000.0;
+            let now = Instant::now();
+            if let Some(last) = state.last_tick {
+                let dt = now.duration_since(last).as_secs_f32();
+                if dt > 0.0 {
+                    let inst = 1.0 / dt;
+                    // EMA so the badge reads steadily, not jittery per-frame.
+                    state.fps = if state.fps <= 0.0 {
+                        inst
+                    } else {
+                        state.fps * 0.9 + inst * 0.1
+                    };
+                }
+            }
+            state.last_tick = Some(now);
+        }
         Message::Reset => {
             let keep = state.editing_day;
             *state = State::new();
@@ -945,15 +966,38 @@ fn view(state: &State) -> Element<'_, Message> {
         Space::new().into()
     };
 
+    // FPS badge — a small live frame-rate readout in the top-right (perf while tuning).
+    let fps_label = if theme.animate {
+        format!("{:.0} fps", state.fps.max(0.0))
+    } else {
+        "paused".to_string()
+    };
+    let fps_badge = container(
+        container(text(fps_label).size(11).color(c(0xc8, 0xcc, 0xd4)))
+            .padding([3.0, 8.0])
+            .style(|_t: &iced::Theme| container::Style {
+                background: Some(Background::Color(IColor::from_rgba8(0x00, 0x00, 0x00, 0.45))),
+                border: Border {
+                    radius: 8.0.into(),
+                    width: 1.0,
+                    color: IColor::from_rgba8(0x7a, 0xa2, 0xf7, 0.18),
+                },
+                ..Default::default()
+            }),
+    )
+    .align_right(Length::Fill)
+    .align_top(Length::Fill)
+    .padding(10);
+
     match &theme.wallpaper {
         Some(path) => {
             let bg = image(image::Handle::from_path(path))
                 .width(Length::Fill)
                 .height(Length::Fill)
                 .content_fit(ContentFit::Cover);
-            iced::widget::stack![bg, sky_layer, content].into()
+            iced::widget::stack![bg, sky_layer, content, fps_badge].into()
         }
-        None => iced::widget::stack![sky_layer, content].into(),
+        None => iced::widget::stack![sky_layer, content, fps_badge].into(),
     }
 }
 
