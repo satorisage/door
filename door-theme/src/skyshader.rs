@@ -58,6 +58,8 @@ struct Uniforms {
     cloud_shadow: [f32; 4],
     /// x = cursor dx (−0.5..0.5 of bounds), y = cursor dy, z = parallax strength, w unused.
     params8: [f32; 4],
+    /// x = film-grain strength, y = vignette strength, z/w unused.
+    params9: [f32; 4],
 }
 
 fn srgb8(r: u8, g: u8, b: u8) -> Color {
@@ -135,6 +137,7 @@ impl SkyShader {
             cloud_lit: t.cloud_lit.iced().into_linear(),
             cloud_shadow: t.cloud_shadow.iced().into_linear(),
             params8: [0.0, 0.0, t.cursor_parallax, 0.0], // xy set per-frame from the cursor
+            params9: [t.grain, t.vignette, 0.0, 0.0],
         };
         Self { uniforms }
     }
@@ -654,6 +657,7 @@ struct U {
   cloud_lit: vec4<f32>,
   cloud_shadow: vec4<f32>,
   params8: vec4<f32>,
+  params9: vec4<f32>,
 };
 @group(0) @binding(0) var<uniform> u: U;
 
@@ -1152,6 +1156,11 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
 
   // Ordered dither — one sub-LSB of noise so 8-bit targets never band.
   col = col + vec3((hash21(in.pos.xy) - 0.5) / 255.0);
+
+  // Film grain (animated) + vignette (M7-C) — both off at 0.
+  col = col + vec3((hash21(in.pos.xy * 1.3 + vec2(u.time * 60.0)) - 0.5) * u.params9.x);
+  let vig = 1.0 - u.params9.y * smoothstep(0.35, 0.85, length(uv - vec2(0.5, 0.5)));
+  col = col * vig;
 
   col = col * u.fade;
   return vec4(col, 1.0);

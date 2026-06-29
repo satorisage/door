@@ -688,16 +688,38 @@ fn button_style(t: &Theme, fade: f32) -> impl Fn(&iced::Theme, button::Status) -
 
 /// The glassy card: translucent fill, a gently breathing accent hairline, soft
 /// drop shadow.
+/// The card fill: a flat color, or — when `gradient` > 0 — a subtle vertical sheen
+/// whose top edge lightens toward white and eases down to the card color.
+fn card_background(card: iced::Color, gradient: f32) -> Background {
+    if gradient <= 0.0 {
+        return Background::Color(card);
+    }
+    let amt = 0.18 * gradient.clamp(0.0, 1.0);
+    let lit = |c: f32| c + (1.0 - c) * amt;
+    let top = iced::Color {
+        r: lit(card.r),
+        g: lit(card.g),
+        b: lit(card.b),
+        a: card.a,
+    };
+    Background::Gradient(iced::Gradient::Linear(
+        iced::gradient::Linear::new(iced::Radians(std::f32::consts::PI))
+            .add_stop(0.0, top)
+            .add_stop(1.0, card),
+    ))
+}
+
 fn card_style(t: &Theme, fade: f32, phase: f32) -> impl Fn(&iced::Theme) -> container::Style {
     let card = t.card.iced_alpha(fade);
     let accent = t.accent;
     let radius = t.corner_radius;
     let shadow_opacity = t.card_shadow_opacity;
     let shadow_blur = t.card_shadow_blur;
+    let gradient = t.card_gradient;
     // The accent hairline breathes between ~0.18 and ~0.34 alpha (speed × control).
     let breathe = 0.18 + 0.16 * (0.5 + 0.5 * (phase * 1.1 * t.accent_breathing).sin());
     move |_theme| container::Style {
-        background: Some(Background::Color(card)),
+        background: Some(card_background(card, gradient)),
         border: Border {
             radius: radius.into(),
             width: 1.0,

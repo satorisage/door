@@ -171,6 +171,9 @@ enum Message {
     CloudLit(String),
     CloudShadow(String),
     CursorParallax(f32),
+    CardGradient(f32),
+    Grain(f32),
+    Vignette(f32),
     SpinnerOrbit(f32),
     // Spinner
     SpinnerSize(f32),
@@ -237,6 +240,9 @@ struct State {
     cloud_lit: String,
     cloud_shadow: String,
     cursor_parallax: f32,
+    card_gradient: f32,
+    grain: f32,
+    vignette: f32,
     spinner_orbit: f32,
     spinner_size: f32,
     spinner_pulse: f32,
@@ -403,6 +409,9 @@ impl State {
             cloud_lit: night.cloud_lit.to_hex(),
             cloud_shadow: night.cloud_shadow.to_hex(),
             cursor_parallax: night.cursor_parallax,
+            card_gradient: night.card_gradient,
+            grain: night.grain,
+            vignette: night.vignette,
             spinner_orbit: night.spinner_orbit,
             spinner_size: night.spinner_size,
             spinner_pulse: night.spinner_pulse,
@@ -471,6 +480,9 @@ impl State {
         self.cloud_lit = night.cloud_lit.to_hex();
         self.cloud_shadow = night.cloud_shadow.to_hex();
         self.cursor_parallax = night.cursor_parallax;
+        self.card_gradient = night.card_gradient;
+        self.grain = night.grain;
+        self.vignette = night.vignette;
         self.spinner_orbit = night.spinner_orbit;
         self.spinner_size = night.spinner_size;
         self.spinner_pulse = night.spinner_pulse;
@@ -604,6 +616,9 @@ impl State {
             cloud_lit: color("Cloud lit", &self.cloud_lit)?,
             cloud_shadow: color("Cloud shadow", &self.cloud_shadow)?,
             cursor_parallax: self.cursor_parallax,
+            card_gradient: self.card_gradient,
+            grain: self.grain,
+            vignette: self.vignette,
             spinner_orbit: self.spinner_orbit,
             spinner_size: self.spinner_size,
             spinner_pulse: self.spinner_pulse,
@@ -714,6 +729,9 @@ fn update(state: &mut State, message: Message) -> Task<Message> {
         Message::CloudLit(s) => state.cloud_lit = s,
         Message::CloudShadow(s) => state.cloud_shadow = s,
         Message::CursorParallax(v) => state.cursor_parallax = v.clamp(0.0, 3.0),
+        Message::CardGradient(v) => state.card_gradient = v.clamp(0.0, 1.0),
+        Message::Grain(v) => state.grain = v.clamp(0.0, 0.3),
+        Message::Vignette(v) => state.vignette = v.clamp(0.0, 1.0),
         Message::SpinnerOrbit(v) => state.spinner_orbit = v.clamp(0.1, 0.45),
         Message::SpinnerSize(v) => state.spinner_size = v.clamp(24.0, 120.0),
         Message::SpinnerPulse(v) => state.spinner_pulse = v.clamp(0.0, 3.0),
@@ -1421,6 +1439,30 @@ fn sky_tab<'a>(state: &'a State, pal: &'a Palette, h: bool) -> Element<'a, Messa
                     "How much the stars drift with the mouse (0 = off).",
                     h
                 ),
+                helped(
+                    slider_row(
+                        "Grain",
+                        state.grain,
+                        0.0..=0.3,
+                        0.01,
+                        format!("{:.2}", state.grain),
+                        Message::Grain
+                    ),
+                    "Film grain over the whole sky (0 = off).",
+                    h
+                ),
+                helped(
+                    slider_row(
+                        "Vignette",
+                        state.vignette,
+                        0.0..=1.0,
+                        0.01,
+                        format!("{}%", (state.vignette * 100.0).round() as u32),
+                        Message::Vignette
+                    ),
+                    "Darken the screen edges (0 = off).",
+                    h
+                ),
             ]
             .spacing(9)
             .into(),
@@ -1629,6 +1671,18 @@ fn card_tab<'a>(state: &'a State, h: bool) -> Element<'a, Message> {
                     Message::AccentBreathing
                 ),
                 "Speed of the card's glowing accent edge (0 = steady).",
+                h
+            ),
+            helped(
+                slider_row(
+                    "Sheen",
+                    state.card_gradient,
+                    0.0..=1.0,
+                    0.01,
+                    format!("{}%", (state.card_gradient * 100.0).round() as u32),
+                    Message::CardGradient
+                ),
+                "Vertical gradient on the card (0 = flat).",
                 h
             ),
         ]
@@ -1974,6 +2028,27 @@ fn ghost_button(label: &str, msg: Message) -> Element<'_, Message> {
         .into()
 }
 
+/// Card fill: flat, or a subtle top-lit vertical gradient when `gradient` > 0
+/// (mirrors door-greeter's `card_background`).
+fn card_bg(card: IColor, gradient: f32) -> Background {
+    if gradient <= 0.0 {
+        return Background::Color(card);
+    }
+    let amt = 0.18 * gradient.clamp(0.0, 1.0);
+    let lit = |x: f32| x + (1.0 - x) * amt;
+    let top = IColor {
+        r: lit(card.r),
+        g: lit(card.g),
+        b: lit(card.b),
+        a: card.a,
+    };
+    Background::Gradient(iced::Gradient::Linear(
+        iced::gradient::Linear::new(iced::Radians(std::f32::consts::PI))
+            .add_stop(0.0, top)
+            .add_stop(1.0, card),
+    ))
+}
+
 /// A non-interactive mock of the greeter card, themed from the draft.
 fn preview_card(t: &Theme, anim: f32) -> Element<'static, Message> {
     let fg = t.foreground.iced();
@@ -2062,11 +2137,12 @@ fn preview_card(t: &Theme, anim: f32) -> Element<'static, Message> {
     let card = t.card;
     let accent = t.accent;
     let radius = t.corner_radius;
+    let gradient = t.card_gradient;
     container(body)
         .padding(26)
         .width(Length::Fixed(t.card_width))
         .style(move |_theme| container::Style {
-            background: Some(Background::Color(card.iced())),
+            background: Some(card_bg(card.iced(), gradient)),
             border: Border {
                 radius: radius.into(),
                 width: 1.0,
