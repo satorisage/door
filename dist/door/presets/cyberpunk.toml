@@ -1,0 +1,11 @@
+# Cyberpunk — neon over the flooded deep.
+sky_mode      = "water"
+background    = "#0a0618"
+card          = "#140a26d0"
+field         = "#20143a"
+accent        = "#faff00"
+foreground    = "#e6e0ff"
+muted         = "#7a6aa0"
+spinner_comet = "#faff00"
+spinner_track = "#ff2d95"
+error_color   = "#ff2d95"

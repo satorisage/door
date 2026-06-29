@@ -1,0 +1,10 @@
+# Emerald — meteors falling through a deep green dark.
+sky_mode      = "meteor"
+background    = "#04120c"
+card          = "#0a1f16cc"
+field         = "#143226"
+accent        = "#34d399"
+foreground    = "#d7fbe9"
+muted         = "#5a8a74"
+glow_color    = "#0e3a28"
+star_density  = 0.85

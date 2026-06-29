@@ -1,0 +1,11 @@
+# Blood Moon — a silver moon over a crimson night.
+sky_mode      = "moon"
+background    = "#160608"
+card          = "#240a0ecc"
+field         = "#341216"
+accent        = "#e23d4d"
+foreground    = "#ffdcdc"
+muted         = "#9a5560"
+glow_color    = "#5a1015"
+comet_color   = "#ff6b6b"
+error_color   = "#ff4444"

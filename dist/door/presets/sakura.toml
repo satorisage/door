@@ -1,0 +1,11 @@
+# Sakura — petals drifting through a plum-dusk night.
+sky_mode      = "snow"
+background    = "#1c0e1a"
+card          = "#2c1626cc"
+field         = "#3c2034"
+accent        = "#ff8fb8"
+foreground    = "#ffe4f0"
+muted         = "#a06a88"
+spinner_comet = "#ffb3d1"
+spinner_track = "#ff6f9f"
+error_color   = "#ff5d8f"

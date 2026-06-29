@@ -1,0 +1,11 @@
+# Vaporwave — the softer, pastel side of the grid.
+sky_mode         = "synthwave"
+background       = "#1a1030"
+card             = "#241844cc"
+field            = "#32265a"
+accent           = "#ff9ecd"
+foreground       = "#e8d6ff"
+muted            = "#9a86c0"
+spinner_comet    = "#a0f0ff"
+spinner_track    = "#ff9ecd"
+accent_breathing = 1.8

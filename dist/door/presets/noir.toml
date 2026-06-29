@@ -1,0 +1,10 @@
+# Noir — monochrome mist, nothing but greys.
+sky_mode      = "fog"
+background    = "#15171a"
+card          = "#1e2126d8"
+field         = "#2a2e34"
+accent        = "#c8ccd4"
+foreground    = "#eceef2"
+muted         = "#7a7f88"
+spinner_comet = "#dfe3ea"
+spinner_track = "#9aa0aa"
