@@ -19,7 +19,7 @@ use iced::{
 };
 
 use door_theme::skyshader::{SkyShader, SpinnerShader};
-use door_theme::{Color, SkyMode, Theme};
+use door_theme::{CardPos, Color, SkyMode, Theme};
 
 fn main() -> iced::Result {
     iced::application(State::new, update, view)
@@ -143,6 +143,7 @@ enum Message {
     ToggleAnimate(bool),
     SkyModePicked(SkyMode),
     SelectTab(Tab),
+    CardPosPicked(CardPos),
     ToggleHelp(bool),
     ToggleExpert(bool),
     // Sky
@@ -204,6 +205,7 @@ struct State {
     font: String,
     corner_radius: String,
     card_width: String,
+    card_pos: CardPos,
     day_start: String,
     day_end: String,
     spinner_speed: f32,
@@ -369,6 +371,7 @@ impl State {
             font: night.font.clone().unwrap_or_default(),
             corner_radius: night.corner_radius.to_string(),
             card_width: night.card_width.to_string(),
+            card_pos: night.card_pos,
             day_start: minutes_to_hhmm(start),
             day_end: minutes_to_hhmm(end),
             spinner_speed: night.spinner_speed,
@@ -435,6 +438,7 @@ impl State {
         self.font = night.font.clone().unwrap_or_default();
         self.corner_radius = night.corner_radius.to_string();
         self.card_width = night.card_width.to_string();
+        self.card_pos = night.card_pos;
         self.day_start = minutes_to_hhmm(window.0);
         self.day_end = minutes_to_hhmm(window.1);
         self.spinner_speed = night.spinner_speed;
@@ -557,6 +561,7 @@ impl State {
             },
             corner_radius: num("Corner radius", &self.corner_radius)?,
             card_width: num("Card width", &self.card_width)?,
+            card_pos: self.card_pos,
             show_clock: self.show_clock,
             animate: self.animate,
             is_day: day,
@@ -665,6 +670,7 @@ fn update(state: &mut State, message: Message) -> Task<Message> {
         }
         Message::EditDay(on) => state.editing_day = on,
         Message::SelectTab(t) => state.tab = t,
+        Message::CardPosPicked(p) => state.card_pos = p,
         Message::ToggleHelp(on) => state.help_on = on,
         Message::ToggleExpert(on) => state.expert = on,
         Message::ToggleClock(on) => state.show_clock = on,
@@ -826,9 +832,14 @@ fn view(state: &State) -> Element<'_, Message> {
         .style(glass_panel);
     let left = container(panel).padding(16);
 
-    let preview = container(preview_card(theme, state.anim))
-        .center_x(Length::Fill)
-        .center_y(Length::Fill);
+    let pv = container(preview_card(theme, state.anim)).padding(24);
+    let preview = match theme.card_pos {
+        CardPos::Center => pv.center_x(Length::Fill).center_y(Length::Fill),
+        CardPos::Left => pv.align_left(Length::Fill).center_y(Length::Fill),
+        CardPos::Right => pv.align_right(Length::Fill).center_y(Length::Fill),
+        CardPos::Top => pv.center_x(Length::Fill).align_top(Length::Fill),
+        CardPos::Bottom => pv.center_x(Length::Fill).align_bottom(Length::Fill),
+    };
 
     let content = row![left, preview].height(Length::Fill);
 
@@ -1521,6 +1532,24 @@ fn card_tab<'a>(state: &'a State, h: bool) -> Element<'a, Message> {
     let g = group(
         "CARD",
         column![
+            helped(
+                row![
+                    color_label("Placement"),
+                    pick_list(
+                        &CardPos::ALL[..],
+                        Some(state.card_pos),
+                        Message::CardPosPicked
+                    )
+                    .text_size(13)
+                    .padding(6)
+                    .width(Length::Fill),
+                ]
+                .spacing(10)
+                .align_y(Alignment::Center)
+                .into(),
+                "Where the login card sits on screen.",
+                h
+            ),
             helped(
                 plain_row(
                     "Card rounding",

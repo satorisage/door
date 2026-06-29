@@ -28,7 +28,7 @@ use protocol::{PowerAction, Secret, Session};
 
 use crate::client::{AuthStep, Client, StartOutcome, DEFAULT_SOCKET};
 use door_theme::skyshader::{SkyShader, SpinnerShader};
-use door_theme::{Color, Theme};
+use door_theme::{CardPos, Color, Theme};
 
 /// The resolved theme, loaded once. `run` needs it for the default font before the
 /// app state exists, and the UI reads it every frame — so it lives here, not in
@@ -567,9 +567,15 @@ fn view(state: &State) -> Element<'_, Message> {
         .width(Length::Fixed(t.card_width))
         .style(card_style(t, f, state.anim));
 
-    let centered = container(card)
-        .center_x(Length::Fill)
-        .center_y(Length::Fill);
+    // Place the card per the theme; padding keeps edge placements off the bezel.
+    let card_area = container(card).padding(48);
+    let centered = match t.card_pos {
+        CardPos::Center => card_area.center_x(Length::Fill).center_y(Length::Fill),
+        CardPos::Left => card_area.align_left(Length::Fill).center_y(Length::Fill),
+        CardPos::Right => card_area.align_right(Length::Fill).center_y(Length::Fill),
+        CardPos::Top => card_area.center_x(Length::Fill).align_top(Length::Fill),
+        CardPos::Bottom => card_area.center_x(Length::Fill).align_bottom(Length::Fill),
+    };
 
     // Power controls: subtle, outside the card, bottom-right of the screen.
     let power = container(

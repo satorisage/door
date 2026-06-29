@@ -202,6 +202,46 @@ impl std::fmt::Display for SkyMode {
     }
 }
 
+/// Where the login card sits on screen. The greeter maps this to container alignment;
+/// the card keeps its width and the rest of the screen shows the sky/wallpaper.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum CardPos {
+    #[default]
+    Center,
+    Left,
+    Right,
+    Top,
+    Bottom,
+}
+
+impl CardPos {
+    /// Every placement, for the settings picker.
+    pub const ALL: [CardPos; 5] = [
+        CardPos::Center,
+        CardPos::Left,
+        CardPos::Right,
+        CardPos::Top,
+        CardPos::Bottom,
+    ];
+    /// The lowercase name used in the config and the picker.
+    pub fn name(self) -> &'static str {
+        match self {
+            CardPos::Center => "center",
+            CardPos::Left => "left",
+            CardPos::Right => "right",
+            CardPos::Top => "top",
+            CardPos::Bottom => "bottom",
+        }
+    }
+}
+
+impl std::fmt::Display for CardPos {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.name())
+    }
+}
+
 /// The resolved theme the UI renders against. Every field has a built-in default.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Theme {
@@ -227,6 +267,8 @@ pub struct Theme {
     pub corner_radius: f32,
     /// Card width (px).
     pub card_width: f32,
+    /// Where the card sits on screen. Shared.
+    pub card_pos: CardPos,
     /// Whether to show the clock + date in the card.
     pub show_clock: bool,
     /// Whether to run the animated sky (twinkling stars + drifting comet). Off → a
@@ -363,6 +405,7 @@ impl Default for Theme {
             font: None,
             corner_radius: 16.0,
             card_width: 300.0,
+            card_pos: CardPos::Center,
             show_clock: true,
             animate: true,
             is_day: false,
@@ -435,6 +478,7 @@ impl Theme {
             font: None,
             corner_radius: 16.0,
             card_width: 300.0,
+            card_pos: CardPos::Center,
             show_clock: true,
             animate: true,
             is_day: true,
@@ -510,6 +554,7 @@ struct ThemeFile {
     logo: Option<String>,
     corner_radius: Option<f32>,
     card_width: Option<f32>,
+    card_pos: Option<CardPos>,
     show_clock: Option<bool>,
     animate: Option<bool>,
     sky_mode: Option<SkyMode>,
@@ -669,6 +714,9 @@ impl Theme {
         if let Some(w) = file.card_width {
             self.card_width = w;
         }
+        if let Some(pos) = file.card_pos {
+            self.card_pos = pos;
+        }
         if let Some(c) = file.show_clock {
             self.show_clock = c;
         }
@@ -745,6 +793,9 @@ impl Theme {
         }
         if let Some(w) = file.card_width {
             self.card_width = w;
+        }
+        if let Some(pos) = file.card_pos {
+            self.card_pos = pos;
         }
         if let Some(c) = file.show_clock {
             self.show_clock = c;
@@ -991,6 +1042,7 @@ impl Theme {
         }
         out.push_str(&format!("corner_radius = {}\n", self.corner_radius));
         out.push_str(&format!("card_width    = {}\n", self.card_width));
+        out.push_str(&format!("card_pos      = {:?}\n", self.card_pos.name()));
         out.push_str(&format!("show_clock    = {}\n", self.show_clock));
         out.push_str(&format!("animate       = {}\n", self.animate));
         out.push_str(&format!("sky_mode      = {:?}\n", self.sky_mode.name()));
