@@ -1,0 +1,18 @@
+# Colorblind-Safe — Okabe-Ito hues (blue + orange, never red/green) so accent, track,
+# and error stay distinguishable under deutan/protan/tritan vision.
+sky_mode      = "auto"
+background    = "#0a0e14"
+card          = "#121821ee"
+field         = "#1e2733"
+accent        = "#56b4e9"
+foreground    = "#f0f0f0"
+muted         = "#8a94a0"
+glow_color    = "#0072b2"
+comet_color   = "#56b4e9"
+spinner_comet = "#56b4e9"
+spinner_track = "#e69f00"
+error_color   = "#d55e00"
+
+# Pin this palette at all hours (an accessibility look must not flip by clock).
+day_start = "00:00"
+day_end   = "00:00"

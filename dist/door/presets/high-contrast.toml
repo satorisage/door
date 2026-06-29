@@ -1,0 +1,23 @@
+# High Contrast — maximum legibility: near-black field, white text, amber accent,
+# a plain dark sky, and motion stilled. An accessibility baseline.
+sky_mode       = "auto"
+reduced_motion = true
+background     = "#000000"
+card           = "#141414"
+field          = "#2a2a2a"
+accent         = "#ffd400"
+foreground     = "#ffffff"
+muted          = "#cfcfcf"
+glow_color     = "#000000"
+sky_glow       = 0.0
+star_density   = 0.0
+comet_enabled  = false
+card_blur      = false
+card_gradient  = 0.0
+vignette       = 0.0
+font_scale     = 1.1
+error_color    = "#ff5555"
+
+# Pin this palette at all hours (an accessibility look must not flip by clock).
+day_start = "00:00"
+day_end   = "00:00"
