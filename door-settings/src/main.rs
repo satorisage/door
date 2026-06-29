@@ -156,6 +156,10 @@ enum Message {
     SunY(f32),
     SunSize(f32),
     SunIntensity(f32),
+    SunColor(String),
+    GlowX(f32),
+    GlowY(f32),
+    DayHaze(f32),
     // Spinner
     SpinnerSize(f32),
     SpinnerPulse(f32),
@@ -206,6 +210,10 @@ struct State {
     sun_y: f32,
     sun_size: f32,
     sun_intensity: f32,
+    sun_color: String,
+    glow_x: f32,
+    glow_y: f32,
+    day_haze: f32,
     spinner_size: f32,
     spinner_pulse: f32,
     card_shadow_blur: f32,
@@ -356,6 +364,10 @@ impl State {
             sun_y: night.sun_y,
             sun_size: night.sun_size,
             sun_intensity: night.sun_intensity,
+            sun_color: night.sun_color.to_hex(),
+            glow_x: night.glow_x,
+            glow_y: night.glow_y,
+            day_haze: night.day_haze,
             spinner_size: night.spinner_size,
             spinner_pulse: night.spinner_pulse,
             card_shadow_blur: night.card_shadow_blur,
@@ -408,6 +420,10 @@ impl State {
         self.sun_y = night.sun_y;
         self.sun_size = night.sun_size;
         self.sun_intensity = night.sun_intensity;
+        self.sun_color = night.sun_color.to_hex();
+        self.glow_x = night.glow_x;
+        self.glow_y = night.glow_y;
+        self.day_haze = night.day_haze;
         self.spinner_size = night.spinner_size;
         self.spinner_pulse = night.spinner_pulse;
         self.card_shadow_blur = night.card_shadow_blur;
@@ -525,6 +541,10 @@ impl State {
             sun_y: self.sun_y,
             sun_size: self.sun_size,
             sun_intensity: self.sun_intensity,
+            sun_color: color("Sun color", &self.sun_color)?,
+            glow_x: self.glow_x,
+            glow_y: self.glow_y,
+            day_haze: self.day_haze,
             spinner_size: self.spinner_size,
             spinner_pulse: self.spinner_pulse,
             card_shadow_blur: self.card_shadow_blur,
@@ -619,6 +639,10 @@ fn update(state: &mut State, message: Message) -> Task<Message> {
         Message::SunY(v) => state.sun_y = v.clamp(0.0, 1.0),
         Message::SunSize(v) => state.sun_size = v.clamp(0.05, 0.6),
         Message::SunIntensity(v) => state.sun_intensity = v.clamp(0.0, 1.0),
+        Message::SunColor(s) => state.sun_color = s,
+        Message::GlowX(v) => state.glow_x = v.clamp(0.0, 1.0),
+        Message::GlowY(v) => state.glow_y = v.clamp(0.0, 1.0),
+        Message::DayHaze(v) => state.day_haze = v.clamp(0.0, 1.0),
         Message::SpinnerSize(v) => state.spinner_size = v.clamp(24.0, 120.0),
         Message::SpinnerPulse(v) => state.spinner_pulse = v.clamp(0.0, 3.0),
         Message::CardShadowBlur(v) => state.card_shadow_blur = v.clamp(0.0, 80.0),
@@ -1123,6 +1147,11 @@ fn sky_tab<'a>(state: &'a State, pal: &'a Palette, h: bool) -> Element<'a, Messa
                 "Brightness of the sun's halo (0 = none).",
                 h
             ),
+            helped(
+                color_cell_with("Sun tint", &state.sun_color, Message::SunColor),
+                "Color of the daytime sun's halo.",
+                h
+            ),
         ]
         .spacing(9)
         .into(),
@@ -1165,6 +1194,42 @@ fn sky_tab<'a>(state: &'a State, pal: &'a Palette, h: bool) -> Element<'a, Messa
                         Message::CometTailDecay
                     ),
                     "How fast the sky comet's tail fades (higher = shorter).",
+                    h
+                ),
+                helped(
+                    slider_row(
+                        "Glow X",
+                        state.glow_x,
+                        0.0..=1.0,
+                        0.01,
+                        format!("{:.2}", state.glow_x),
+                        Message::GlowX
+                    ),
+                    "Night sky-glow horizontal center (0 = left).",
+                    h
+                ),
+                helped(
+                    slider_row(
+                        "Glow Y",
+                        state.glow_y,
+                        0.0..=1.0,
+                        0.01,
+                        format!("{:.2}", state.glow_y),
+                        Message::GlowY
+                    ),
+                    "Night sky-glow vertical center (0 = top).",
+                    h
+                ),
+                helped(
+                    slider_row(
+                        "Day haze",
+                        state.day_haze,
+                        0.0..=1.0,
+                        0.01,
+                        format!("{}%", (state.day_haze * 100.0).round() as u32),
+                        Message::DayHaze
+                    ),
+                    "Daytime horizon-haze strength.",
                     h
                 ),
             ]
@@ -1572,14 +1637,25 @@ fn plain_row<'a>(
     .into()
 }
 
+/// A per-variant color cell (routes to the active palette via `Param`).
 fn color_cell<'a>(label: &'a str, value: &'a str, param: Param) -> Element<'a, Message> {
+    color_cell_with(label, value, move |v| Message::Set(param, v))
+}
+
+/// A color cell bound to an arbitrary message — used for *shared* colors (e.g. the
+/// daytime sun tint), which don't live in the per-variant `Palette`/`Param` routing.
+fn color_cell_with<'a>(
+    label: &'a str,
+    value: &'a str,
+    on: impl Fn(String) -> Message + 'a,
+) -> Element<'a, Message> {
     row![
         text(label)
             .size(12)
             .width(Length::Fixed(44.0))
             .color(c(LABEL.0, LABEL.1, LABEL.2)),
         text_input("", value)
-            .on_input(move |v| Message::Set(param, v))
+            .on_input(on)
             .padding(5)
             .size(13)
             .style(input_style),

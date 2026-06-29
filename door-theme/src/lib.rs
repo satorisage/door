@@ -156,6 +156,14 @@ pub struct Theme {
     pub sun_size: f32,
     /// Daytime sun halo intensity, 0–1 (0 = no bloom). Shared (day-only effect).
     pub sun_intensity: f32,
+    /// Daytime sun halo tint (warm by default). Shared (only the day sky has a sun).
+    pub sun_color: Color,
+    /// Night sky-glow center, 0–1 UV — x. Shared (only the night sky has this glow).
+    pub glow_x: f32,
+    /// Night sky-glow center, 0–1 UV — y. Shared.
+    pub glow_y: f32,
+    /// Daytime horizon-haze strength, 0–1. Shared (day-only effect).
+    pub day_haze: f32,
 
     // ── Spinner controls ──
     /// Card spinner size in px. Shared.
@@ -233,6 +241,10 @@ impl Default for Theme {
             sun_y: 0.18,
             sun_size: 0.25,
             sun_intensity: 0.38,
+            sun_color: Color::rgb(0xff, 0xe8, 0xb0),
+            glow_x: 0.5,
+            glow_y: 0.44,
+            day_haze: 0.25,
             spinner_size: 52.0,
             spinner_pulse: 1.0,
             card_shadow_blur: 34.0,
@@ -299,6 +311,10 @@ impl Theme {
             sun_y: 0.18,
             sun_size: 0.25,
             sun_intensity: 0.38,
+            sun_color: Color::rgb(0xff, 0xe8, 0xb0),
+            glow_x: 0.5,
+            glow_y: 0.44,
+            day_haze: 0.25,
             spinner_size: 52.0,
             spinner_pulse: 1.0,
             card_shadow_blur: 34.0,
@@ -351,6 +367,10 @@ struct ThemeFile {
     sun_y: Option<f32>,
     sun_size: Option<f32>,
     sun_intensity: Option<f32>,
+    sun_color: Option<String>,
+    glow_x: Option<f32>,
+    glow_y: Option<f32>,
+    day_haze: Option<f32>,
     spinner_size: Option<f32>,
     spinner_pulse: Option<f32>,
     card_shadow_blur: Option<f32>,
@@ -507,6 +527,10 @@ impl Theme {
         merge_f32(&mut self.sun_y, file.sun_y);
         merge_f32(&mut self.sun_size, file.sun_size);
         merge_f32(&mut self.sun_intensity, file.sun_intensity);
+        self.sun_color = color("sun_color", file.sun_color, self.sun_color);
+        merge_f32(&mut self.glow_x, file.glow_x);
+        merge_f32(&mut self.glow_y, file.glow_y);
+        merge_f32(&mut self.day_haze, file.day_haze);
         merge_f32(&mut self.spinner_size, file.spinner_size);
         merge_f32(&mut self.spinner_pulse, file.spinner_pulse);
         merge_f32(&mut self.card_shadow_blur, file.card_shadow_blur);
@@ -559,6 +583,16 @@ impl Theme {
         merge_f32(&mut self.sun_y, file.sun_y);
         merge_f32(&mut self.sun_size, file.sun_size);
         merge_f32(&mut self.sun_intensity, file.sun_intensity);
+        // sun_color is a shared color (only the day sky uses it); parse inline since
+        // merged_structural has no color closure.
+        if let Some(s) = &file.sun_color {
+            if let Some(col) = Color::parse(s) {
+                self.sun_color = col;
+            }
+        }
+        merge_f32(&mut self.glow_x, file.glow_x);
+        merge_f32(&mut self.glow_y, file.glow_y);
+        merge_f32(&mut self.day_haze, file.day_haze);
         merge_f32(&mut self.spinner_size, file.spinner_size);
         merge_f32(&mut self.spinner_pulse, file.spinner_pulse);
         merge_f32(&mut self.card_shadow_blur, file.card_shadow_blur);
@@ -773,6 +807,10 @@ impl Theme {
         out.push_str(&format!("sun_y         = {}\n", self.sun_y));
         out.push_str(&format!("sun_size      = {}\n", self.sun_size));
         out.push_str(&format!("sun_intensity = {}\n", self.sun_intensity));
+        out.push_str(&format!("sun_color     = {:?}\n", self.sun_color.to_hex()));
+        out.push_str(&format!("glow_x        = {}\n", self.glow_x));
+        out.push_str(&format!("glow_y        = {}\n", self.glow_y));
+        out.push_str(&format!("day_haze      = {}\n", self.day_haze));
         out.push_str("# Spinner / card / behavior\n");
         out.push_str(&format!("spinner_size  = {}\n", self.spinner_size));
         out.push_str(&format!("spinner_pulse = {}\n", self.spinner_pulse));

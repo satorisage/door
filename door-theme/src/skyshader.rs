@@ -43,6 +43,10 @@ struct Uniforms {
     params3: [f32; 4],
     /// x = sun_x (0–1), y = sun_y (0–1), z = sun halo radius, w = sun intensity.
     params4: [f32; 4],
+    /// Daytime sun halo tint (rgb; a unused).
+    sun_col: [f32; 4],
+    /// x = night glow center x (0–1), y = glow center y (0–1), z = day haze, w unused.
+    params5: [f32; 4],
 }
 
 fn srgb8(r: u8, g: u8, b: u8) -> Color {
@@ -113,6 +117,8 @@ impl SkyShader {
                 t.comet_tail_decay,
             ],
             params4: [t.sun_x, t.sun_y, t.sun_size, t.sun_intensity],
+            sun_col: t.sun_color.iced().into_linear(),
+            params5: [t.glow_x, t.glow_y, t.day_haze, 0.0],
         };
         Self { uniforms }
     }
@@ -620,6 +626,8 @@ struct U {
   params2: vec4<f32>,
   params3: vec4<f32>,
   params4: vec4<f32>,
+  sun_col: vec4<f32>,
+  params5: vec4<f32>,
 };
 @group(0) @binding(0) var<uniform> u: U;
 
@@ -702,7 +710,7 @@ fn day_sky(uv: vec2<f32>, p: vec2<f32>, aspect: f32) -> vec3<f32> {
   sp.x = sp.x * aspect;
   let sd = length(p - sp);
   let ssz = max(u.params4.z, 0.02);
-  col = col + vec3(1.0, 0.91, 0.69) * exp(-sd * sd / (ssz * ssz)) * u.params4.w;
+  col = col + u.sun_col.rgb * exp(-sd * sd / (ssz * ssz)) * u.params4.w;
   col = mix(col, vec3(1.0, 0.99, 0.96), smoothstep(0.045, 0.028, sd) * 0.85);
   let sundir = normalize(sp);
 
@@ -715,7 +723,7 @@ fn day_sky(uv: vec2<f32>, p: vec2<f32>, aspect: f32) -> vec3<f32> {
   col = cloud_layer(col, p, sundir, 5.4, 2.4, 0.027 * cspd, 0.50 * camt, 0.46, 0.82, lit, sh);
 
   // Soft haze thickening toward the horizon.
-  col = mix(col, horizon, smoothstep(0.35, 0.0, height) * 0.25);
+  col = mix(col, horizon, smoothstep(0.35, 0.0, height) * u.params5.z);
   return col;
 }
 
@@ -734,8 +742,9 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     // Night: smooth vertical gradient (per pixel — no banding).
     col = mix(u.bg_top.rgb, u.bg_bot.rgb, smoothstep(0.0, 1.0, uv.y));
 
-    // True radial glow / sun-haze.
-    let gc = vec2(0.0, -0.06);
+    // True radial glow / sun-haze, centered via params5.xy (0–1 UV).
+    var gc = vec2(u.params5.x, u.params5.y) - vec2(0.5, 0.5);
+    gc.x = gc.x * aspect;
     let gd = length(p - gc);
     col = col + u.glow.rgb * exp(-gd * gd * u.params3.y) * u.params.w;
 
