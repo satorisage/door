@@ -355,6 +355,9 @@ pub struct Theme {
     pub grain: f32,
     /// Vignette strength — screen-edge darkening (0 = off). Shared.
     pub vignette: f32,
+    /// True backdrop blur behind the card (a frosted-glass sample of the sky). Most
+    /// visible with a translucent card; costs a little GPU. Shared.
+    pub card_blur: bool,
 
     // ── Spinner controls ──
     /// Card spinner size in px. Shared.
@@ -452,6 +455,7 @@ impl Default for Theme {
             card_gradient: 0.45,
             grain: 0.0,
             vignette: 0.2,
+            card_blur: true,
             spinner_size: 52.0,
             spinner_pulse: 1.0,
             spinner_orbit: 0.30,
@@ -537,6 +541,7 @@ impl Theme {
             card_gradient: 0.45,
             grain: 0.0,
             vignette: 0.2,
+            card_blur: true,
             spinner_size: 52.0,
             spinner_pulse: 1.0,
             spinner_orbit: 0.30,
@@ -608,6 +613,7 @@ struct ThemeFile {
     card_gradient: Option<f32>,
     grain: Option<f32>,
     vignette: Option<f32>,
+    card_blur: Option<bool>,
     spinner_orbit: Option<f32>,
     spinner_size: Option<f32>,
     spinner_pulse: Option<f32>,
@@ -787,6 +793,7 @@ impl Theme {
         merge_f32(&mut self.card_gradient, file.card_gradient);
         merge_f32(&mut self.grain, file.grain);
         merge_f32(&mut self.vignette, file.vignette);
+        merge_bool(&mut self.card_blur, file.card_blur);
         merge_f32(&mut self.spinner_orbit, file.spinner_orbit);
         merge_f32(&mut self.spinner_size, file.spinner_size);
         merge_f32(&mut self.spinner_pulse, file.spinner_pulse);
@@ -876,6 +883,7 @@ impl Theme {
         merge_f32(&mut self.card_gradient, file.card_gradient);
         merge_f32(&mut self.grain, file.grain);
         merge_f32(&mut self.vignette, file.vignette);
+        merge_bool(&mut self.card_blur, file.card_blur);
         merge_f32(&mut self.spinner_orbit, file.spinner_orbit);
         merge_f32(&mut self.spinner_size, file.spinner_size);
         merge_f32(&mut self.spinner_pulse, file.spinner_pulse);
@@ -1119,6 +1127,7 @@ impl Theme {
         out.push_str(&format!("card_gradient = {}\n", self.card_gradient));
         out.push_str(&format!("grain         = {}\n", self.grain));
         out.push_str(&format!("vignette      = {}\n", self.vignette));
+        out.push_str(&format!("card_blur     = {}\n", self.card_blur));
         out.push_str("# Spinner / card / behavior\n");
         out.push_str(&format!("spinner_size  = {}\n", self.spinner_size));
         out.push_str(&format!("spinner_pulse = {}\n", self.spinner_pulse));

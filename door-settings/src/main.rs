@@ -11,14 +11,14 @@ use std::time::Instant;
 
 use iced::widget::{
     button, column, container, image, pick_list, row, scrollable, shader, slider, text, text_input,
-    toggler, Space,
+    toggler, Space, Stack,
 };
 use iced::{
     Alignment, Background, Border, Color as IColor, ContentFit, Element, Length, Shadow,
     Subscription, Task, Vector,
 };
 
-use door_theme::skyshader::{SkyShader, SpinnerShader};
+use door_theme::skyshader::{FrostShader, SkyShader, SpinnerShader};
 use door_theme::{CardPos, Color, SkyMode, Theme};
 
 fn main() -> iced::Result {
@@ -186,6 +186,7 @@ enum Message {
     LogoBoxRadius(f32),
     // Behavior
     Clock24h(bool),
+    CardBlur(bool),
     FadeMs(f32),
     // Expert
     GlowFalloff(f32),
@@ -243,6 +244,7 @@ struct State {
     card_gradient: f32,
     grain: f32,
     vignette: f32,
+    card_blur: bool,
     spinner_orbit: f32,
     spinner_size: f32,
     spinner_pulse: f32,
@@ -412,6 +414,7 @@ impl State {
             card_gradient: night.card_gradient,
             grain: night.grain,
             vignette: night.vignette,
+            card_blur: night.card_blur,
             spinner_orbit: night.spinner_orbit,
             spinner_size: night.spinner_size,
             spinner_pulse: night.spinner_pulse,
@@ -483,6 +486,7 @@ impl State {
         self.card_gradient = night.card_gradient;
         self.grain = night.grain;
         self.vignette = night.vignette;
+        self.card_blur = night.card_blur;
         self.spinner_orbit = night.spinner_orbit;
         self.spinner_size = night.spinner_size;
         self.spinner_pulse = night.spinner_pulse;
@@ -619,6 +623,7 @@ impl State {
             card_gradient: self.card_gradient,
             grain: self.grain,
             vignette: self.vignette,
+            card_blur: self.card_blur,
             spinner_orbit: self.spinner_orbit,
             spinner_size: self.spinner_size,
             spinner_pulse: self.spinner_pulse,
@@ -741,6 +746,7 @@ fn update(state: &mut State, message: Message) -> Task<Message> {
         Message::FieldRadius(v) => state.field_radius = v.clamp(0.0, 30.0),
         Message::LogoBoxRadius(v) => state.logo_box_radius = v.clamp(0.0, 40.0),
         Message::Clock24h(on) => state.clock_24h = on,
+        Message::CardBlur(on) => state.card_blur = on,
         Message::FadeMs(v) => state.fade_ms = v.clamp(0.0, 2000.0),
         // Expert.
         Message::GlowFalloff(v) => state.glow_falloff = v.clamp(0.5, 10.0),
@@ -856,7 +862,19 @@ fn view(state: &State) -> Element<'_, Message> {
         .style(glass_panel);
     let left = container(panel).padding(16);
 
-    let pv = container(preview_card(theme, state.anim)).padding(24);
+    let preview_inner: Element<Message> = if theme.card_blur {
+        Stack::new()
+            .push(preview_card(theme, state.anim))
+            .push_under(
+                shader(FrostShader::from_theme(theme, state.anim, 1.0))
+                    .width(Length::Fill)
+                    .height(Length::Fill),
+            )
+            .into()
+    } else {
+        preview_card(theme, state.anim)
+    };
+    let pv = container(preview_inner).padding(24);
     let preview = match theme.card_pos {
         CardPos::Center => pv.center_x(Length::Fill).center_y(Length::Fill),
         CardPos::Left => pv.align_left(Length::Fill).center_y(Length::Fill),
@@ -1683,6 +1701,11 @@ fn card_tab<'a>(state: &'a State, h: bool) -> Element<'a, Message> {
                     Message::CardGradient
                 ),
                 "Vertical gradient on the card (0 = flat).",
+                h
+            ),
+            helped(
+                toggle_row("Backdrop blur", state.card_blur, Message::CardBlur),
+                "Frost the sky behind the card (best with a translucent card).",
                 h
             ),
         ]

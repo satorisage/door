@@ -58,8 +58,12 @@ struct Uniforms {
     cloud_shadow: [f32; 4],
     /// x = cursor dx (−0.5..0.5 of bounds), y = cursor dy, z = parallax strength, w unused.
     params8: [f32; 4],
-    /// x = film-grain strength, y = vignette strength, z/w unused.
+    /// x = film-grain strength, y = vignette strength, z = card corner radius (px,
+    /// for the frost mask), w unused.
     params9: [f32; 4],
+    /// Frosted-card backdrop rect in screen-normalized coords: x, y, w, h. Set per
+    /// frame in the frost primitive's prepare(); unused by the full-screen sky pass.
+    frost: [f32; 4],
 }
 
 fn srgb8(r: u8, g: u8, b: u8) -> Color {
@@ -137,7 +141,8 @@ impl SkyShader {
             cloud_lit: t.cloud_lit.iced().into_linear(),
             cloud_shadow: t.cloud_shadow.iced().into_linear(),
             params8: [0.0, 0.0, t.cursor_parallax, 0.0], // xy set per-frame from the cursor
-            params9: [t.grain, t.vignette, 0.0, 0.0],
+            params9: [t.grain, t.vignette, t.corner_radius, 0.0],
+            frost: [0.0, 0.0, 1.0, 1.0], // set per frame in the frost primitive
         };
         Self { uniforms }
     }
@@ -283,6 +288,188 @@ impl shader::Pipeline for SkyPipeline {
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
                 entry_point: Some("fs_main"),
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format,
+                    blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+            }),
+            multiview: None,
+            cache: None,
+        });
+        Self {
+            pipeline,
+            uniforms,
+            bind_group,
+        }
+    }
+}
+
+// ───────────────────────────── frosted card backdrop ─────────────────────────
+//
+// A blurred sample of the *same* procedural scene, drawn behind the (translucent) card
+// and masked to its rounded rect — true backdrop blur. It reuses the sky uniforms +
+// WGSL (the `fs_frost` entry), so the blur is the exact scene that sits behind the card.
+
+/// The frosted backdrop program — same scene as `SkyShader`, blurred in `fs_frost`.
+#[derive(Debug, Clone, Copy)]
+pub struct FrostShader {
+    uniforms: Uniforms,
+}
+
+impl FrostShader {
+    /// Build from a theme (identical uniforms to the sky, so the blur matches it).
+    pub fn from_theme(t: &Theme, anim: f32, fade: f32) -> Self {
+        Self {
+            uniforms: SkyShader::from_theme(t, anim, fade).uniforms,
+        }
+    }
+}
+
+impl<Message> shader::Program<Message> for FrostShader {
+    type State = ();
+    type Primitive = FrostPrimitive;
+
+    fn draw(&self, _state: &(), _cursor: mouse::Cursor, _bounds: Rectangle) -> FrostPrimitive {
+        // res + the card rect are filled in prepare() (it has the viewport + bounds).
+        FrostPrimitive { u: self.uniforms }
+    }
+}
+
+#[derive(Debug)]
+pub struct FrostPrimitive {
+    u: Uniforms,
+}
+
+impl Primitive for FrostPrimitive {
+    type Pipeline = FrostPipeline;
+
+    fn prepare(
+        &self,
+        pipeline: &mut FrostPipeline,
+        _device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        bounds: &Rectangle,
+        viewport: &shader::Viewport,
+    ) {
+        let mut u = self.u;
+        let vp = viewport.logical_size();
+        u.res = [vp.width.max(1.0), vp.height.max(1.0)];
+        // The card rect, normalized to the full surface, so fs_frost maps its local uv
+        // to the global screen uv and the blur lines up with the sky behind the card.
+        u.frost = [
+            bounds.x / u.res[0],
+            bounds.y / u.res[1],
+            bounds.width / u.res[0],
+            bounds.height / u.res[1],
+        ];
+        queue.write_buffer(&pipeline.uniforms, 0, bytemuck::bytes_of(&u));
+    }
+
+    fn render(
+        &self,
+        pipeline: &FrostPipeline,
+        encoder: &mut wgpu::CommandEncoder,
+        target: &wgpu::TextureView,
+        clip_bounds: &Rectangle<u32>,
+    ) {
+        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("door frost"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: target,
+                depth_slice: None,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Load,
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment: None,
+            timestamp_writes: None,
+            occlusion_query_set: None,
+        });
+        pass.set_scissor_rect(
+            clip_bounds.x,
+            clip_bounds.y,
+            clip_bounds.width,
+            clip_bounds.height,
+        );
+        pass.set_viewport(
+            clip_bounds.x as f32,
+            clip_bounds.y as f32,
+            clip_bounds.width as f32,
+            clip_bounds.height as f32,
+            0.0,
+            1.0,
+        );
+        pass.set_pipeline(&pipeline.pipeline);
+        pass.set_bind_group(0, Some(&pipeline.bind_group), &[]);
+        pass.draw(0..3, 0..1);
+    }
+}
+
+/// The frost pipeline — the sky WGSL with the `fs_frost` fragment entry, alpha-blended.
+#[derive(Debug)]
+pub struct FrostPipeline {
+    pipeline: wgpu::RenderPipeline,
+    uniforms: wgpu::Buffer,
+    bind_group: wgpu::BindGroup,
+}
+
+impl shader::Pipeline for FrostPipeline {
+    fn new(device: &wgpu::Device, _queue: &wgpu::Queue, format: wgpu::TextureFormat) -> Self {
+        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("door frost shader"),
+            source: wgpu::ShaderSource::Wgsl(WGSL.into()),
+        });
+        let uniforms = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("door frost uniforms"),
+            size: std::mem::size_of::<Uniforms>() as u64,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("door frost bgl"),
+            entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            }],
+        });
+        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("door frost bind group"),
+            layout: &bgl,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: uniforms.as_entire_binding(),
+            }],
+        });
+        let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("door frost layout"),
+            bind_group_layouts: &[&bgl],
+            push_constant_ranges: &[],
+        });
+        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("door frost pipeline"),
+            layout: Some(&layout),
+            vertex: wgpu::VertexState {
+                module: &shader,
+                entry_point: Some("vs_main"),
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+                buffers: &[],
+            },
+            primitive: wgpu::PrimitiveState::default(),
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState::default(),
+            fragment: Some(wgpu::FragmentState {
+                module: &shader,
+                entry_point: Some("fs_frost"),
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
                 targets: &[Some(wgpu::ColorTargetState {
                     format,
@@ -658,6 +845,7 @@ struct U {
   cloud_shadow: vec4<f32>,
   params8: vec4<f32>,
   params9: vec4<f32>,
+  frost: vec4<f32>,
 };
 @group(0) @binding(0) var<uniform> u: U;
 
@@ -1041,87 +1229,80 @@ fn water_sky(uv: vec2<f32>, p: vec2<f32>, aspect: f32) -> vec3<f32> {
   return base + vec3(0.45, 0.95, 1.0) * caustic * 0.85;
 }
 
+// The night sky (auto, after dark): gradient + radial glow + fbm nebula + parallax
+// twinkling starfield. Extracted so the frosted-card backdrop can reuse it.
+fn night_sky(uv: vec2<f32>, p: vec2<f32>, aspect: f32) -> vec3<f32> {
+  var col = mix(u.bg_top.rgb, u.bg_bot.rgb, smoothstep(0.0, 1.0, uv.y));
+
+  // True radial glow / sun-haze, centered via params5.xy (0–1 UV).
+  var gc = vec2(u.params5.x, u.params5.y) - vec2(0.5, 0.5);
+  gc.x = gc.x * aspect;
+  let gd = length(p - gc);
+  col = col + u.glow.rgb * exp(-gd * gd * u.params3.y) * u.params.w;
+
+  // fbm nebula for depth, concentrated near the glow.
+  let nbs = u.params6.z;
+  let neb = fbm(p * 2.2 + vec2(u.time * 0.015 * nbs, u.time * -0.010 * nbs));
+  col = col + u.glow.rgb * neb * u.params3.z * smoothstep(0.95, 0.0, gd);
+
+  var stars = 0.0;
+  var spark = 0.0;
+  let layers = i32(u.params6.x);
+  for (var l = 0; l < layers; l = l + 1) {
+    let scale = 8.0 * pow(1.9, f32(l));
+    let par = u.params8.xy * u.params8.z * 0.04 * (f32(l) + 1.0);
+    let gp = (uv - par) * vec2(aspect, 1.0) * scale;
+    let cell = floor(gp);
+    let thr = u.params2.x;
+    let h = hash21(cell + f32(l) * 17.0);
+    if (h > thr) {
+      let h2 = hash21(cell + f32(l) * 17.0 + 5.0);
+      let cp = fract(gp) - vec2(0.5, 0.5);
+      var tw = 0.5 + 0.5 * sin(u.time * (0.8 + h2 * 3.6) * u.params2.y + h * 40.0);
+      tw = tw * tw * tw;
+      let bright = (h - thr) / max(1.0 - thr, 0.01);
+      stars = stars + exp(-dot(cp, cp) * 70.0 / max(u.params6.y, 0.1)) * tw * bright;
+      let cross = exp(-abs(cp.x) * 55.0) * exp(-cp.y * cp.y * 900.0)
+                + exp(-abs(cp.y) * 55.0) * exp(-cp.x * cp.x * 900.0);
+      spark = spark + cross * tw * bright * 0.5;
+    }
+  }
+  col = col + u.star.rgb * stars * u.params.z;
+  col = col + vec3(1.0, 1.0, 1.0) * spark * 0.5 * u.params.z;
+  return col;
+}
+
+// The base scene for the current mode — no comet/grain/vignette overlays. Shared by
+// fs_main and the frosted-card backdrop (fs_frost), so the blur matches the sky.
+fn scene_base(uv: vec2<f32>, p: vec2<f32>, aspect: f32) -> vec3<f32> {
+  let day = u.params.x;
+  let mode = u.params5.w;
+  if (mode > 0.5) {
+    if (mode < 1.5) { return aurora_sky(uv, p, aspect); }
+    else if (mode < 2.5) { return storm_sky(uv, p, aspect); }
+    else if (mode < 3.5) { return rain_sky(uv, p, aspect); }
+    else if (mode < 4.5) { return snow_sky(uv, p, aspect); }
+    else if (mode < 5.5) { return meteor_sky(uv, p, aspect); }
+    else if (mode < 6.5) { return moon_sky(uv, p, aspect); }
+    else if (mode < 7.5) { return synthwave_sky(uv, p, aspect); }
+    else if (mode < 8.5) { return fog_sky(uv, p, aspect); }
+    else if (mode < 9.5) { return plasma_sky(uv, p, aspect); }
+    else if (mode < 10.5) { return fire_sky(uv, p, aspect); }
+    else { return water_sky(uv, p, aspect); }
+  }
+  if (day > 0.5) { return day_sky(uv, p, aspect); }
+  return night_sky(uv, p, aspect);
+}
+
 @fragment
 fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
   let uv = in.uv;
   let aspect = u.res.x / max(u.res.y, 1.0);
   var p = uv - vec2(0.5, 0.5);
   p.x = p.x * aspect;
-  let day = u.params.x;
   let mode = u.params5.w;
 
-  var col: vec3<f32>;
-  if (mode > 0.5) {
-    // Explicit sky scenes (M7-B), dispatched by id.
-    if (mode < 1.5) {
-      col = aurora_sky(uv, p, aspect);
-    } else if (mode < 2.5) {
-      col = storm_sky(uv, p, aspect);
-    } else if (mode < 3.5) {
-      col = rain_sky(uv, p, aspect);
-    } else if (mode < 4.5) {
-      col = snow_sky(uv, p, aspect);
-    } else if (mode < 5.5) {
-      col = meteor_sky(uv, p, aspect);
-    } else if (mode < 6.5) {
-      col = moon_sky(uv, p, aspect);
-    } else if (mode < 7.5) {
-      col = synthwave_sky(uv, p, aspect);
-    } else if (mode < 8.5) {
-      col = fog_sky(uv, p, aspect);
-    } else if (mode < 9.5) {
-      col = plasma_sky(uv, p, aspect);
-    } else if (mode < 10.5) {
-      col = fire_sky(uv, p, aspect);
-    } else {
-      col = water_sky(uv, p, aspect);
-    }
-  } else if (day > 0.5) {
-    col = day_sky(uv, p, aspect);
-  } else {
-    // Night: smooth vertical gradient (per pixel — no banding).
-    col = mix(u.bg_top.rgb, u.bg_bot.rgb, smoothstep(0.0, 1.0, uv.y));
-
-    // True radial glow / sun-haze, centered via params5.xy (0–1 UV).
-    var gc = vec2(u.params5.x, u.params5.y) - vec2(0.5, 0.5);
-    gc.x = gc.x * aspect;
-    let gd = length(p - gc);
-    col = col + u.glow.rgb * exp(-gd * gd * u.params3.y) * u.params.w;
-
-    // fbm nebula for depth, concentrated near the glow.
-    let nbs = u.params6.z;
-    let neb = fbm(p * 2.2 + vec2(u.time * 0.015 * nbs, u.time * -0.010 * nbs));
-    col = col + u.glow.rgb * neb * u.params3.z * smoothstep(0.95, 0.0, gd);
-
-    // Twinkling stars across three scaled layers — denser, each with its own pulse
-    // rate and a sharp (cubed) twinkle so they sparkle rather than throb, and the
-    // brightest carry a faint cross-glint.
-    var stars = 0.0;
-    var spark = 0.0;
-    let layers = i32(u.params6.x);
-    for (var l = 0; l < layers; l = l + 1) {
-      let scale = 8.0 * pow(1.9, f32(l));
-      // Per-layer cursor parallax: nearer (lower) layers shift more.
-      let par = u.params8.xy * u.params8.z * 0.04 * (f32(l) + 1.0);
-      let gp = (uv - par) * vec2(aspect, 1.0) * scale;
-      let cell = floor(gp);
-      let thr = u.params2.x;
-      let h = hash21(cell + f32(l) * 17.0);
-      if (h > thr) {
-        let h2 = hash21(cell + f32(l) * 17.0 + 5.0);
-        let cp = fract(gp) - vec2(0.5, 0.5);
-        var tw = 0.5 + 0.5 * sin(u.time * (0.8 + h2 * 3.6) * u.params2.y + h * 40.0);
-        tw = tw * tw * tw;
-        let bright = (h - thr) / max(1.0 - thr, 0.01);
-        stars = stars + exp(-dot(cp, cp) * 70.0 / max(u.params6.y, 0.1)) * tw * bright;
-        let cross = exp(-abs(cp.x) * 55.0) * exp(-cp.y * cp.y * 900.0)
-                  + exp(-abs(cp.y) * 55.0) * exp(-cp.x * cp.x * 900.0);
-        spark = spark + cross * tw * bright * 0.5;
-      }
-    }
-    col = col + u.star.rgb * stars * u.params.z;
-    col = col + vec3(1.0, 1.0, 1.0) * spark * 0.5 * u.params.z;
-  }
+  var col = scene_base(uv, p, aspect);
 
   // Drifting comet: upper-right -> lower-left on an InOutSine ease, then pause.
   let period = u.params2.z;
@@ -1164,6 +1345,39 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
 
   col = col * u.fade;
   return vec4(col, 1.0);
+}
+
+// Frosted-card backdrop: a blurred sample of the base scene behind the card, masked to
+// the card's rounded rect. `frost` is the card rect (screen-normalized); we map this
+// quad's local uv to the global screen uv so the blur lines up with the sky behind it.
+@fragment
+fn fs_frost(in: VsOut) -> @location(0) vec4<f32> {
+  let aspect = u.res.x / max(u.res.y, 1.0);
+  let g = vec2(u.frost.x + in.uv.x * u.frost.z, u.frost.y + in.uv.y * u.frost.w);
+  var acc = vec3(0.0);
+  var wsum = 0.0;
+  let rad_blur = 0.013;
+  for (var i = -2; i <= 2; i = i + 1) {
+    for (var j = -2; j <= 2; j = j + 1) {
+      let off = vec2(f32(i), f32(j)) * (rad_blur * 0.5);
+      let suv = g + off;
+      var sp = suv - vec2(0.5, 0.5);
+      sp.x = sp.x * aspect;
+      let w = exp(-f32(i * i + j * j) * 0.5);
+      acc = acc + scene_base(suv, sp, aspect) * w;
+      wsum = wsum + w;
+    }
+  }
+  var col = acc / max(wsum, 0.0001);
+  // Rounded-rect alpha so the frost matches the card's corners.
+  let card_px = u.frost.zw * u.res;
+  let p_px = in.uv * card_px;
+  let halfc = card_px * 0.5;
+  let crad = u.params9.z;
+  let q = abs(p_px - halfc) - (halfc - vec2(crad, crad));
+  let dist = length(max(q, vec2(0.0, 0.0))) + min(max(q.x, q.y), 0.0) - crad;
+  let alpha = 1.0 - smoothstep(-1.0, 1.0, dist);
+  return vec4(col * u.fade, alpha * u.fade);
 }
 "#;
 

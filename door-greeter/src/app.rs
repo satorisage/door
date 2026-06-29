@@ -18,6 +18,7 @@ use std::time::{Duration, Instant};
 use futures::SinkExt;
 use iced::widget::{
     button, column, container, image, pick_list, row, shader, stack, text, text_input, Space,
+    Stack,
 };
 use iced::{
     keyboard, window, Alignment, Background, Border, ContentFit, Element, Font, Length, Shadow,
@@ -27,7 +28,7 @@ use iced::{
 use protocol::{PowerAction, Secret, Session};
 
 use crate::client::{AuthStep, Client, StartOutcome, DEFAULT_SOCKET};
-use door_theme::skyshader::{SkyShader, SpinnerShader};
+use door_theme::skyshader::{FrostShader, SkyShader, SpinnerShader};
 use door_theme::{CardPos, Color, Theme};
 
 /// The resolved theme, loaded once. `run` needs it for the default font before the
@@ -566,6 +567,22 @@ fn view(state: &State) -> Element<'_, Message> {
         .padding(26)
         .width(Length::Fixed(t.card_width))
         .style(card_style(t, f, state.anim));
+
+    // Optional true backdrop blur: a frosted sample of the sky behind the card, drawn
+    // *under* the translucent card (push_under keeps the card the size-defining base)
+    // and masked to its rounded rect inside the shader.
+    let card: Element<Message> = if t.card_blur {
+        Stack::new()
+            .push(card)
+            .push_under(
+                shader(FrostShader::from_theme(t, state.anim, f))
+                    .width(Length::Fill)
+                    .height(Length::Fill),
+            )
+            .into()
+    } else {
+        card.into()
+    };
 
     // Place the card per the theme; padding keeps edge placements off the bezel.
     let card_area = container(card).padding(48);

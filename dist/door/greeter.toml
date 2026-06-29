@@ -79,6 +79,7 @@ spinner_trail = 1.0         # trail length 0.15–1.0 (shorter = crisper on a li
 # card_gradient  = 0.45       # vertical sheen on the card (0 = flat)
 # grain          = 0.0        # film grain over the sky (0 = off)
 # vignette       = 0.2        # darken the screen edges (0 = off)
+# card_blur      = true       # frosted-glass backdrop blur behind the card
 #
 # Spinner / card / behavior
 # spinner_size   = 52.0       # card spinner diameter (px)
