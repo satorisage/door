@@ -242,6 +242,53 @@ impl std::fmt::Display for CardPos {
     }
 }
 
+/// The card's loading-emblem style (when no `logo` image is set). The comet is door's
+/// signature; the rest are classic spinners. New styles are a variant + a branch in
+/// the spinner shader.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SpinnerStyle {
+    #[default]
+    Comet,
+    Ring,
+    Dots,
+    Pulse,
+}
+
+impl SpinnerStyle {
+    /// Every style, for the settings picker.
+    pub const ALL: [SpinnerStyle; 4] = [
+        SpinnerStyle::Comet,
+        SpinnerStyle::Ring,
+        SpinnerStyle::Dots,
+        SpinnerStyle::Pulse,
+    ];
+    /// The shader selector value.
+    pub fn shader_id(self) -> f32 {
+        match self {
+            SpinnerStyle::Comet => 0.0,
+            SpinnerStyle::Ring => 1.0,
+            SpinnerStyle::Dots => 2.0,
+            SpinnerStyle::Pulse => 3.0,
+        }
+    }
+    /// The lowercase name used in the config and the picker.
+    pub fn name(self) -> &'static str {
+        match self {
+            SpinnerStyle::Comet => "comet",
+            SpinnerStyle::Ring => "ring",
+            SpinnerStyle::Dots => "dots",
+            SpinnerStyle::Pulse => "pulse",
+        }
+    }
+}
+
+impl std::fmt::Display for SpinnerStyle {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.name())
+    }
+}
+
 /// The resolved theme the UI renders against. Every field has a built-in default.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Theme {
@@ -369,6 +416,8 @@ pub struct Theme {
     pub spinner_pulse: f32,
     /// Spinner comet orbit radius (fraction of the emblem; default 0.30). Shared.
     pub spinner_orbit: f32,
+    /// The card loading-emblem style (comet/ring/dots/pulse). Shared.
+    pub spinner_style: SpinnerStyle,
 
     // ── Card / behavior controls ──
     /// Card drop-shadow blur radius (px). Shared.
@@ -467,6 +516,7 @@ impl Default for Theme {
             spinner_size: 52.0,
             spinner_pulse: 1.0,
             spinner_orbit: 0.30,
+            spinner_style: SpinnerStyle::Comet,
             card_shadow_blur: 34.0,
             card_shadow_opacity: 0.45,
             accent_breathing: 1.0,
@@ -556,6 +606,7 @@ impl Theme {
             spinner_size: 52.0,
             spinner_pulse: 1.0,
             spinner_orbit: 0.30,
+            spinner_style: SpinnerStyle::Comet,
             card_shadow_blur: 34.0,
             card_shadow_opacity: 0.45,
             accent_breathing: 1.0,
@@ -629,6 +680,7 @@ struct ThemeFile {
     vignette: Option<f32>,
     card_blur: Option<bool>,
     spinner_orbit: Option<f32>,
+    spinner_style: Option<SpinnerStyle>,
     spinner_size: Option<f32>,
     spinner_pulse: Option<f32>,
     card_shadow_blur: Option<f32>,
@@ -812,6 +864,9 @@ impl Theme {
         merge_f32(&mut self.vignette, file.vignette);
         merge_bool(&mut self.card_blur, file.card_blur);
         merge_f32(&mut self.spinner_orbit, file.spinner_orbit);
+        if let Some(s) = file.spinner_style {
+            self.spinner_style = s;
+        }
         merge_f32(&mut self.spinner_size, file.spinner_size);
         merge_f32(&mut self.spinner_pulse, file.spinner_pulse);
         merge_f32(&mut self.card_shadow_blur, file.card_shadow_blur);
@@ -905,6 +960,9 @@ impl Theme {
         merge_f32(&mut self.vignette, file.vignette);
         merge_bool(&mut self.card_blur, file.card_blur);
         merge_f32(&mut self.spinner_orbit, file.spinner_orbit);
+        if let Some(s) = file.spinner_style {
+            self.spinner_style = s;
+        }
         merge_f32(&mut self.spinner_size, file.spinner_size);
         merge_f32(&mut self.spinner_pulse, file.spinner_pulse);
         merge_f32(&mut self.card_shadow_blur, file.card_shadow_blur);
@@ -1173,6 +1231,7 @@ impl Theme {
         out.push_str(&format!("spinner_size  = {}\n", self.spinner_size));
         out.push_str(&format!("spinner_pulse = {}\n", self.spinner_pulse));
         out.push_str(&format!("spinner_orbit = {}\n", self.spinner_orbit));
+        out.push_str(&format!("spinner_style = {:?}\n", self.spinner_style.name()));
         out.push_str(&format!(
             "card_shadow_blur    = {}\n",
             self.card_shadow_blur

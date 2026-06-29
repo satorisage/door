@@ -534,7 +534,12 @@ impl SpinnerShader {
                 t.spinner_speed,
                 t.spinner_pulse,
             ],
-            params2: [t.spinner_ring, t.spinner_orbit, 0.0, 0.0],
+            params2: [
+                t.spinner_ring,
+                t.spinner_orbit,
+                t.spinner_style.shader_id(),
+                0.0,
+            ],
         };
         Self { uniforms }
     }
@@ -739,8 +744,8 @@ fn vs_main(@builtin(vertex_index) vi: u32) -> VsOut {
 
 const TAU: f32 = 6.2831853;
 
-@fragment
-fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
+// The signature comet emblem (style 0).
+fn comet_spin(in: VsOut) -> vec4<f32> {
   let aspect = u.res.x / max(u.res.y, 1.0);
   var p = in.uv - vec2(0.5, 0.5);
   p.x = p.x * aspect;                 // circular orbit regardless of bounds
@@ -817,6 +822,88 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
   acc = acc * u.fade;
   cov = clamp(cov, 0.0, 1.0) * u.fade;
   return vec4(acc, cov);
+}
+
+// Ring (style 1): a thin orbit ring with a bright arc trailing the rotating head.
+fn ring_spin(in: VsOut) -> vec4<f32> {
+  let aspect = u.res.x / max(u.res.y, 1.0);
+  var p = in.uv - vec2(0.5, 0.5);
+  p.x = p.x * aspect;
+  let r = length(p);
+  let R = max(u.params2.y, 0.05);
+  let speed = u.params.z;
+  let ang = atan2(p.y, p.x);
+  let head = u.time * speed;
+  var d = head - ang;
+  d = d - floor(d / TAU) * TAU;
+  let band = exp(-(r - R) * (r - R) * 2400.0);
+  let arc = band * exp(-d * 1.6);
+  let track = band * u.params2.x * 0.5;
+  var acc = u.comet.rgb * arc + u.track.rgb * track;
+  var cov = arc + track;
+  let edge = 1.0 - smoothstep(0.42, 0.49, r);
+  acc = acc * edge * u.fade;
+  cov = clamp(cov, 0.0, 1.0) * edge * u.fade;
+  return vec4(acc, cov);
+}
+
+// Dots (style 2): eight dots on the orbit, one chasing bright around the ring.
+fn dots_spin(in: VsOut) -> vec4<f32> {
+  let aspect = u.res.x / max(u.res.y, 1.0);
+  var p = in.uv - vec2(0.5, 0.5);
+  p.x = p.x * aspect;
+  let R = max(u.params2.y, 0.05);
+  let speed = u.params.z;
+  var acc = vec3(0.0);
+  var cov = 0.0;
+  for (var i = 0; i < 8; i = i + 1) {
+    let a = TAU * f32(i) / 8.0;
+    let dp = vec2(cos(a), sin(a)) * R;
+    let dd = p - dp;
+    let dotg = exp(-dot(dd, dd) * 3000.0);
+    let ph = fract(u.time * speed / TAU + f32(i) / 8.0);
+    let br = 0.18 + 0.82 * pow(ph, 3.0);
+    acc = acc + u.comet.rgb * dotg * br;
+    cov = cov + dotg * br;
+  }
+  let r = length(p);
+  let edge = 1.0 - smoothstep(0.42, 0.49, r);
+  acc = acc * edge * u.fade;
+  cov = clamp(cov, 0.0, 1.0) * edge * u.fade;
+  return vec4(acc, cov);
+}
+
+// Pulse (style 3): a breathing core with a soft expanding ring.
+fn pulse_spin(in: VsOut) -> vec4<f32> {
+  let aspect = u.res.x / max(u.res.y, 1.0);
+  var p = in.uv - vec2(0.5, 0.5);
+  p.x = p.x * aspect;
+  let r = length(p);
+  let t = u.time * max(u.params.z, 0.1);
+  let breath = 0.5 + 0.5 * sin(t * 2.0);
+  let core = exp(-r * r * (900.0 + 1400.0 * (1.0 - breath)));
+  let rr = fract(t * 0.4) * 0.34;
+  let fade_ring = 1.0 - fract(t * 0.4);
+  let ring = exp(-(r - rr) * (r - rr) * 1600.0) * fade_ring * 0.7;
+  var acc = u.comet.rgb * (core + ring) + u.track.rgb * ring * 0.3;
+  var cov = core + ring;
+  let edge = 1.0 - smoothstep(0.42, 0.49, r);
+  acc = acc * edge * u.fade;
+  cov = clamp(cov, 0.0, 1.0) * edge * u.fade;
+  return vec4(acc, cov);
+}
+
+@fragment
+fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
+  let style = u.params2.z;
+  if (style < 0.5) {
+    return comet_spin(in);
+  } else if (style < 1.5) {
+    return ring_spin(in);
+  } else if (style < 2.5) {
+    return dots_spin(in);
+  }
+  return pulse_spin(in);
 }
 "#;
 

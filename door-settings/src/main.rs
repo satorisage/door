@@ -19,7 +19,7 @@ use iced::{
 };
 
 use door_theme::skyshader::{FrostShader, SkyShader, SpinnerShader};
-use door_theme::{CardPos, Color, SkyMode, Theme};
+use door_theme::{CardPos, Color, SkyMode, SpinnerStyle, Theme};
 
 fn main() -> iced::Result {
     iced::application(State::new, update, view)
@@ -177,6 +177,7 @@ enum Message {
     Vignette(f32),
     SpinnerOrbit(f32),
     // Spinner
+    SpinnerStylePicked(SpinnerStyle),
     SpinnerSize(f32),
     SpinnerPulse(f32),
     // Card
@@ -246,6 +247,7 @@ struct State {
     cloud_lit: String,
     cloud_shadow: String,
     cursor_parallax: f32,
+    spinner_style: SpinnerStyle,
     card_gradient: f32,
     grain: f32,
     vignette: f32,
@@ -419,6 +421,7 @@ impl State {
             cloud_lit: night.cloud_lit.to_hex(),
             cloud_shadow: night.cloud_shadow.to_hex(),
             cursor_parallax: night.cursor_parallax,
+            spinner_style: night.spinner_style,
             card_gradient: night.card_gradient,
             grain: night.grain,
             vignette: night.vignette,
@@ -494,6 +497,7 @@ impl State {
         self.cloud_lit = night.cloud_lit.to_hex();
         self.cloud_shadow = night.cloud_shadow.to_hex();
         self.cursor_parallax = night.cursor_parallax;
+        self.spinner_style = night.spinner_style;
         self.card_gradient = night.card_gradient;
         self.grain = night.grain;
         self.vignette = night.vignette;
@@ -637,6 +641,7 @@ impl State {
             cloud_lit: color("Cloud lit", &self.cloud_lit)?,
             cloud_shadow: color("Cloud shadow", &self.cloud_shadow)?,
             cursor_parallax: self.cursor_parallax,
+            spinner_style: self.spinner_style,
             card_gradient: self.card_gradient,
             grain: self.grain,
             vignette: self.vignette,
@@ -758,6 +763,7 @@ fn update(state: &mut State, message: Message) -> Task<Message> {
         Message::Grain(v) => state.grain = v.clamp(0.0, 0.3),
         Message::Vignette(v) => state.vignette = v.clamp(0.0, 1.0),
         Message::SpinnerOrbit(v) => state.spinner_orbit = v.clamp(0.1, 0.45),
+        Message::SpinnerStylePicked(s) => state.spinner_style = s,
         Message::SpinnerSize(v) => state.spinner_size = v.clamp(24.0, 120.0),
         Message::SpinnerPulse(v) => state.spinner_pulse = v.clamp(0.0, 3.0),
         Message::CardShadowBlur(v) => state.card_shadow_blur = v.clamp(0.0, 80.0),
@@ -1541,6 +1547,24 @@ fn spinner_tab<'a>(state: &'a State, pal: &'a Palette, h: bool) -> Element<'a, M
     let main = group(
         "SPINNER",
         column![
+            helped(
+                row![
+                    color_label("Style"),
+                    pick_list(
+                        &SpinnerStyle::ALL[..],
+                        Some(state.spinner_style),
+                        Message::SpinnerStylePicked
+                    )
+                    .text_size(13)
+                    .padding(6)
+                    .width(Length::Fill),
+                ]
+                .spacing(10)
+                .align_y(Alignment::Center)
+                .into(),
+                "Emblem style (used when no logo image is set).",
+                h
+            ),
             row![
                 color_cell("Comet", &pal.comet, Param::SpinnerComet),
                 color_cell("Track", &pal.track, Param::SpinnerTrack)
