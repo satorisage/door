@@ -385,6 +385,10 @@ pub struct Theme {
     pub logo_box_radius: f32,
     /// 24-hour clock (`true`) vs 12-hour. Shared.
     pub clock_24h: bool,
+    /// Show seconds on the clock (`HH:MM:SS`). Shared.
+    pub clock_seconds: bool,
+    /// Clock font size (px). Shared.
+    pub clock_size: f32,
     /// Launch fade-in duration (ms). Shared.
     pub fade_ms: f32,
 
@@ -467,6 +471,8 @@ impl Default for Theme {
             logo_box: Color::rgba(0x00, 0x00, 0x00, 0x00),
             logo_box_radius: 14.0,
             clock_24h: true,
+            clock_seconds: false,
+            clock_size: 56.0,
             fade_ms: 384.0,
             glow_falloff: 3.2,
             nebula_amount: 0.12,
@@ -550,6 +556,8 @@ impl Theme {
             accent_breathing: 1.0,
             field_radius: 10.0,
             clock_24h: true,
+            clock_seconds: false,
+            clock_size: 56.0,
             fade_ms: 384.0,
             glow_falloff: 3.2,
             nebula_amount: 0.12,
@@ -625,6 +633,8 @@ struct ThemeFile {
     logo_box: Option<String>,
     logo_box_radius: Option<f32>,
     clock_24h: Option<bool>,
+    clock_seconds: Option<bool>,
+    clock_size: Option<f32>,
     fade_ms: Option<f32>,
     glow_falloff: Option<f32>,
     nebula_amount: Option<f32>,
@@ -805,6 +815,8 @@ impl Theme {
         self.logo_box = color("logo_box", file.logo_box, self.logo_box);
         merge_f32(&mut self.logo_box_radius, file.logo_box_radius);
         merge_bool(&mut self.clock_24h, file.clock_24h);
+        merge_bool(&mut self.clock_seconds, file.clock_seconds);
+        merge_f32(&mut self.clock_size, file.clock_size);
         merge_f32(&mut self.fade_ms, file.fade_ms);
         merge_f32(&mut self.glow_falloff, file.glow_falloff);
         merge_f32(&mut self.nebula_amount, file.nebula_amount);
@@ -893,6 +905,8 @@ impl Theme {
         merge_f32(&mut self.field_radius, file.field_radius);
         merge_f32(&mut self.logo_box_radius, file.logo_box_radius);
         merge_bool(&mut self.clock_24h, file.clock_24h);
+        merge_bool(&mut self.clock_seconds, file.clock_seconds);
+        merge_f32(&mut self.clock_size, file.clock_size);
         merge_f32(&mut self.fade_ms, file.fade_ms);
         merge_f32(&mut self.glow_falloff, file.glow_falloff);
         merge_f32(&mut self.nebula_amount, file.nebula_amount);
@@ -1149,6 +1163,8 @@ impl Theme {
         out.push_str(&format!("logo_box      = {:?}\n", self.logo_box.to_hex()));
         out.push_str(&format!("logo_box_radius = {}\n", self.logo_box_radius));
         out.push_str(&format!("clock_24h     = {}\n", self.clock_24h));
+        out.push_str(&format!("clock_seconds = {}\n", self.clock_seconds));
+        out.push_str(&format!("clock_size    = {}\n", self.clock_size));
         out.push_str(&format!("fade_ms       = {}\n", self.fade_ms));
         out.push_str("# Expert\n");
         out.push_str(&format!("glow_falloff  = {}\n", self.glow_falloff));

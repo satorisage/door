@@ -186,6 +186,8 @@ enum Message {
     LogoBoxRadius(f32),
     // Behavior
     Clock24h(bool),
+    ClockSeconds(bool),
+    ClockSize(f32),
     CardBlur(bool),
     FadeMs(f32),
     // Expert
@@ -254,6 +256,8 @@ struct State {
     field_radius: f32,
     logo_box_radius: f32,
     clock_24h: bool,
+    clock_seconds: bool,
+    clock_size: f32,
     fade_ms: f32,
     // Expert (advanced) shared controls (Tier 3).
     glow_falloff: f32,
@@ -424,6 +428,8 @@ impl State {
             field_radius: night.field_radius,
             logo_box_radius: night.logo_box_radius,
             clock_24h: night.clock_24h,
+            clock_seconds: night.clock_seconds,
+            clock_size: night.clock_size,
             fade_ms: night.fade_ms,
             glow_falloff: night.glow_falloff,
             nebula_amount: night.nebula_amount,
@@ -496,6 +502,8 @@ impl State {
         self.field_radius = night.field_radius;
         self.logo_box_radius = night.logo_box_radius;
         self.clock_24h = night.clock_24h;
+        self.clock_seconds = night.clock_seconds;
+        self.clock_size = night.clock_size;
         self.fade_ms = night.fade_ms;
         self.glow_falloff = night.glow_falloff;
         self.nebula_amount = night.nebula_amount;
@@ -632,6 +640,8 @@ impl State {
             accent_breathing: self.accent_breathing,
             field_radius: self.field_radius,
             clock_24h: self.clock_24h,
+            clock_seconds: self.clock_seconds,
+            clock_size: self.clock_size,
             fade_ms: self.fade_ms,
             glow_falloff: self.glow_falloff,
             nebula_amount: self.nebula_amount,
@@ -746,6 +756,8 @@ fn update(state: &mut State, message: Message) -> Task<Message> {
         Message::FieldRadius(v) => state.field_radius = v.clamp(0.0, 30.0),
         Message::LogoBoxRadius(v) => state.logo_box_radius = v.clamp(0.0, 40.0),
         Message::Clock24h(on) => state.clock_24h = on,
+        Message::ClockSeconds(on) => state.clock_seconds = on,
+        Message::ClockSize(v) => state.clock_size = v.clamp(24.0, 120.0),
         Message::CardBlur(on) => state.card_blur = on,
         Message::FadeMs(v) => state.fade_ms = v.clamp(0.0, 2000.0),
         // Expert.
@@ -1735,6 +1747,23 @@ fn behavior_tab<'a>(state: &'a State, h: bool) -> Element<'a, Message> {
                 h
             ),
             helped(
+                toggle_row("Show seconds", state.clock_seconds, Message::ClockSeconds),
+                "Show seconds on the clock (HH:MM:SS).",
+                h
+            ),
+            helped(
+                slider_row(
+                    "Clock size",
+                    state.clock_size,
+                    24.0..=120.0,
+                    1.0,
+                    format!("{:.0}px", state.clock_size),
+                    Message::ClockSize
+                ),
+                "Clock font size.",
+                h
+            ),
+            helped(
                 toggle_row("Animate sky", state.animate, Message::ToggleAnimate),
                 "Run the stars + comet animation.",
                 h
@@ -2079,7 +2108,9 @@ fn preview_card(t: &Theme, anim: f32) -> Element<'static, Message> {
 
     let header: Element<Message> = if t.show_clock {
         column![
-            text("12:34").size(54).color(fg),
+            text(if t.clock_seconds { "12:34:56" } else { "12:34" })
+                .size(t.clock_size)
+                .color(fg),
             text("Friday, June 27").size(13).color(muted),
         ]
         .spacing(2)

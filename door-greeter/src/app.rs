@@ -248,7 +248,7 @@ impl State {
         // Pick the day or night variant by the local clock — the greeter runs
         // pre-login, so it can't read the user's color scheme; time is the trigger.
         let theme = Theme::load_at(now_minutes(), now_month());
-        let clock = now_hm(theme.clock_24h);
+        let clock = now_hm(theme.clock_24h, theme.clock_seconds);
         State {
             phase: Phase::Connecting,
             sessions: Vec::new(),
@@ -370,7 +370,7 @@ fn update(state: &mut State, message: Message) -> Task<Message> {
         }
         Message::PowerPressed(action) => state.send(Command::Power(action)),
         Message::Tick => {
-            state.clock = now_hm(state.theme.clock_24h);
+            state.clock = now_hm(state.theme.clock_24h, state.theme.clock_seconds);
             state.date = now_date();
         }
         Message::Fade => state.fade = (state.fade + 16.0 / state.theme.fade_ms.max(16.0)).min(1.0),
@@ -400,16 +400,26 @@ fn local_tm() -> Option<libc::tm> {
 }
 
 /// Local wall-clock time — `HH:MM` (24-hour) or `H:MM AM/PM` (12-hour).
-fn now_hm(clock_24h: bool) -> String {
+fn now_hm(clock_24h: bool, seconds: bool) -> String {
     match local_tm() {
-        Some(tm) if clock_24h => format!("{:02}:{:02}", tm.tm_hour, tm.tm_min),
+        Some(tm) if clock_24h => {
+            if seconds {
+                format!("{:02}:{:02}:{:02}", tm.tm_hour, tm.tm_min, tm.tm_sec)
+            } else {
+                format!("{:02}:{:02}", tm.tm_hour, tm.tm_min)
+            }
+        }
         Some(tm) => {
             let h12 = match tm.tm_hour % 12 {
                 0 => 12,
                 h => h,
             };
             let meridiem = if tm.tm_hour < 12 { "AM" } else { "PM" };
-            format!("{}:{:02} {}", h12, tm.tm_min, meridiem)
+            if seconds {
+                format!("{}:{:02}:{:02} {}", h12, tm.tm_min, tm.tm_sec, meridiem)
+            } else {
+                format!("{}:{:02} {}", h12, tm.tm_min, meridiem)
+            }
         }
         None => String::new(),
     }
@@ -475,7 +485,7 @@ fn view(state: &State) -> Element<'_, Message> {
     // Clock + date — the minimal focal point at the top of the card.
     let header: Element<Message> = if t.show_clock {
         column![
-            text(state.clock.clone()).size(56).color(fg),
+            text(state.clock.clone()).size(t.clock_size).color(fg),
             text(state.date.clone()).size(13).color(muted),
         ]
         .spacing(2)
