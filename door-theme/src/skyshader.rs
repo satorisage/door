@@ -787,6 +787,76 @@ fn aurora_sky(uv: vec2<f32>, p: vec2<f32>, aspect: f32) -> vec3<f32> {
   return col + tint * 0.6 * fade;
 }
 
+// Storm: dark churning clouds with periodic lightning. Each ~1.25s window has a chance
+// to flash; the flash lights the whole cloudscape and draws a jagged vertical bolt that
+// decays fast. Pseudo-random per-window via hash21(floor(time*rate)).
+fn storm_sky(uv: vec2<f32>, p: vec2<f32>, aspect: f32) -> vec3<f32> {
+  var col = mix(vec3(0.06, 0.07, 0.10), vec3(0.02, 0.025, 0.04), smoothstep(0.0, 1.0, uv.y));
+  // Churning clouds (two fbm octaves drifting opposite ways).
+  let c1 = fbm(p * 3.0 + vec2(u.time * 0.04, 0.0));
+  let c2 = fbm(p * 6.0 + vec2(u.time * -0.06, 1.7));
+  let clouds = clamp(c1 * 0.7 + c2 * 0.4, 0.0, 1.0);
+  col = col + vec3(0.05, 0.055, 0.075) * clouds;
+
+  // Lightning: per-window strike chance + fast decay envelope.
+  let rate = 0.8;
+  let seg = floor(u.time * rate);
+  let ft = fract(u.time * rate);
+  let strike = hash21(vec2(seg, 3.0));
+  var flash = 0.0;
+  if (strike < 0.32) {
+    flash = exp(-ft * 9.0) * (0.7 + 0.3 * sin(ft * 90.0));
+  }
+  // Whole-sky flash, brighter where clouds are dense.
+  col = col + vec3(0.55, 0.6, 0.8) * flash * (0.4 + clouds);
+  // A jagged bolt at a per-strike x, upper sky only.
+  let boltx = 0.25 + 0.5 * hash21(vec2(seg, 7.0));
+  let jag = boltx + 0.018 * sin(uv.y * 50.0) + 0.02 * fbm(vec2(uv.y * 9.0, seg));
+  let bd = abs(uv.x - jag);
+  let bolt = exp(-bd * bd * 7000.0) * smoothstep(0.72, 0.0, uv.y) * flash;
+  col = col + vec3(0.85, 0.9, 1.0) * bolt * 2.5;
+  return col;
+}
+
+// Rain: a calm overcast sky with several parallax layers of falling streaks.
+fn rain_sky(uv: vec2<f32>, p: vec2<f32>, aspect: f32) -> vec3<f32> {
+  var col = mix(vec3(0.16, 0.18, 0.22), vec3(0.10, 0.115, 0.14), smoothstep(0.0, 1.0, uv.y));
+  var rain = 0.0;
+  for (var l = 0; l < 3; l = l + 1) {
+    let fl = f32(l);
+    let sc = vec2(46.0 + fl * 18.0, 7.0 + fl * 2.0);
+    var rp = vec2(uv.x * aspect, uv.y) * sc;
+    rp.x = rp.x + fl * 11.0 + uv.y * 4.0;        // slight diagonal slant
+    rp.y = rp.y + u.time * (5.0 + fl * 2.5) * sc.y / 7.0;
+    let cell = floor(rp);
+    let h = hash21(cell + fl * 31.0);
+    let f = fract(rp) - vec2(0.5, 0.5);
+    // thin in x, a short dash in y
+    let streak = step(0.93, h) * exp(-f.x * f.x * 80.0) * smoothstep(0.5, 0.0, abs(f.y));
+    rain = rain + streak * (0.7 + fl * 0.2);
+  }
+  return col + vec3(0.55, 0.62, 0.72) * rain * 0.5;
+}
+
+// Snow: a soft winter twilight with drifting, swaying flakes across parallax layers.
+fn snow_sky(uv: vec2<f32>, p: vec2<f32>, aspect: f32) -> vec3<f32> {
+  var col = mix(vec3(0.58, 0.63, 0.72), vec3(0.40, 0.45, 0.56), smoothstep(0.0, 1.0, uv.y));
+  var snow = 0.0;
+  for (var l = 0; l < 3; l = l + 1) {
+    let fl = f32(l);
+    let sc = 13.0 + fl * 7.0;
+    var sp = vec2(uv.x * aspect, uv.y) * sc;
+    sp.y = sp.y + u.time * (0.9 + fl * 0.5);
+    sp.x = sp.x + sin(u.time * 0.5 + fl + sp.y * 0.25) * 0.6;   // sway
+    let cell = floor(sp);
+    let h = hash21(cell + fl * 23.0);
+    let f = fract(sp) - vec2(0.5, 0.5);
+    let flake = step(0.86, h) * exp(-dot(f, f) * (18.0 + fl * 14.0));
+    snow = snow + flake * (0.6 + fl * 0.3);
+  }
+  return col + vec3(1.0, 1.0, 1.0) * snow;
+}
+
 @fragment
 fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
   let uv = in.uv;
@@ -798,8 +868,16 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
 
   var col: vec3<f32>;
   if (mode > 0.5) {
-    // Explicit sky scenes (M7-B). Only aurora (1) for now.
-    col = aurora_sky(uv, p, aspect);
+    // Explicit sky scenes (M7-B), dispatched by id.
+    if (mode < 1.5) {
+      col = aurora_sky(uv, p, aspect);
+    } else if (mode < 2.5) {
+      col = storm_sky(uv, p, aspect);
+    } else if (mode < 3.5) {
+      col = rain_sky(uv, p, aspect);
+    } else {
+      col = snow_sky(uv, p, aspect);
+    }
   } else if (day > 0.5) {
     col = day_sky(uv, p, aspect);
   } else {
@@ -871,7 +949,9 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     let nuc = exp(-dot(rel, rel) * 3000.0);   // white-hot nucleus
     let coma = exp(-dot(rel, rel) * 300.0);   // soft round coma
     let ccol = mix(u.comet.rgb, vec3(1.0, 1.0, 1.0), nuc * 0.7);
-    col = col + ccol * (nuc * 1.5 + coma * 0.45 + tail * 0.85) * u.params.y;
+    // Gate the comet to auto/aurora skies (step(mode,1.5) = 1 for mode<=1.5, else 0);
+    // a sweeping comet over storm/rain/snow reads wrong.
+    col = col + ccol * (nuc * 1.5 + coma * 0.45 + tail * 0.85) * u.params.y * step(mode, 1.5);
   }
 
   // Ordered dither — one sub-LSB of noise so 8-bit targets never band.

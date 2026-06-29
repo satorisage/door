@@ -91,16 +91,31 @@ pub enum SkyMode {
     Auto,
     /// Flowing aurora curtains over a night sky.
     Aurora,
+    /// Dark churning clouds with periodic lightning flashes + a bolt.
+    Storm,
+    /// Overcast sky with falling rain streaks.
+    Rain,
+    /// Soft winter sky with drifting snowflakes.
+    Snow,
 }
 
 impl SkyMode {
     /// Every mode, for the settings picker.
-    pub const ALL: [SkyMode; 2] = [SkyMode::Auto, SkyMode::Aurora];
+    pub const ALL: [SkyMode; 5] = [
+        SkyMode::Auto,
+        SkyMode::Aurora,
+        SkyMode::Storm,
+        SkyMode::Rain,
+        SkyMode::Snow,
+    ];
     /// The shader selector value (0 = auto → the day/night renderer).
     pub fn shader_id(self) -> f32 {
         match self {
             SkyMode::Auto => 0.0,
             SkyMode::Aurora => 1.0,
+            SkyMode::Storm => 2.0,
+            SkyMode::Rain => 3.0,
+            SkyMode::Snow => 4.0,
         }
     }
     /// The lowercase name used in the config and the picker.
@@ -108,6 +123,9 @@ impl SkyMode {
         match self {
             SkyMode::Auto => "auto",
             SkyMode::Aurora => "aurora",
+            SkyMode::Storm => "storm",
+            SkyMode::Rain => "rain",
+            SkyMode::Snow => "snow",
         }
     }
 }
