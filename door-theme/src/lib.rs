@@ -80,6 +80,44 @@ impl Color {
     }
 }
 
+/// The sky scene the greeter renders. `Auto` keeps the day/night-by-clock behavior
+/// (the default); the others force a specific animated scene regardless of time.
+/// New modes are added here + as a branch in the sky shader (M7 group B).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SkyMode {
+    /// Day or night by the local clock — the default behavior.
+    #[default]
+    Auto,
+    /// Flowing aurora curtains over a night sky.
+    Aurora,
+}
+
+impl SkyMode {
+    /// Every mode, for the settings picker.
+    pub const ALL: [SkyMode; 2] = [SkyMode::Auto, SkyMode::Aurora];
+    /// The shader selector value (0 = auto → the day/night renderer).
+    pub fn shader_id(self) -> f32 {
+        match self {
+            SkyMode::Auto => 0.0,
+            SkyMode::Aurora => 1.0,
+        }
+    }
+    /// The lowercase name used in the config and the picker.
+    pub fn name(self) -> &'static str {
+        match self {
+            SkyMode::Auto => "auto",
+            SkyMode::Aurora => "aurora",
+        }
+    }
+}
+
+impl std::fmt::Display for SkyMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.name())
+    }
+}
+
 /// The resolved theme the UI renders against. Every field has a built-in default.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Theme {
@@ -113,6 +151,9 @@ pub struct Theme {
     /// True for the light (Tokyo Night Day) variant — the sky recolors for a light
     /// background. Set by which built-in this resolved from, not from the file.
     pub is_day: bool,
+    /// Which sky scene to render. `Auto` = day/night by clock; others force a scene.
+    /// Shared.
+    pub sky_mode: SkyMode,
     /// Comet-spinner head-glow intensity (0–1). Per variant: bright glow blends on a
     /// dark card but bands on a light one, so day defaults low. 0 = crisp, no bloom.
     pub spinner_glow: f32,
@@ -241,6 +282,7 @@ impl Default for Theme {
             show_clock: true,
             animate: true,
             is_day: false,
+            sky_mode: SkyMode::Auto,
             spinner_glow: 1.0,
             spinner_speed: 2.5,
             spinner_comet: Color::rgb(0x7d, 0xcf, 0xff),
@@ -312,6 +354,7 @@ impl Theme {
             show_clock: true,
             animate: true,
             is_day: true,
+            sky_mode: SkyMode::Auto,
             // No head bloom on the bright card (the bloom bands on light); crisp.
             spinner_glow: 0.0,
             spinner_speed: 2.5,
@@ -385,6 +428,7 @@ struct ThemeFile {
     card_width: Option<f32>,
     show_clock: Option<bool>,
     animate: Option<bool>,
+    sky_mode: Option<SkyMode>,
     spinner_glow: Option<f32>,
     spinner_speed: Option<f32>,
     spinner_comet: Option<String>,
@@ -547,6 +591,9 @@ impl Theme {
         if let Some(a) = file.animate {
             self.animate = a;
         }
+        if let Some(m) = file.sky_mode {
+            self.sky_mode = m;
+        }
         if let Some(g) = file.spinner_glow {
             self.spinner_glow = g;
         }
@@ -620,6 +667,9 @@ impl Theme {
         }
         if let Some(a) = file.animate {
             self.animate = a;
+        }
+        if let Some(m) = file.sky_mode {
+            self.sky_mode = m;
         }
         // spinner_speed is shared across variants; spinner_glow is per-variant ([day]).
         if let Some(s) = file.spinner_speed {
@@ -849,6 +899,7 @@ impl Theme {
         out.push_str(&format!("card_width    = {}\n", self.card_width));
         out.push_str(&format!("show_clock    = {}\n", self.show_clock));
         out.push_str(&format!("animate       = {}\n", self.animate));
+        out.push_str(&format!("sky_mode      = {:?}\n", self.sky_mode.name()));
         out.push_str(&format!("spinner_glow  = {}\n", self.spinner_glow));
         out.push_str(&format!("spinner_speed = {}\n", self.spinner_speed));
         out.push_str(&format!(

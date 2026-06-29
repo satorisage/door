@@ -19,7 +19,7 @@ use iced::{
 };
 
 use door_theme::skyshader::{SkyShader, SpinnerShader};
-use door_theme::{Color, Theme};
+use door_theme::{Color, SkyMode, Theme};
 
 fn main() -> iced::Result {
     iced::application(State::new, update, view)
@@ -141,6 +141,7 @@ enum Message {
     EditDay(bool),
     ToggleClock(bool),
     ToggleAnimate(bool),
+    SkyModePicked(SkyMode),
     SelectTab(Tab),
     ToggleHelp(bool),
     ToggleExpert(bool),
@@ -208,6 +209,7 @@ struct State {
     spinner_speed: f32,
     show_clock: bool,
     animate: bool,
+    sky_mode: SkyMode,
     // Shared sky / spinner / card / behavior controls (Tier 1+2).
     star_density: f32,
     star_twinkle: f32,
@@ -372,6 +374,7 @@ impl State {
             spinner_speed: night.spinner_speed,
             show_clock: night.show_clock,
             animate: night.animate,
+            sky_mode: night.sky_mode,
             star_density: night.star_density,
             star_twinkle: night.star_twinkle,
             comet_enabled: night.comet_enabled,
@@ -437,6 +440,7 @@ impl State {
         self.spinner_speed = night.spinner_speed;
         self.show_clock = night.show_clock;
         self.animate = night.animate;
+        self.sky_mode = night.sky_mode;
         self.star_density = night.star_density;
         self.star_twinkle = night.star_twinkle;
         self.comet_enabled = night.comet_enabled;
@@ -556,6 +560,7 @@ impl State {
             show_clock: self.show_clock,
             animate: self.animate,
             is_day: day,
+            sky_mode: self.sky_mode,
             spinner_glow: pal.glow,
             spinner_speed: self.spinner_speed,
             spinner_comet: color("Comet", &pal.comet)?,
@@ -664,6 +669,7 @@ fn update(state: &mut State, message: Message) -> Task<Message> {
         Message::ToggleExpert(on) => state.expert = on,
         Message::ToggleClock(on) => state.show_clock = on,
         Message::ToggleAnimate(on) => state.animate = on,
+        Message::SkyModePicked(m) => state.sky_mode = m,
         // Per-variant sky glow.
         Message::SkyGlow(v) => {
             let pal = if state.editing_day {
@@ -1055,6 +1061,24 @@ fn sky_tab<'a>(state: &'a State, pal: &'a Palette, h: bool) -> Element<'a, Messa
     let main = group(
         "SKY",
         column![
+            helped(
+                row![
+                    color_label("Scene"),
+                    pick_list(
+                        &SkyMode::ALL[..],
+                        Some(state.sky_mode),
+                        Message::SkyModePicked
+                    )
+                    .text_size(13)
+                    .padding(6)
+                    .width(Length::Fill),
+                ]
+                .spacing(10)
+                .align_y(Alignment::Center)
+                .into(),
+                "Sky scene: auto (day/night by clock), or a fixed scene like aurora.",
+                h
+            ),
             helped(
                 color_cell("Comet color", &pal.comet_color, Param::SkyComet),
                 "Color of the comet that drifts across the background.",

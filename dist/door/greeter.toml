@@ -31,6 +31,9 @@ show_clock    = true       # show the clock + date in the card
 # Animated sky: a twinkling Tokyo Night starfield + a drifting comet (a native
 # port of the com.genny.tokyonightcomet Plasma wallpaper). false → still wallpaper.
 animate       = true
+# Sky scene: "auto" (day/night by the clock, the default) or a fixed animated scene.
+# Scenes so far: "aurora" (flowing curtains over a night sky). More via M7-B.
+# sky_mode      = "auto"
 # Comet-spinner controls. glow = head bloom (0 = crisp; a bright bloom blends on a
 # dark card but bands on a light one, so the day variant below defaults to 0).
 # speed = rotation in rad/s. Both also have sliders in door-settings.

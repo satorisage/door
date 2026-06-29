@@ -45,7 +45,8 @@ struct Uniforms {
     params4: [f32; 4],
     /// Daytime sun halo tint (rgb; a unused).
     sun_col: [f32; 4],
-    /// x = night glow center x (0–1), y = glow center y (0–1), z = day haze, w unused.
+    /// x = night glow center x (0–1), y = glow center y (0–1), z = day haze,
+    /// w = sky mode (0 = auto/day-night, 1 = aurora).
     params5: [f32; 4],
     /// x = star layers, y = star size mult, z = nebula drift speed, w unused.
     params6: [f32; 4],
@@ -126,7 +127,7 @@ impl SkyShader {
             ],
             params4: [t.sun_x, t.sun_y, t.sun_size, t.sun_intensity],
             sun_col: t.sun_color.iced().into_linear(),
-            params5: [t.glow_x, t.glow_y, t.day_haze, 0.0],
+            params5: [t.glow_x, t.glow_y, t.day_haze, t.sky_mode.shader_id()],
             params6: [t.star_layers, t.star_size, t.nebula_speed, 0.0],
             params7: [t.comet_tilt, t.comet_pause, t.comet_width, 0.0],
             cloud_lit: t.cloud_lit.iced().into_linear(),
@@ -743,6 +744,49 @@ fn day_sky(uv: vec2<f32>, p: vec2<f32>, aspect: f32) -> vec3<f32> {
   return col;
 }
 
+// Aurora borealis: flowing green→magenta curtains over a night sky, with a faint
+// starfield behind. Each curtain is a wavy ribbon (fbm + sin waver) with a vertical
+// "ray" striation scrolled over time and a slow brightness pulse. Colors lean on the
+// theme background/glow for the night base so it sits in the chosen palette.
+fn aurora_sky(uv: vec2<f32>, p: vec2<f32>, aspect: f32) -> vec3<f32> {
+  let bg = u.bg_bot.rgb;
+  let top = mix(bg, u.glow.rgb, 0.35);
+  var col = mix(top, bg, smoothstep(0.0, 1.0, uv.y));
+
+  // Faint stars behind the curtains.
+  let gp = uv * vec2(aspect, 1.0) * 18.0;
+  let cell = floor(gp);
+  let h = hash21(cell);
+  if (h > 0.93) {
+    let cp = fract(gp) - vec2(0.5, 0.5);
+    col = col + vec3(0.8, 0.85, 1.0) * exp(-dot(cp, cp) * 80.0) * (h - 0.93) * 12.0;
+  }
+
+  // Curtains.
+  let green = vec3(0.18, 1.0, 0.66);
+  let magenta = vec3(0.62, 0.30, 1.0);
+  var tint = vec3(0.0);
+  for (var b = 0; b < 3; b = b + 1) {
+    let fb = f32(b);
+    let ph = u.time * (0.12 + fb * 0.03) + fb * 2.0;
+    // Wavy top edge of the curtain; light hangs *downward* from it and fades, so it
+    // reads as a vertical sheet rather than a horizontal ribbon.
+    let topEdge = 0.22 + fb * 0.09
+                + 0.05 * sin(uv.x * 3.0 + ph)
+                + 0.07 * fbm(vec2(uv.x * 1.5 + fb, ph * 0.5));
+    let below = uv.y - topEdge;
+    let vert = smoothstep(0.0, 0.015, below) * exp(-below * (3.2 + fb * 1.5));
+    // Vertical ray striations shimmering across the sheet.
+    let rays = 0.45 + 0.55 * sin(uv.x * 50.0 + fbm(vec2(uv.x * 4.0, ph)) * 8.0 + u.time * 0.4);
+    let glowv = 0.6 + 0.4 * sin(u.time * 0.7 + fb + uv.x * 2.0);
+    let inten = vert * rays * glowv;
+    tint = tint + mix(green, magenta, fract(uv.x * 0.7 + fb * 0.3)) * inten;
+  }
+  // Curtains live in the upper sky; fade toward the horizon.
+  let fade = smoothstep(0.0, 0.4, 1.0 - uv.y);
+  return col + tint * 0.6 * fade;
+}
+
 @fragment
 fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
   let uv = in.uv;
@@ -750,9 +794,13 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
   var p = uv - vec2(0.5, 0.5);
   p.x = p.x * aspect;
   let day = u.params.x;
+  let mode = u.params5.w;
 
   var col: vec3<f32>;
-  if (day > 0.5) {
+  if (mode > 0.5) {
+    // Explicit sky scenes (M7-B). Only aurora (1) for now.
+    col = aurora_sky(uv, p, aspect);
+  } else if (day > 0.5) {
     col = day_sky(uv, p, aspect);
   } else {
     // Night: smooth vertical gradient (per pixel — no banding).
