@@ -190,6 +190,7 @@ enum Message {
     Clock24h(bool),
     ClockSeconds(bool),
     ClockSize(f32),
+    FontScale(f32),
     CardBlur(bool),
     FadeMs(f32),
     // Expert
@@ -263,6 +264,7 @@ struct State {
     clock_24h: bool,
     clock_seconds: bool,
     clock_size: f32,
+    font_scale: f32,
     fade_ms: f32,
     // Expert (advanced) shared controls (Tier 3).
     glow_falloff: f32,
@@ -437,6 +439,7 @@ impl State {
             clock_24h: night.clock_24h,
             clock_seconds: night.clock_seconds,
             clock_size: night.clock_size,
+            font_scale: night.font_scale,
             fade_ms: night.fade_ms,
             glow_falloff: night.glow_falloff,
             nebula_amount: night.nebula_amount,
@@ -513,6 +516,7 @@ impl State {
         self.clock_24h = night.clock_24h;
         self.clock_seconds = night.clock_seconds;
         self.clock_size = night.clock_size;
+        self.font_scale = night.font_scale;
         self.fade_ms = night.fade_ms;
         self.glow_falloff = night.glow_falloff;
         self.nebula_amount = night.nebula_amount;
@@ -656,6 +660,7 @@ impl State {
             clock_24h: self.clock_24h,
             clock_seconds: self.clock_seconds,
             clock_size: self.clock_size,
+            font_scale: self.font_scale,
             fade_ms: self.fade_ms,
             glow_falloff: self.glow_falloff,
             nebula_amount: self.nebula_amount,
@@ -774,6 +779,7 @@ fn update(state: &mut State, message: Message) -> Task<Message> {
         Message::Clock24h(on) => state.clock_24h = on,
         Message::ClockSeconds(on) => state.clock_seconds = on,
         Message::ClockSize(v) => state.clock_size = v.clamp(24.0, 120.0),
+        Message::FontScale(v) => state.font_scale = v.clamp(0.7, 1.8),
         Message::CardBlur(on) => state.card_blur = on,
         Message::FadeMs(v) => state.fade_ms = v.clamp(0.0, 2000.0),
         // Expert.
@@ -1820,6 +1826,18 @@ fn behavior_tab<'a>(state: &'a State, h: bool) -> Element<'a, Message> {
                 h
             ),
             helped(
+                slider_row(
+                    "Text scale",
+                    state.font_scale,
+                    0.7..=1.8,
+                    0.05,
+                    format!("{:.2}×", state.font_scale),
+                    Message::FontScale
+                ),
+                "Accessibility: scale all card text (1 = default).",
+                h
+            ),
+            helped(
                 toggle_row("Animate sky", state.animate, Message::ToggleAnimate),
                 "Run the stars + comet animation.",
                 h
@@ -2174,9 +2192,11 @@ fn preview_card(t: &Theme, anim: f32) -> Element<'static, Message> {
     let header: Element<Message> = if t.show_clock {
         column![
             text(if t.clock_seconds { "12:34:56" } else { "12:34" })
-                .size(t.clock_size)
+                .size(t.clock_size * t.font_scale)
                 .color(fg),
-            text("Friday, June 27").size(13).color(muted),
+            text("Friday, June 27")
+                .size(13.0 * t.font_scale)
+                .color(muted),
         ]
         .spacing(2)
         .align_x(Alignment::Center)
@@ -2211,7 +2231,7 @@ fn preview_card(t: &Theme, anim: f32) -> Element<'static, Message> {
     let field = |placeholder: &'static str, t: &Theme| {
         let muted = t.muted.iced();
         let field = t.field;
-        container(text(placeholder).size(14).color(muted))
+        container(text(placeholder).size(14.0 * t.font_scale).color(muted))
             .width(Length::Fill)
             .padding(11)
             .style(move |_theme| container::Style {
@@ -2227,7 +2247,7 @@ fn preview_card(t: &Theme, anim: f32) -> Element<'static, Message> {
     let accent = t.accent;
     let sign_in = container(
         text("Sign in")
-            .size(15)
+            .size(15.0 * t.font_scale)
             .width(Length::Fill)
             .center()
             .color(iced::Color::from_rgb8(0x16, 0x16, 0x1e)),

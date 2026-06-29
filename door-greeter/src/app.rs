@@ -485,8 +485,10 @@ fn view(state: &State) -> Element<'_, Message> {
     // Clock + date — the minimal focal point at the top of the card.
     let header: Element<Message> = if t.show_clock {
         column![
-            text(state.clock.clone()).size(t.clock_size).color(fg),
-            text(state.date.clone()).size(13).color(muted),
+            text(state.clock.clone())
+                .size(t.clock_size * t.font_scale)
+                .color(fg),
+            text(state.date.clone()).size(13.0 * t.font_scale).color(muted),
         ]
         .spacing(2)
         .align_x(Alignment::Center)
@@ -525,7 +527,7 @@ fn view(state: &State) -> Element<'_, Message> {
         .on_input(Message::UsernameChanged)
         .on_submit(Message::LoginPressed)
         .padding(11)
-        .size(15)
+        .size(15.0 * t.font_scale)
         .style(field_style(t, f));
 
     let password = text_input("password", &state.password)
@@ -533,11 +535,16 @@ fn view(state: &State) -> Element<'_, Message> {
         .on_submit(Message::LoginPressed)
         .secure(true)
         .padding(11)
-        .size(15)
+        .size(15.0 * t.font_scale)
         .style(field_style(t, f));
 
     let busy = matches!(state.phase, Phase::Authenticating | Phase::Started);
-    let mut login = button(text("Sign in").width(Length::Fill).center().size(15))
+    let mut login = button(
+        text("Sign in")
+            .width(Length::Fill)
+            .center()
+            .size(15.0 * t.font_scale),
+    )
         .width(Length::Fill)
         .padding(11)
         .style(button_style(t, f));
@@ -552,7 +559,7 @@ fn view(state: &State) -> Element<'_, Message> {
         Message::SessionPicked,
     )
     .placeholder("session")
-    .text_size(13)
+    .text_size(13.0 * t.font_scale)
     .padding(8)
     .width(Length::Fill)
     .style(picker_style(t, f));
@@ -566,7 +573,10 @@ fn view(state: &State) -> Element<'_, Message> {
         } else {
             muted
         };
-        text(state.status.clone()).size(12).color(tone).into()
+        text(state.status.clone())
+            .size(12.0 * t.font_scale)
+            .color(tone)
+            .into()
     };
 
     let form = column![header, logo, username, password, login, picker, status]

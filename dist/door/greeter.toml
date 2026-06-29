@@ -30,6 +30,7 @@ card_width    = 300.0      # card width (px) — keep it minimal
 show_clock    = true       # show the clock + date in the card
 # clock_seconds = false      # show seconds (HH:MM:SS)
 # clock_size    = 56         # clock font size (px)
+# font_scale    = 1.0        # scale all card text (accessibility / large-text)
 # card_pos     = "center"   # card placement: center | left | right | top | bottom
 # Animated sky: a twinkling Tokyo Night starfield + a drifting comet (a native
 # port of the com.genny.tokyonightcomet Plasma wallpaper). false → still wallpaper.
