@@ -53,6 +53,10 @@ spinner_trail = 1.0         # trail length 0.15–1.0 (shorter = crisper on a li
 # comet_interval = 9.5        # seconds between comet sweeps
 # cloud_amount   = 1.0        # daytime cloud cover multiplier (day theme only)
 # cloud_speed    = 1.0        # daytime cloud drift multiplier
+# sun_x          = 0.24       # daytime sun position, 0–1 across (0 = left)
+# sun_y          = 0.18       # daytime sun position, 0–1 down (0 = top)
+# sun_size       = 0.25       # daytime sun halo radius (bigger = wider glow)
+# sun_intensity  = 0.38       # daytime sun halo brightness (0–1; 0 = none)
 #
 # Spinner / card / behavior
 # spinner_size   = 52.0       # card spinner diameter (px)

@@ -23,7 +23,7 @@ pub struct SkyShader {
 }
 
 /// Uniform block — must match `struct U` in the WGSL below (std140 alignment: a
-/// `vec2 + 2×f32` fills the first 16 bytes, then six 16-byte `vec4`s).
+/// `vec2 + 2×f32` fills the first 16 bytes, then nine 16-byte `vec4`s).
 #[repr(C)]
 #[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 struct Uniforms {
@@ -41,6 +41,8 @@ struct Uniforms {
     params2: [f32; 4],
     /// x = cloud speed, y = glow falloff, z = nebula amount, w = comet tail decay.
     params3: [f32; 4],
+    /// x = sun_x (0–1), y = sun_y (0–1), z = sun halo radius, w = sun intensity.
+    params4: [f32; 4],
 }
 
 fn srgb8(r: u8, g: u8, b: u8) -> Color {
@@ -110,6 +112,7 @@ impl SkyShader {
                 t.nebula_amount,
                 t.comet_tail_decay,
             ],
+            params4: [t.sun_x, t.sun_y, t.sun_size, t.sun_intensity],
         };
         Self { uniforms }
     }
@@ -616,6 +619,7 @@ struct U {
   params: vec4<f32>,
   params2: vec4<f32>,
   params3: vec4<f32>,
+  params4: vec4<f32>,
 };
 @group(0) @binding(0) var<uniform> u: U;
 
@@ -690,13 +694,15 @@ fn day_sky(uv: vec2<f32>, p: vec2<f32>, aspect: f32) -> vec3<f32> {
   let height = 1.0 - uv.y;
   var col = mix(horizon, zenith, smoothstep(0.0, 1.0, height));
 
-  // Sun (upper-left) — a contained warm halo plus a defined near-white core. The
-  // halo is kept tight (falloff) and gentle (intensity) so it reads as a sun rather
-  // than washing the whole upper-left quadrant to white.
-  var sp = vec2(0.24, 0.18) - vec2(0.5, 0.5);
+  // Sun — position (params4.xy, 0–1 UV), halo radius (params4.z) and intensity
+  // (params4.w) are theme knobs; the warm tint + near-white core stay fixed for now.
+  // `size` is a radius (bigger = wider): the gaussian is 1/size² so size 0.25
+  // reproduces the prior falloff of 16, and the halo stays contained, not a wash.
+  var sp = vec2(u.params4.x, u.params4.y) - vec2(0.5, 0.5);
   sp.x = sp.x * aspect;
   let sd = length(p - sp);
-  col = col + vec3(1.0, 0.91, 0.69) * exp(-sd * sd * 16.0) * 0.38;
+  let ssz = max(u.params4.z, 0.02);
+  col = col + vec3(1.0, 0.91, 0.69) * exp(-sd * sd / (ssz * ssz)) * u.params4.w;
   col = mix(col, vec3(1.0, 0.99, 0.96), smoothstep(0.045, 0.028, sd) * 0.85);
   let sundir = normalize(sp);
 

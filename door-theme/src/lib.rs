@@ -147,6 +147,15 @@ pub struct Theme {
     pub cloud_amount: f32,
     /// Daytime cloud drift-speed multiplier (1 = default). Shared.
     pub cloud_speed: f32,
+    /// Daytime sun horizontal position, 0–1 (fraction of width; 0 = left edge).
+    /// Shared (only the day sky draws a sun).
+    pub sun_x: f32,
+    /// Daytime sun vertical position, 0–1 (0 = top). Shared (day-only effect).
+    pub sun_y: f32,
+    /// Daytime sun halo radius (bigger = wider, softer glow). Shared (day-only).
+    pub sun_size: f32,
+    /// Daytime sun halo intensity, 0–1 (0 = no bloom). Shared (day-only effect).
+    pub sun_intensity: f32,
 
     // ── Spinner controls ──
     /// Card spinner size in px. Shared.
@@ -220,6 +229,10 @@ impl Default for Theme {
             comet_interval: 9.5,
             cloud_amount: 1.0,
             cloud_speed: 1.0,
+            sun_x: 0.24,
+            sun_y: 0.18,
+            sun_size: 0.25,
+            sun_intensity: 0.38,
             spinner_size: 52.0,
             spinner_pulse: 1.0,
             card_shadow_blur: 34.0,
@@ -282,6 +295,10 @@ impl Theme {
             comet_interval: 9.5,
             cloud_amount: 1.0,
             cloud_speed: 1.0,
+            sun_x: 0.24,
+            sun_y: 0.18,
+            sun_size: 0.25,
+            sun_intensity: 0.38,
             spinner_size: 52.0,
             spinner_pulse: 1.0,
             card_shadow_blur: 34.0,
@@ -330,6 +347,10 @@ struct ThemeFile {
     comet_interval: Option<f32>,
     cloud_amount: Option<f32>,
     cloud_speed: Option<f32>,
+    sun_x: Option<f32>,
+    sun_y: Option<f32>,
+    sun_size: Option<f32>,
+    sun_intensity: Option<f32>,
     spinner_size: Option<f32>,
     spinner_pulse: Option<f32>,
     card_shadow_blur: Option<f32>,
@@ -482,6 +503,10 @@ impl Theme {
         merge_f32(&mut self.comet_interval, file.comet_interval);
         merge_f32(&mut self.cloud_amount, file.cloud_amount);
         merge_f32(&mut self.cloud_speed, file.cloud_speed);
+        merge_f32(&mut self.sun_x, file.sun_x);
+        merge_f32(&mut self.sun_y, file.sun_y);
+        merge_f32(&mut self.sun_size, file.sun_size);
+        merge_f32(&mut self.sun_intensity, file.sun_intensity);
         merge_f32(&mut self.spinner_size, file.spinner_size);
         merge_f32(&mut self.spinner_pulse, file.spinner_pulse);
         merge_f32(&mut self.card_shadow_blur, file.card_shadow_blur);
@@ -530,6 +555,10 @@ impl Theme {
         merge_f32(&mut self.comet_interval, file.comet_interval);
         merge_f32(&mut self.cloud_amount, file.cloud_amount);
         merge_f32(&mut self.cloud_speed, file.cloud_speed);
+        merge_f32(&mut self.sun_x, file.sun_x);
+        merge_f32(&mut self.sun_y, file.sun_y);
+        merge_f32(&mut self.sun_size, file.sun_size);
+        merge_f32(&mut self.sun_intensity, file.sun_intensity);
         merge_f32(&mut self.spinner_size, file.spinner_size);
         merge_f32(&mut self.spinner_pulse, file.spinner_pulse);
         merge_f32(&mut self.card_shadow_blur, file.card_shadow_blur);
@@ -740,6 +769,10 @@ impl Theme {
         out.push_str(&format!("comet_interval = {}\n", self.comet_interval));
         out.push_str(&format!("cloud_amount  = {}\n", self.cloud_amount));
         out.push_str(&format!("cloud_speed   = {}\n", self.cloud_speed));
+        out.push_str(&format!("sun_x         = {}\n", self.sun_x));
+        out.push_str(&format!("sun_y         = {}\n", self.sun_y));
+        out.push_str(&format!("sun_size      = {}\n", self.sun_size));
+        out.push_str(&format!("sun_intensity = {}\n", self.sun_intensity));
         out.push_str("# Spinner / card / behavior\n");
         out.push_str(&format!("spinner_size  = {}\n", self.spinner_size));
         out.push_str(&format!("spinner_pulse = {}\n", self.spinner_pulse));

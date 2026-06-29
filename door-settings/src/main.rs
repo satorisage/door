@@ -152,6 +152,10 @@ enum Message {
     CometInterval(f32),
     CloudAmount(f32),
     CloudSpeed(f32),
+    SunX(f32),
+    SunY(f32),
+    SunSize(f32),
+    SunIntensity(f32),
     // Spinner
     SpinnerSize(f32),
     SpinnerPulse(f32),
@@ -198,6 +202,10 @@ struct State {
     comet_interval: f32,
     cloud_amount: f32,
     cloud_speed: f32,
+    sun_x: f32,
+    sun_y: f32,
+    sun_size: f32,
+    sun_intensity: f32,
     spinner_size: f32,
     spinner_pulse: f32,
     card_shadow_blur: f32,
@@ -344,6 +352,10 @@ impl State {
             comet_interval: night.comet_interval,
             cloud_amount: night.cloud_amount,
             cloud_speed: night.cloud_speed,
+            sun_x: night.sun_x,
+            sun_y: night.sun_y,
+            sun_size: night.sun_size,
+            sun_intensity: night.sun_intensity,
             spinner_size: night.spinner_size,
             spinner_pulse: night.spinner_pulse,
             card_shadow_blur: night.card_shadow_blur,
@@ -392,6 +404,10 @@ impl State {
         self.comet_interval = night.comet_interval;
         self.cloud_amount = night.cloud_amount;
         self.cloud_speed = night.cloud_speed;
+        self.sun_x = night.sun_x;
+        self.sun_y = night.sun_y;
+        self.sun_size = night.sun_size;
+        self.sun_intensity = night.sun_intensity;
         self.spinner_size = night.spinner_size;
         self.spinner_pulse = night.spinner_pulse;
         self.card_shadow_blur = night.card_shadow_blur;
@@ -505,6 +521,10 @@ impl State {
             comet_interval: self.comet_interval,
             cloud_amount: self.cloud_amount,
             cloud_speed: self.cloud_speed,
+            sun_x: self.sun_x,
+            sun_y: self.sun_y,
+            sun_size: self.sun_size,
+            sun_intensity: self.sun_intensity,
             spinner_size: self.spinner_size,
             spinner_pulse: self.spinner_pulse,
             card_shadow_blur: self.card_shadow_blur,
@@ -595,6 +615,10 @@ fn update(state: &mut State, message: Message) -> Task<Message> {
         Message::CometInterval(v) => state.comet_interval = v.clamp(3.5, 30.0),
         Message::CloudAmount(v) => state.cloud_amount = v.clamp(0.0, 2.0),
         Message::CloudSpeed(v) => state.cloud_speed = v.clamp(0.0, 4.0),
+        Message::SunX(v) => state.sun_x = v.clamp(0.0, 1.0),
+        Message::SunY(v) => state.sun_y = v.clamp(0.0, 1.0),
+        Message::SunSize(v) => state.sun_size = v.clamp(0.05, 0.6),
+        Message::SunIntensity(v) => state.sun_intensity = v.clamp(0.0, 1.0),
         Message::SpinnerSize(v) => state.spinner_size = v.clamp(24.0, 120.0),
         Message::SpinnerPulse(v) => state.spinner_pulse = v.clamp(0.0, 3.0),
         Message::CardShadowBlur(v) => state.card_shadow_blur = v.clamp(0.0, 80.0),
@@ -1048,6 +1072,61 @@ fn sky_tab<'a>(state: &'a State, pal: &'a Palette, h: bool) -> Element<'a, Messa
         .spacing(9)
         .into(),
     );
+    let sun = group(
+        "SUN · DAY",
+        column![
+            helped(
+                slider_row(
+                    "Sun X",
+                    state.sun_x,
+                    0.0..=1.0,
+                    0.01,
+                    format!("{:.2}", state.sun_x),
+                    Message::SunX
+                ),
+                "Horizontal position of the daytime sun (0 = left).",
+                h
+            ),
+            helped(
+                slider_row(
+                    "Sun Y",
+                    state.sun_y,
+                    0.0..=1.0,
+                    0.01,
+                    format!("{:.2}", state.sun_y),
+                    Message::SunY
+                ),
+                "Vertical position of the daytime sun (0 = top).",
+                h
+            ),
+            helped(
+                slider_row(
+                    "Sun size",
+                    state.sun_size,
+                    0.05..=0.6,
+                    0.01,
+                    format!("{:.2}", state.sun_size),
+                    Message::SunSize
+                ),
+                "Radius of the sun's halo (bigger = wider glow).",
+                h
+            ),
+            helped(
+                slider_row(
+                    "Sun glow",
+                    state.sun_intensity,
+                    0.0..=1.0,
+                    0.01,
+                    format!("{}%", (state.sun_intensity * 100.0).round() as u32),
+                    Message::SunIntensity
+                ),
+                "Brightness of the sun's halo (0 = none).",
+                h
+            ),
+        ]
+        .spacing(9)
+        .into(),
+    );
     let advanced = state.expert.then(|| {
         group(
             "SKY · ADVANCED",
@@ -1093,7 +1172,7 @@ fn sky_tab<'a>(state: &'a State, pal: &'a Palette, h: bool) -> Element<'a, Messa
             .into(),
         )
     });
-    let mut col = column![main].spacing(14);
+    let mut col = column![main, sun].spacing(14);
     if let Some(adv) = advanced {
         col = col.push(adv);
     }
