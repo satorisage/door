@@ -130,6 +130,7 @@ enum Tab {
     Spinner,
     Card,
     Behavior,
+    Help,
 }
 
 #[derive(Debug, Clone)]
@@ -1195,6 +1196,7 @@ fn controls(state: &State) -> Element<'_, Message> {
         tab_button("Spinner", Tab::Spinner, state.tab),
         tab_button("Card", Tab::Card, state.tab),
         tab_button("Behavior", Tab::Behavior, state.tab),
+        tab_button("Help", Tab::Help, state.tab),
     ]
     .spacing(5);
 
@@ -1204,6 +1206,7 @@ fn controls(state: &State) -> Element<'_, Message> {
         Tab::Spinner => spinner_tab(state, pal, h),
         Tab::Card => card_tab(state, h),
         Tab::Behavior => behavior_tab(state, h),
+        Tab::Help => help_tab(),
     };
 
     let actions = row![
@@ -2267,6 +2270,138 @@ fn preset_thumb(p: &Preset, selected: bool) -> Element<'_, Message> {
             ..Default::default()
         })
         .into()
+}
+
+/// One reference entry: a control, the config key it writes, its scope, the
+/// subsystem that renders it, and a one-line description of what it does.
+struct HelpItem {
+    control: &'static str,
+    key: &'static str,
+    scope: &'static str,
+    source: &'static str,
+    what: &'static str,
+}
+
+/// Render one reference entry: name + monospace key on top, description under, and a
+/// dim "scope · source" provenance line.
+fn help_item(it: &HelpItem) -> Element<'static, Message> {
+    column![
+        row![
+            text(it.control)
+                .size(13)
+                .color(c(FG.0, FG.1, FG.2)),
+            Space::new().width(Length::Fill),
+            text(it.key)
+                .size(12)
+                .font(iced::Font::MONOSPACE)
+                .color(c(ACCENT.0, ACCENT.1, ACCENT.2)),
+        ]
+        .align_y(Alignment::Center),
+        text(it.what).size(12).color(c(LABEL.0, LABEL.1, LABEL.2)),
+        text(format!("{} · {}", it.scope, it.source))
+            .size(10)
+            .color(c(MUTED.0, MUTED.1, MUTED.2)),
+    ]
+    .spacing(2)
+    .into()
+}
+
+/// A help section: a heading + intro line + a list of reference entries.
+fn help_section(title: &'static str, intro: &'static str, items: &[HelpItem]) -> Element<'static, Message> {
+    let mut col = column![
+        text(intro).size(12).color(c(LABEL.0, LABEL.1, LABEL.2)),
+    ]
+    .spacing(10);
+    for it in items {
+        col = col.push(help_item(it));
+    }
+    group(title, col.into())
+}
+
+/// The Help tab: what each control does and *where it comes from* — the config file,
+/// the day/night model, and which subsystem (GPU shader / card / clock) renders it.
+/// Honors Scope Principle 6 (name what the greeter is and isn't).
+fn help_tab() -> Element<'static, Message> {
+    let bullet = |s: &str| text(format!("• {s}")).size(12).color(c(LABEL.0, LABEL.1, LABEL.2));
+    let provenance = group(
+        "WHERE IT COMES FROM",
+        column![
+            text("door's look is plain data — a TOML file the greeter reads at startup.")
+                .size(12)
+                .color(c(FG.0, FG.1, FG.2)),
+            bullet("Config: /etc/door/greeter.toml (copied from /usr/share/door/greeter.toml). Save here writes it via pkexec; every key is documented in that file."),
+            bullet("Two palettes: the greeter runs before login, so it can't read your desktop theme — it picks a NIGHT or DAY palette by the local clock. The day/night toggle (top-left) chooses which you're editing."),
+            bullet("Shared vs day/night: structural knobs (sizes, speeds, behavior) are shared; colors and a few sky tints are per-variant. Each entry below says which."),
+            bullet("The sky and the comet spinner are real GPU shaders (WGSL over wgpu) — the comet is a native port of the com.genny.tokyonightcomet Plasma wallpaper. The clock is read from the system clock via libc (no date/time crate on the login screen)."),
+            bullet("Presets are just TOML files in ~/.config/door/presets (+ the packaged ones). Save / Import / Export read and write them. Edits preview live in the panel to the right."),
+        ]
+        .spacing(8)
+        .into(),
+    );
+
+    let colors = help_section(
+        "COLORS",
+        "The palette. Hex (#rrggbb or #rrggbbaa); click a swatch for the visual picker.",
+        &[
+            HelpItem { control: "Background", key: "background", scope: "day/night", source: "window fill", what: "Solid fill behind everything (and any wallpaper letterbox edges)." },
+            HelpItem { control: "Card", key: "card", scope: "day/night", source: "card", what: "The login card — alpha makes it the translucent glass over the sky." },
+            HelpItem { control: "Accent", key: "accent", scope: "day/night", source: "card", what: "Focus highlight and the Sign-in button." },
+            HelpItem { control: "Foreground / Muted", key: "foreground / muted", scope: "day/night", source: "card text", what: "Primary text; muted is the date, placeholders, and idle power controls." },
+            HelpItem { control: "Error", key: "error_color", scope: "day/night", source: "card", what: "The status line on a failed login (and the Caps-Lock warning)." },
+        ],
+    );
+
+    let sky = help_section(
+        "SKY",
+        "The animated background — a GPU fragment shader. Scene + tuning.",
+        &[
+            HelpItem { control: "Scene", key: "sky_mode", scope: "shared", source: "sky shader", what: "auto (day/night), seasonal, or a fixed scene (aurora, storm, rain, snow, meteor, moon, synthwave, fog, plasma, fire, water)." },
+            HelpItem { control: "Star density / twinkle", key: "star_density / star_twinkle", scope: "shared", source: "sky shader", what: "How many stars and how fast they shimmer." },
+            HelpItem { control: "Sky glow", key: "sky_glow / glow_color", scope: "day/night", source: "sky shader", what: "The atmospheric haze strength and tint (night nebula / daytime sun-haze)." },
+            HelpItem { control: "Sun", key: "sun_x/y/size/intensity", scope: "shared", source: "sky shader", what: "Daytime sun position, halo size, and brightness." },
+            HelpItem { control: "Grain / Vignette", key: "grain / vignette", scope: "shared", source: "sky shader", what: "Film grain over the sky and darkened screen edges." },
+        ],
+    );
+
+    let spinner = help_section(
+        "SPINNER",
+        "The card emblem when no logo image is set — a GPU shader.",
+        &[
+            HelpItem { control: "Style", key: "spinner_style", scope: "shared", source: "spinner shader", what: "comet (door's signature), ring, dots, or pulse." },
+            HelpItem { control: "Glow / Speed / Trail", key: "spinner_glow / _speed / _trail", scope: "shared", source: "spinner shader", what: "Head bloom, rotation speed, and trail length of the comet." },
+            HelpItem { control: "Comet / Track", key: "spinner_comet / spinner_track", scope: "day/night", source: "spinner shader", what: "The rotating comet color and the static ring of dots it passes over." },
+        ],
+    );
+
+    let card = help_section(
+        "CARD",
+        "The login card's shape, depth, and the optional backdrop blur.",
+        &[
+            HelpItem { control: "Corner radius / Width", key: "corner_radius / card_width", scope: "shared", source: "card", what: "Card rounding and how wide it sits." },
+            HelpItem { control: "Backdrop blur", key: "card_blur", scope: "shared", source: "frost shader", what: "Frosted-glass blur of the sky behind the card (a second shader pass)." },
+            HelpItem { control: "Shadow", key: "card_shadow_blur / _opacity", scope: "shared", source: "card", what: "The card's drop-shadow softness and darkness." },
+            HelpItem { control: "Placement", key: "card_pos", scope: "shared", source: "layout", what: "center, left, right, top, or bottom of the screen." },
+        ],
+    );
+
+    let behavior = help_section(
+        "BEHAVIOR",
+        "The clock, type, and motion — mostly shared knobs.",
+        &[
+            HelpItem { control: "Clock style / format", key: "clock_style / clock_format", scope: "shared", source: "clock (libc)", what: "Digital or a drawn analog face; an optional strftime format string." },
+            HelpItem { control: "Font / weight / scale", key: "font / font_weight / font_scale", scope: "shared", source: "text", what: "Family (must be installed), weight, and an accessibility text-size multiplier." },
+            HelpItem { control: "Animate / Reduced motion", key: "animate / reduced_motion", scope: "shared", source: "all motion", what: "Run the sky animation; reduced-motion stills everything for accessibility." },
+            HelpItem { control: "Logo", key: "logo", scope: "day/night", source: "card", what: "An image (SVG drawn crisp, else raster) shown instead of the spinner." },
+        ],
+    );
+
+    scrollable(
+        column![provenance, colors, sky, spinner, card, behavior]
+            .spacing(12)
+            .padding([0, 4]),
+    )
+    .height(Length::Fill)
+    .into()
 }
 
 /// reads as a stack of glass tiles, echoing the greeter's frosted card.
