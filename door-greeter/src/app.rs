@@ -629,34 +629,39 @@ fn view(state: &State) -> Element<'_, Message> {
         Space::new().into()
     };
 
-    // Logo: a user-set image (SVG drawn crisp at any size, else a raster) overrides;
-    // otherwise the native animated comet spinner is the default card emblem.
-    let logo: Element<Message> = match &t.logo {
-        Some(path) if is_svg(path) => svg(svg::Handle::from_path(path.clone()))
-            .height(Length::Fixed(56.0))
-            .into(),
-        Some(path) => image(image::Handle::from_path(path))
-            .height(Length::Fixed(56.0))
-            .into(),
-        None => shader(SpinnerShader::from_theme(t, state.anim, f))
-            .width(Length::Fixed(t.spinner_size))
-            .height(Length::Fixed(t.spinner_size))
-            .into(),
+    // Emblem: a user-set image (SVG crisp, else raster) overrides; otherwise the
+    // animated spinner — unless the style is `none`, which shows no emblem at all.
+    let emblem: Option<Element<Message>> = match &t.logo {
+        Some(path) if is_svg(path) => Some(
+            svg(svg::Handle::from_path(path.clone()))
+                .height(Length::Fixed(56.0))
+                .into(),
+        ),
+        Some(path) => Some(image(image::Handle::from_path(path)).height(Length::Fixed(56.0)).into()),
+        None if t.spinner_style.is_hidden() => None,
+        None => Some(
+            shader(SpinnerShader::from_theme(t, state.anim, f))
+                .width(Length::Fixed(t.spinner_size))
+                .height(Length::Fixed(t.spinner_size))
+                .into(),
+        ),
     };
-    // Optional backdrop tile behind the emblem — transparent by default (invisible).
+    // Wrap in the optional backdrop tile (transparent by default); `None` → no emblem.
     let logo_bg = t.logo_box.iced_alpha(f);
     let logo_radius = t.logo_box_radius;
-    let logo: Element<Message> = container(logo)
-        .padding(6)
-        .style(move |_theme| container::Style {
-            background: Some(Background::Color(logo_bg)),
-            border: Border {
-                radius: logo_radius.into(),
+    let logo: Option<Element<Message>> = emblem.map(|e| {
+        container(e)
+            .padding(6)
+            .style(move |_theme| container::Style {
+                background: Some(Background::Color(logo_bg)),
+                border: Border {
+                    radius: logo_radius.into(),
+                    ..Default::default()
+                },
                 ..Default::default()
-            },
-            ..Default::default()
-        })
-        .into();
+            })
+            .into()
+    });
 
     let username = text_input("user", &state.username)
         .on_input(Message::UsernameChanged)
@@ -716,12 +721,12 @@ fn view(state: &State) -> Element<'_, Message> {
 
     // A Caps Lock warning slips in under the password field only while it's on, so
     // there's no empty gap otherwise. Standard login-screen courtesy.
-    let mut items: Vec<Element<Message>> = vec![
-        header,
-        logo,
-        username.into(),
-        password.into(),
-    ];
+    let mut items: Vec<Element<Message>> = vec![header];
+    if let Some(logo) = logo {
+        items.push(logo);
+    }
+    items.push(username.into());
+    items.push(password.into());
     if state.caps_lock {
         items.push(
             text("⇪  Caps Lock is on")

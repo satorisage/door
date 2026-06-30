@@ -3086,31 +3086,36 @@ fn preview_card(t: &Theme, anim: f32) -> Element<'static, Message> {
         Space::new().into()
     };
 
-    let logo: Element<Message> = match &t.logo {
-        Some(path) if is_svg(path) => svg(svg::Handle::from_path(path.clone()))
-            .height(Length::Fixed(56.0))
-            .into(),
-        Some(path) => image(image::Handle::from_path(path))
-            .height(Length::Fixed(56.0))
-            .into(),
-        None => shader(SpinnerShader::from_theme(t, anim, 1.0))
-            .width(Length::Fixed(t.spinner_size))
-            .height(Length::Fixed(t.spinner_size))
-            .into(),
+    let emblem: Option<Element<Message>> = match &t.logo {
+        Some(path) if is_svg(path) => Some(
+            svg(svg::Handle::from_path(path.clone()))
+                .height(Length::Fixed(56.0))
+                .into(),
+        ),
+        Some(path) => Some(image(image::Handle::from_path(path)).height(Length::Fixed(56.0)).into()),
+        None if t.spinner_style.is_hidden() => None,
+        None => Some(
+            shader(SpinnerShader::from_theme(t, anim, 1.0))
+                .width(Length::Fixed(t.spinner_size))
+                .height(Length::Fixed(t.spinner_size))
+                .into(),
+        ),
     };
     let logo_bg = t.logo_box.iced();
     let logo_radius = t.logo_box_radius;
-    let logo: Element<Message> = container(logo)
-        .padding(6)
-        .style(move |_theme| container::Style {
-            background: Some(Background::Color(logo_bg)),
-            border: Border {
-                radius: logo_radius.into(),
+    let logo: Option<Element<Message>> = emblem.map(|e| {
+        container(e)
+            .padding(6)
+            .style(move |_theme| container::Style {
+                background: Some(Background::Color(logo_bg)),
+                border: Border {
+                    radius: logo_radius.into(),
+                    ..Default::default()
+                },
                 ..Default::default()
-            },
-            ..Default::default()
-        })
-        .into();
+            })
+            .into()
+    });
 
     let field = |placeholder: &'static str, t: &Theme| {
         let muted = t.muted.iced();
@@ -3147,15 +3152,16 @@ fn preview_card(t: &Theme, anim: f32) -> Element<'static, Message> {
         ..Default::default()
     });
 
-    let body = column![
-        header,
-        logo,
-        field("user", t),
-        field("password", t),
-        sign_in
-    ]
-    .spacing(12)
-    .align_x(Alignment::Center);
+    let mut body_items: Vec<Element<Message>> = vec![header];
+    if let Some(logo) = logo {
+        body_items.push(logo);
+    }
+    body_items.push(field("user", t).into());
+    body_items.push(field("password", t).into());
+    body_items.push(sign_in.into());
+    let body = Column::with_children(body_items)
+        .spacing(12)
+        .align_x(Alignment::Center);
 
     let card = t.card;
     let accent = t.accent;

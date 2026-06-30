@@ -254,24 +254,32 @@ pub enum SpinnerStyle {
     Ring,
     Dots,
     Pulse,
+    /// No emblem at all — a clean card with no spinner.
+    None,
 }
 
 impl SpinnerStyle {
     /// Every style, for the settings picker.
-    pub const ALL: [SpinnerStyle; 4] = [
+    pub const ALL: [SpinnerStyle; 5] = [
         SpinnerStyle::Comet,
         SpinnerStyle::Ring,
         SpinnerStyle::Dots,
         SpinnerStyle::Pulse,
+        SpinnerStyle::None,
     ];
-    /// The shader selector value.
+    /// The shader selector value (unused for `None`, which draws no emblem).
     pub fn shader_id(self) -> f32 {
         match self {
             SpinnerStyle::Comet => 0.0,
             SpinnerStyle::Ring => 1.0,
             SpinnerStyle::Dots => 2.0,
             SpinnerStyle::Pulse => 3.0,
+            SpinnerStyle::None => 0.0,
         }
+    }
+    /// Whether this style draws no emblem (so the card shows none).
+    pub fn is_hidden(self) -> bool {
+        matches!(self, SpinnerStyle::None)
     }
     /// The lowercase name used in the config and the picker.
     pub fn name(self) -> &'static str {
@@ -280,6 +288,7 @@ impl SpinnerStyle {
             SpinnerStyle::Ring => "ring",
             SpinnerStyle::Dots => "dots",
             SpinnerStyle::Pulse => "pulse",
+            SpinnerStyle::None => "none",
         }
     }
 }
