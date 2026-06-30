@@ -370,6 +370,14 @@ fn update(state: &mut State, message: Message) -> Task<Message> {
         }
         Message::PowerPressed(action) => state.send(Command::Power(action)),
         Message::Tick => {
+            // Live config hot-reload: re-resolve the theme each second and swap it only
+            // if it changed — so an edit to greeter.toml (or crossing the day/night
+            // boundary) takes effect without restarting the greeter. Cheap: one small
+            // TOML parse, and the PartialEq guard avoids needless repaint churn.
+            let fresh = Theme::load_at(now_minutes(), now_month());
+            if fresh != state.theme {
+                state.theme = fresh;
+            }
             state.clock = now_hm(state.theme.clock_24h, state.theme.clock_seconds);
             state.date = now_date();
         }
