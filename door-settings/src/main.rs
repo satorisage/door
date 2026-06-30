@@ -10,8 +10,8 @@ use std::path::PathBuf;
 use std::time::Instant;
 
 use iced::widget::{
-    button, canvas, column, container, image, pick_list, row, scrollable, shader, slider, svg, text,
-    text_input, toggler, Column, Space, Stack,
+    button, canvas, column, combo_box, container, image, pick_list, row, scrollable, shader,
+    slider, svg, text, text_input, toggler, Column, Space, Stack,
 };
 use iced::{
     mouse, Alignment, Background, Border, Color as IColor, ContentFit, Element, Length, Point,
@@ -305,6 +305,8 @@ struct State {
     help_on: bool,
     // Saved presets (both variants) + the name field for saving a new one.
     presets: Vec<Preset>,
+    // Searchable picker state, mirroring `presets` (rebuilt when the list changes).
+    preset_combo: combo_box::State<Preset>,
     selected_preset: Option<Preset>,
     preset_name: String,
     // Which color (if any) the visual HSV picker is open on.
@@ -521,6 +523,7 @@ impl State {
             spinner_ring: night.spinner_ring,
             expert: std::env::args().any(|a| a == "--expert"),
             help_on: false,
+            preset_combo: combo_box::State::new(scan_presets()),
             presets: scan_presets(),
             selected_preset: None,
             preset_name: String::new(),
@@ -1017,6 +1020,8 @@ fn update(state: &mut State, message: Message) -> Task<Message> {
                                 {
                                     Ok(_) => {
                                         state.presets = scan_presets();
+                                        state.preset_combo =
+                                            combo_box::State::new(state.presets.clone());
                                         state.selected_preset =
                                             state.presets.iter().find(|p| p.path == path).cloned();
                                         state.status =
@@ -1254,13 +1259,13 @@ fn presets_tab(state: &State) -> Element<'_, Message> {
         "LOAD",
         column![
             row![
-                pick_list(
-                    &state.presets[..],
-                    state.selected_preset.clone(),
+                combo_box(
+                    &state.preset_combo,
+                    "Search presets…",
+                    state.selected_preset.as_ref(),
                     Message::PresetPicked,
                 )
-                .placeholder("Load a preset…")
-                .text_size(13)
+                .size(13.0)
                 .padding(6)
                 .width(Length::Fill),
                 ghost_button("🎲 Surprise", Message::Randomize),
