@@ -2938,7 +2938,10 @@ fn picker_overlay(state: &State, param: Param) -> Element<'_, Message> {
                 .height(Length::Fixed(SV_SIZE)),
             color_cell("Hex", hex, param),
         ]
-        .spacing(12),
+        .spacing(12)
+        // Pin the popup to the picker's own width — without this the Fill-width hex
+        // cell expands the whole panel to span the window.
+        .width(Length::Fixed(SV_SIZE + PICK_GAP + HUE_W)),
     )
     .padding(18)
     .style(glass_panel);
