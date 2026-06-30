@@ -1308,7 +1308,7 @@ fn colors_tab<'a>(
                 h
             ),
             helped(
-                color_cell("Logo box", &pal.logo_box, Param::LogoBox),
+                half_width(color_cell("Logo box", &pal.logo_box, Param::LogoBox)),
                 "Backdrop tile behind the logo/spinner. Transparent (alpha 00) = invisible.",
                 h
             ),
@@ -1347,7 +1347,7 @@ fn colors_tab<'a>(
             ]
             .spacing(10),
             helped(
-                color_cell("Error", &pal.error_color, Param::ErrorColor),
+                half_width(color_cell("Error", &pal.error_color, Param::ErrorColor)),
                 "Status-line color when a login fails.",
                 h
             ),
@@ -2422,9 +2422,9 @@ fn group<'a>(title: &str, body: Element<'a, Message>) -> Element<'a, Message> {
     .spacing(10)
     .align_y(Alignment::Center);
 
-    container(column![head, body].spacing(11))
+    container(column![head, body].spacing(9))
         .width(Length::Fill)
-        .padding(14)
+        .padding([10, 13])
         .style(subcard)
         .into()
 }
@@ -2558,7 +2558,7 @@ fn color_cell<'a>(label: &'a str, value: &'a str, param: Param) -> Element<'a, M
     row![
         text(label)
             .size(12)
-            .width(Length::Fixed(44.0))
+            .width(Length::Fixed(56.0))
             .color(c(LABEL.0, LABEL.1, LABEL.2)),
         text_input("", value)
             .on_input(move |v| Message::Set(param, v))
@@ -2571,6 +2571,12 @@ fn color_cell<'a>(label: &'a str, value: &'a str, param: Param) -> Element<'a, M
     .align_y(Alignment::Center)
     .width(Length::Fill)
     .into()
+}
+
+/// Hold a control to roughly half the row, so a lone color cell matches the two-up
+/// grid instead of stretching the full panel width.
+fn half_width(el: Element<'_, Message>) -> Element<'_, Message> {
+    row![el, Space::new().width(Length::Fill)].spacing(10).into()
 }
 
 /// The display name of a color [`Param`], for the picker header.
@@ -2602,7 +2608,7 @@ fn color_cell_with<'a>(
     row![
         text(label)
             .size(12)
-            .width(Length::Fixed(44.0))
+            .width(Length::Fixed(56.0))
             .color(c(LABEL.0, LABEL.1, LABEL.2)),
         text_input("", value)
             .on_input(on)
@@ -2618,20 +2624,64 @@ fn color_cell_with<'a>(
 }
 
 fn swatch(value: &str) -> Element<'static, Message> {
-    let fill = Color::parse(value.trim()).map(|col| Background::Color(col.iced()));
-    container(Space::new())
+    let color = Color::parse(value.trim())
+        .map(|col| col.iced())
+        .unwrap_or(IColor::TRANSPARENT);
+    canvas(SwatchChip { color })
         .width(Length::Fixed(22.0))
         .height(Length::Fixed(22.0))
-        .style(move |_t| container::Style {
-            background: fill,
-            border: Border {
-                radius: 7.0.into(),
-                width: 1.0,
-                color: c(0x2a, 0x2e, 0x42),
-            },
-            ..Default::default()
-        })
         .into()
+}
+
+/// A color chip drawn over a checkerboard so alpha (and near-black) reads honestly —
+/// a translucent or dark color is no longer indistinguishable from an empty cell.
+struct SwatchChip {
+    color: IColor,
+}
+
+impl canvas::Program<Message> for SwatchChip {
+    type State = ();
+
+    fn draw(
+        &self,
+        _state: &(),
+        renderer: &Renderer,
+        _theme: &iced::Theme,
+        bounds: Rectangle,
+        _cursor: mouse::Cursor,
+    ) -> Vec<canvas::Geometry> {
+        use iced::widget::canvas::{Frame, Path, Stroke};
+        let mut f = Frame::new(renderer, bounds.size());
+        // Checkerboard backdrop.
+        let n = 4usize;
+        let cell = bounds.width / n as f32;
+        let light = IColor::from_rgb8(0x8a, 0x90, 0x9c);
+        let dark = IColor::from_rgb8(0x44, 0x49, 0x55);
+        for r in 0..n {
+            for col in 0..n {
+                let shade = if (r + col) % 2 == 0 { light } else { dark };
+                f.fill(
+                    &Path::rectangle(
+                        Point::new(col as f32 * cell, r as f32 * cell),
+                        iced::Size::new(cell, cell),
+                    ),
+                    shade,
+                );
+            }
+        }
+        // The color on top (alpha respected), then a hairline border.
+        f.fill(&Path::rectangle(Point::new(0.0, 0.0), bounds.size()), self.color);
+        f.stroke(
+            &Path::rectangle(
+                Point::new(0.5, 0.5),
+                iced::Size::new(bounds.width - 1.0, bounds.height - 1.0),
+            ),
+            Stroke::default()
+                .with_width(1.0)
+                .with_color(IColor::from_rgba8(0x00, 0x00, 0x00, 0.45)),
+        );
+        vec![f.into_geometry()]
+    }
 }
 
 /// A swatch that opens the visual HSV picker on click (param-routed colors only).
@@ -2948,6 +2998,12 @@ fn primary_button(label: &str, msg: Message) -> Element<'_, Message> {
                     radius: 9.0.into(),
                     ..Default::default()
                 },
+                // The button lifts on hover — a soft accent-tinted shadow that grows.
+                shadow: Shadow {
+                    color: IColor::from_rgba8(0x7a, 0xa2, 0xf7, if hovered { 0.5 } else { 0.28 }),
+                    offset: Vector::new(0.0, if hovered { 3.0 } else { 1.0 }),
+                    blur_radius: if hovered { 16.0 } else { 6.0 },
+                },
                 ..Default::default()
             }
         })
@@ -2961,7 +3017,12 @@ fn ghost_button(label: &str, msg: Message) -> Element<'_, Message> {
         .style(|_t, status| {
             let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
             button::Style {
-                background: Some(Background::Color(IColor::TRANSPARENT)),
+                // A faint accent wash fills in on hover (instead of just recoloring text).
+                background: Some(Background::Color(if hovered {
+                    IColor::from_rgba8(0x7a, 0xa2, 0xf7, 0.12)
+                } else {
+                    IColor::TRANSPARENT
+                })),
                 text_color: if hovered {
                     c(ACCENT.0, ACCENT.1, ACCENT.2)
                 } else {
@@ -2970,7 +3031,11 @@ fn ghost_button(label: &str, msg: Message) -> Element<'_, Message> {
                 border: Border {
                     radius: 9.0.into(),
                     width: 1.0,
-                    color: c(0x2a, 0x2e, 0x42),
+                    color: if hovered {
+                        IColor::from_rgba8(0x7a, 0xa2, 0xf7, 0.45)
+                    } else {
+                        c(0x2a, 0x2e, 0x42)
+                    },
                 },
                 ..Default::default()
             }
