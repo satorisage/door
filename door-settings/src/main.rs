@@ -14,8 +14,8 @@ use iced::widget::{
     text_input, toggler, Space, Stack,
 };
 use iced::{
-    Alignment, Background, Border, Color as IColor, ContentFit, Element, Length, Shadow,
-    Subscription, Task, Vector,
+    mouse, Alignment, Background, Border, Color as IColor, ContentFit, Element, Length, Point,
+    Rectangle, Renderer, Shadow, Subscription, Task, Vector,
 };
 
 use door_theme::skyshader::{FrostShader, SkyShader, SpinnerShader};
@@ -209,6 +209,9 @@ enum Message {
     PresetNameChanged(String),
     SavePreset,
     Randomize,
+    // Visual color picker
+    OpenPicker(Param),
+    ClosePicker,
 }
 
 struct State {
@@ -282,6 +285,8 @@ struct State {
     presets: Vec<Preset>,
     selected_preset: Option<Preset>,
     preset_name: String,
+    // Which color (if any) the visual HSV picker is open on.
+    picking: Option<Param>,
     // Which variant is being edited / previewed.
     editing_day: bool,
     // Which control tab is showing.
@@ -457,6 +462,7 @@ impl State {
             presets: scan_presets(),
             selected_preset: None,
             preset_name: String::new(),
+            picking: None,
             // Dev: start on the day variant when DOOR_SETTINGS_DAY is set.
             editing_day: std::env::var_os("DOOR_SETTINGS_DAY").is_some(),
             tab: Tab::Colors,
@@ -585,6 +591,28 @@ impl State {
         }
     }
 
+    /// The current hex string for a color [`Param`] in the variant being edited —
+    /// the read counterpart to [`set`](Self::set), for the visual picker. Non-color
+    /// params return empty (the picker only opens on colors).
+    fn color_hex(&self, param: Param) -> &str {
+        let pal = if self.editing_day { &self.day } else { &self.night };
+        match param {
+            Param::Background => &pal.background,
+            Param::Card => &pal.card,
+            Param::Field => &pal.field,
+            Param::Accent => &pal.accent,
+            Param::Foreground => &pal.foreground,
+            Param::Muted => &pal.muted,
+            Param::SpinnerComet => &pal.comet,
+            Param::SpinnerTrack => &pal.track,
+            Param::SkyComet => &pal.comet_color,
+            Param::GlowColor => &pal.glow_color,
+            Param::ErrorColor => &pal.error_color,
+            Param::LogoBox => &pal.logo_box,
+            _ => "",
+        }
+    }
+
     /// Build one variant's [`Theme`] from its palette + the shared structural keys.
     fn build(&self, day: bool) -> Result<Theme, String> {
         let pal = if day { &self.day } else { &self.night };
@@ -702,6 +730,8 @@ fn update(state: &mut State, message: Message) -> Task<Message> {
             | Message::ToggleExpert(_)
             | Message::PresetNameChanged(_)
             | Message::SavePreset
+            | Message::OpenPicker(_)
+            | Message::ClosePicker
     );
     match message {
         Message::Set(param, value) => state.set(param, value),
@@ -823,6 +853,8 @@ fn update(state: &mut State, message: Message) -> Task<Message> {
             state.status = "Reloaded the saved themes.".to_string();
         }
         Message::PresetNameChanged(s) => state.preset_name = s,
+        Message::OpenPicker(param) => state.picking = Some(param),
+        Message::ClosePicker => state.picking = None,
         Message::Randomize => {
             if !state.presets.is_empty() {
                 let n = std::time::SystemTime::now()
@@ -996,7 +1028,7 @@ fn view(state: &State) -> Element<'_, Message> {
     .align_top(Length::Fill)
     .padding(10);
 
-    match &theme.wallpaper {
+    let base: Element<Message> = match &theme.wallpaper {
         Some(path) => {
             let bg = image(image::Handle::from_path(path))
                 .width(Length::Fill)
@@ -1005,6 +1037,11 @@ fn view(state: &State) -> Element<'_, Message> {
             iced::widget::stack![bg, sky_layer, content, fps_badge].into()
         }
         None => iced::widget::stack![sky_layer, content, fps_badge].into(),
+    };
+    // The visual HSV picker floats over everything while a swatch is being edited.
+    match state.picking {
+        Some(param) => iced::widget::stack![base, picker_overlay(state, param)].into(),
+        None => base,
     }
 }
 
@@ -2118,7 +2155,42 @@ fn plain_row<'a>(
 
 /// A per-variant color cell (routes to the active palette via `Param`).
 fn color_cell<'a>(label: &'a str, value: &'a str, param: Param) -> Element<'a, Message> {
-    color_cell_with(label, value, move |v| Message::Set(param, v))
+    // A param-routed color: hex input plus a swatch button that opens the visual picker.
+    row![
+        text(label)
+            .size(12)
+            .width(Length::Fixed(44.0))
+            .color(c(LABEL.0, LABEL.1, LABEL.2)),
+        text_input("", value)
+            .on_input(move |v| Message::Set(param, v))
+            .padding(5)
+            .size(13)
+            .style(input_style),
+        swatch_button(value, param),
+    ]
+    .spacing(6)
+    .align_y(Alignment::Center)
+    .width(Length::Fill)
+    .into()
+}
+
+/// The display name of a color [`Param`], for the picker header.
+fn param_name(param: Param) -> &'static str {
+    match param {
+        Param::Background => "Background",
+        Param::Card => "Card",
+        Param::Field => "Field",
+        Param::Accent => "Accent",
+        Param::Foreground => "Foreground",
+        Param::Muted => "Muted",
+        Param::SpinnerComet => "Spinner comet",
+        Param::SpinnerTrack => "Spinner track",
+        Param::SkyComet => "Sky comet",
+        Param::GlowColor => "Glow",
+        Param::ErrorColor => "Error",
+        Param::LogoBox => "Logo box",
+        _ => "Color",
+    }
 }
 
 /// A color cell bound to an arbitrary message — used for *shared* colors (e.g. the
@@ -2161,6 +2233,281 @@ fn swatch(value: &str) -> Element<'static, Message> {
             ..Default::default()
         })
         .into()
+}
+
+/// A swatch that opens the visual HSV picker on click (param-routed colors only).
+fn swatch_button(value: &str, param: Param) -> Element<'static, Message> {
+    button(swatch(value))
+        .padding(0)
+        .on_press(Message::OpenPicker(param))
+        .style(|_t, _s| button::Style {
+            background: None,
+            ..Default::default()
+        })
+        .into()
+}
+
+// ── Visual HSV color picker ──────────────────────────────────────────────────
+
+/// `(hue 0–360, saturation 0–1, value 0–1)` from linear-ish 0–1 RGB.
+fn rgb_to_hsv(r: f32, g: f32, b: f32) -> (f32, f32, f32) {
+    let max = r.max(g).max(b);
+    let min = r.min(g).min(b);
+    let d = max - min;
+    let h = if d == 0.0 {
+        0.0
+    } else if max == r {
+        60.0 * (((g - b) / d).rem_euclid(6.0))
+    } else if max == g {
+        60.0 * ((b - r) / d + 2.0)
+    } else {
+        60.0 * ((r - g) / d + 4.0)
+    };
+    let s = if max == 0.0 { 0.0 } else { d / max };
+    (h.rem_euclid(360.0), s, max)
+}
+
+/// 0–1 RGB from `(hue 0–360, saturation 0–1, value 0–1)`.
+fn hsv_to_rgb(h: f32, s: f32, v: f32) -> (f32, f32, f32) {
+    let cc = v * s;
+    let h2 = (h / 60.0).rem_euclid(6.0);
+    let x = cc * (1.0 - (h2 % 2.0 - 1.0).abs());
+    let (r, g, b) = match h2 as u32 {
+        0 => (cc, x, 0.0),
+        1 => (x, cc, 0.0),
+        2 => (0.0, cc, x),
+        3 => (0.0, x, cc),
+        4 => (x, 0.0, cc),
+        _ => (cc, 0.0, x),
+    };
+    let m = v - cc;
+    (r + m, g + m, b + m)
+}
+
+const SV_SIZE: f32 = 200.0;
+const HUE_W: f32 = 26.0;
+const PICK_GAP: f32 = 14.0;
+
+/// Which sub-region of the picker a drag started in (so it keeps tracking).
+#[derive(Clone, Copy, PartialEq)]
+enum PickRegion {
+    Sv,
+    Hue,
+}
+
+/// The interactive saturation/value square + hue strip. A pure-drawing-plus-input
+/// canvas: it reads the current `(h, s, v)` (baked at construction from the live
+/// color) and, on press/drag, publishes a `Set(param, hex)` with the new color
+/// (preserving the original alpha). Drag region persists in the canvas state.
+struct HsvPicker {
+    param: Param,
+    h: f32,
+    s: f32,
+    v: f32,
+    a: u8,
+}
+
+impl HsvPicker {
+    fn hex(&self, h: f32, s: f32, v: f32) -> String {
+        let (r, g, b) = hsv_to_rgb(h, s, v);
+        Color {
+            r: (r.clamp(0.0, 1.0) * 255.0).round() as u8,
+            g: (g.clamp(0.0, 1.0) * 255.0).round() as u8,
+            b: (b.clamp(0.0, 1.0) * 255.0).round() as u8,
+            a: self.a,
+        }
+        .to_hex()
+    }
+
+    /// Map a canvas-local point to a new color hex for the given region.
+    fn color_at(&self, region: PickRegion, local: Point) -> String {
+        match region {
+            PickRegion::Sv => {
+                let s = (local.x / SV_SIZE).clamp(0.0, 1.0);
+                let v = (1.0 - local.y / SV_SIZE).clamp(0.0, 1.0);
+                self.hex(self.h, s, v)
+            }
+            PickRegion::Hue => {
+                let h = (local.y / SV_SIZE).clamp(0.0, 1.0) * 360.0;
+                self.hex(h, self.s.max(0.0001), self.v.max(0.0001))
+            }
+        }
+    }
+}
+
+impl canvas::Program<Message> for HsvPicker {
+    type State = Option<PickRegion>;
+
+    fn update(
+        &self,
+        drag: &mut Option<PickRegion>,
+        event: &canvas::Event,
+        bounds: Rectangle,
+        cursor: mouse::Cursor,
+    ) -> Option<canvas::Action<Message>> {
+        use iced::mouse::{Button, Event as Me};
+        // Canvas-local cursor (allow tracking slightly outside during a drag).
+        let local = cursor
+            .position()
+            .map(|p| Point::new(p.x - bounds.x, p.y - bounds.y));
+        match event {
+            canvas::Event::Mouse(Me::ButtonPressed(Button::Left)) => {
+                let p = cursor.position_in(bounds)?;
+                let region = if p.x <= SV_SIZE {
+                    PickRegion::Sv
+                } else if p.x >= SV_SIZE + PICK_GAP {
+                    PickRegion::Hue
+                } else {
+                    return None;
+                };
+                *drag = Some(region);
+                let msg = Message::Set(self.param, self.color_at(region, p));
+                Some(canvas::Action::publish(msg).and_capture())
+            }
+            canvas::Event::Mouse(Me::CursorMoved { .. }) => {
+                let region = (*drag)?;
+                let local = local?;
+                let msg = Message::Set(self.param, self.color_at(region, local));
+                Some(canvas::Action::publish(msg).and_capture())
+            }
+            canvas::Event::Mouse(Me::ButtonReleased(Button::Left)) => {
+                if drag.take().is_some() {
+                    Some(canvas::Action::request_redraw().and_capture())
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        }
+    }
+
+    fn draw(
+        &self,
+        _drag: &Option<PickRegion>,
+        renderer: &Renderer,
+        _theme: &iced::Theme,
+        bounds: Rectangle,
+        _cursor: mouse::Cursor,
+    ) -> Vec<canvas::Geometry> {
+        use iced::widget::canvas::{gradient, Frame, Path, Stroke};
+        let mut frame = Frame::new(renderer, bounds.size());
+        let white = IColor::WHITE;
+        let black = IColor::BLACK;
+
+        // ── Saturation/Value square: pure hue, then white→clear (sat) and clear→black (val).
+        let (hr, hg, hb) = hsv_to_rgb(self.h, 1.0, 1.0);
+        let hue_col = IColor::from_rgb(hr, hg, hb);
+        let sv = Path::rectangle(Point::new(0.0, 0.0), iced::Size::new(SV_SIZE, SV_SIZE));
+        frame.fill(&sv, hue_col);
+        frame.fill(
+            &sv,
+            gradient::Linear::new(Point::new(0.0, 0.0), Point::new(SV_SIZE, 0.0))
+                .add_stop(0.0, white)
+                .add_stop(1.0, IColor { a: 0.0, ..white }),
+        );
+        frame.fill(
+            &sv,
+            gradient::Linear::new(Point::new(0.0, 0.0), Point::new(0.0, SV_SIZE))
+                .add_stop(0.0, IColor { a: 0.0, ..black })
+                .add_stop(1.0, black),
+        );
+        // SV cursor ring (white over black for contrast on any background).
+        let sp = Point::new(self.s * SV_SIZE, (1.0 - self.v) * SV_SIZE);
+        frame.stroke(
+            &Path::circle(sp, 6.0),
+            Stroke::default().with_width(2.0).with_color(white),
+        );
+        frame.stroke(
+            &Path::circle(sp, 7.5),
+            Stroke::default().with_width(1.0).with_color(black),
+        );
+
+        // ── Hue strip: a vertical rainbow.
+        let hx = SV_SIZE + PICK_GAP;
+        let strip = Path::rectangle(Point::new(hx, 0.0), iced::Size::new(HUE_W, SV_SIZE));
+        let mut grad = gradient::Linear::new(Point::new(hx, 0.0), Point::new(hx, SV_SIZE));
+        for i in 0..=6 {
+            let (r, g, b) = hsv_to_rgb(i as f32 * 60.0, 1.0, 1.0);
+            grad = grad.add_stop(i as f32 / 6.0, IColor::from_rgb(r, g, b));
+        }
+        frame.fill(&strip, grad);
+        // Hue cursor: a horizontal bar at the current hue.
+        let hy = self.h / 360.0 * SV_SIZE;
+        frame.stroke(
+            &Path::rectangle(Point::new(hx - 2.0, hy - 2.0), iced::Size::new(HUE_W + 4.0, 4.0)),
+            Stroke::default().with_width(2.0).with_color(white),
+        );
+
+        vec![frame.into_geometry()]
+    }
+
+    fn mouse_interaction(
+        &self,
+        _drag: &Option<PickRegion>,
+        _bounds: Rectangle,
+        _cursor: mouse::Cursor,
+    ) -> mouse::Interaction {
+        mouse::Interaction::Crosshair
+    }
+}
+
+/// The centered HSV picker overlay (a dim backdrop + a glass panel), shown when a
+/// swatch is being edited. Built over the whole window via the top-level stack.
+fn picker_overlay(state: &State, param: Param) -> Element<'_, Message> {
+    let hex = state.color_hex(param);
+    let cur = Color::parse(hex.trim()).unwrap_or(Color {
+        r: 0,
+        g: 0,
+        b: 0,
+        a: 255,
+    });
+    let (h, s, v) = rgb_to_hsv(
+        cur.r as f32 / 255.0,
+        cur.g as f32 / 255.0,
+        cur.b as f32 / 255.0,
+    );
+    let picker = HsvPicker {
+        param,
+        h,
+        s,
+        v,
+        a: cur.a,
+    };
+
+    let panel = container(
+        column![
+            row![
+                text(param_name(param))
+                    .size(14)
+                    .color(c(FG.0, FG.1, FG.2)),
+                Space::new().width(Length::Fill),
+                ghost_button("Done", Message::ClosePicker),
+            ]
+            .align_y(Alignment::Center),
+            canvas(picker)
+                .width(Length::Fixed(SV_SIZE + PICK_GAP + HUE_W))
+                .height(Length::Fixed(SV_SIZE)),
+            color_cell("Hex", hex, param),
+        ]
+        .spacing(12),
+    )
+    .padding(18)
+    .style(glass_panel);
+
+    // Dim backdrop (click to dismiss) with the panel centered on top.
+    let backdrop = button(Space::new())
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .on_press(Message::ClosePicker)
+        .style(|_t, _s| button::Style {
+            background: Some(Background::Color(IColor::from_rgba8(0, 0, 0, 0.5))),
+            ..Default::default()
+        });
+    iced::widget::stack![
+        backdrop,
+        container(panel).center_x(Length::Fill).center_y(Length::Fill),
+    ]
+    .into()
 }
 
 fn input_style(_t: &iced::Theme, status: text_input::Status) -> text_input::Style {
@@ -2401,5 +2748,30 @@ fn glass_panel(_theme: &iced::Theme) -> container::Style {
             blur_radius: 30.0,
         },
         ..Default::default()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{hsv_to_rgb, rgb_to_hsv};
+
+    /// HSV ↔ RGB round-trips within rounding for a spread of saturated/dim colors —
+    /// the math behind the visual picker's cursor placement and emitted hex.
+    #[test]
+    fn hsv_rgb_round_trips() {
+        let cases = [
+            (0.48, 0.64, 0.97), // accent blue
+            (1.0, 0.0, 0.0),    // pure red
+            (0.0, 1.0, 0.0),    // pure green
+            (0.10, 0.10, 0.12), // near-black card
+            (0.77, 0.81, 0.96), // light foreground
+        ];
+        for (r, g, b) in cases {
+            let (h, s, v) = rgb_to_hsv(r, g, b);
+            let (r2, g2, b2) = hsv_to_rgb(h, s, v);
+            assert!((r - r2).abs() < 1e-4, "r {r} -> {r2}");
+            assert!((g - g2).abs() < 1e-4, "g {g} -> {g2}");
+            assert!((b - b2).abs() < 1e-4, "b {b} -> {b2}");
+        }
     }
 }
