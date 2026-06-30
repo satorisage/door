@@ -11,7 +11,7 @@ use std::time::Instant;
 
 use iced::widget::{
     button, canvas, column, combo_box, container, image, pick_list, row, scrollable, shader,
-    slider, svg, text, text_input, toggler, Column, Space, Stack,
+    slider, svg, text, text_input, toggler, tooltip, Column, Space, Stack,
 };
 use iced::{
     mouse, Alignment, Background, Border, Color as IColor, ContentFit, Element, Length, Point,
@@ -1188,21 +1188,30 @@ fn controls(state: &State) -> Element<'_, Message> {
         text("door").size(26).color(c(FG.0, FG.1, FG.2)),
         text("greeter").size(26).color(c(ACCENT.0, ACCENT.1, ACCENT.2)),
         Space::new().width(Length::Fill),
-        toggler(state.help_on)
-            .label("Help")
-            .on_toggle(Message::ToggleHelp)
-            .size(16)
-            .text_size(12),
-        toggler(state.expert)
-            .label("Advanced")
-            .on_toggle(Message::ToggleExpert)
-            .size(16)
-            .text_size(12),
-        toggler(editing_day)
-            .label(if editing_day { "Day" } else { "Night" })
-            .on_toggle(Message::EditDay)
-            .size(16)
-            .text_size(12),
+        tip(
+            toggler(state.help_on)
+                .label("Help")
+                .on_toggle(Message::ToggleHelp)
+                .size(16)
+                .text_size(12),
+            "Show a one-line description under each control"
+        ),
+        tip(
+            toggler(state.expert)
+                .label("Advanced")
+                .on_toggle(Message::ToggleExpert)
+                .size(16)
+                .text_size(12),
+            "Reveal the expert (Tier-3) controls"
+        ),
+        tip(
+            toggler(editing_day)
+                .label(if editing_day { "Day" } else { "Night" })
+                .on_toggle(Message::EditDay)
+                .size(16)
+                .text_size(12),
+            "Edit the night or day palette (the greeter picks by clock)"
+        ),
     ]
     .spacing(14)
     .align_y(Alignment::Center);
@@ -1229,9 +1238,18 @@ fn controls(state: &State) -> Element<'_, Message> {
     };
 
     let actions = row![
-        primary_button("Save", Message::Save),
-        ghost_button("Open in greeter", Message::OpenInGreeter),
-        ghost_button("Reset", Message::Reset),
+        tip(
+            primary_button("Save", Message::Save),
+            "Write to /etc/door/greeter.toml (asks for your password)"
+        ),
+        tip(
+            ghost_button("Open in greeter", Message::OpenInGreeter),
+            "Launch a full greeter window with these settings"
+        ),
+        tip(
+            ghost_button("Reset", Message::Reset),
+            "Reload the saved themes, discarding edits"
+        ),
     ]
     .spacing(8);
 
@@ -2413,6 +2431,24 @@ fn two_col<'a>(items: Vec<Element<'a, Message>>) -> Element<'a, Message> {
     ]
     .spacing(16)
     .into()
+}
+
+/// Wrap a widget with a hover tooltip — a small dark chip below it.
+fn tip<'a>(content: impl Into<Element<'a, Message>>, label: &'a str) -> Element<'a, Message> {
+    tooltip(content, text(label).size(12), tooltip::Position::Bottom)
+        .gap(6)
+        .padding(8)
+        .style(|_t| container::Style {
+            background: Some(Background::Color(IColor::from_rgba8(0x12, 0x14, 0x1c, 0.98))),
+            border: Border {
+                radius: 8.0.into(),
+                width: 1.0,
+                color: IColor::from_rgba8(0x7a, 0xa2, 0xf7, 0.25),
+            },
+            text_color: Some(c(FG.0, FG.1, FG.2)),
+            ..Default::default()
+        })
+        .into()
 }
 
 /// Wrap a control with a one-line description shown only when Help is on.
