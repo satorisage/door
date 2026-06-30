@@ -214,6 +214,10 @@ enum Message {
     // Visual color picker
     OpenPicker(Param),
     ClosePicker,
+    // Import / export a preset file by path
+    IoPathChanged(String),
+    ImportPreset,
+    ExportPreset,
 }
 
 struct State {
@@ -291,6 +295,8 @@ struct State {
     preset_name: String,
     // Which color (if any) the visual HSV picker is open on.
     picking: Option<Param>,
+    // Shared path field for importing / exporting a preset `.toml`.
+    io_path: String,
     // Which variant is being edited / previewed.
     editing_day: bool,
     // Which control tab is showing.
@@ -334,6 +340,16 @@ impl std::fmt::Display for Preset {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.name)
     }
+}
+
+/// Expand a leading `~` to `$HOME` for the import/export path field.
+fn expand_tilde(s: &str) -> PathBuf {
+    if let Some(rest) = s.strip_prefix("~/") {
+        if let Some(home) = std::env::var_os("HOME") {
+            return PathBuf::from(home).join(rest);
+        }
+    }
+    PathBuf::from(s)
 }
 
 /// `~/.config/door/presets` — the writable preset dir (created on save).
@@ -493,6 +509,7 @@ impl State {
             selected_preset: None,
             preset_name: String::new(),
             picking: None,
+            io_path: String::new(),
             // Dev: start on the day variant when DOOR_SETTINGS_DAY is set.
             editing_day: std::env::var_os("DOOR_SETTINGS_DAY").is_some(),
             tab: Tab::Colors,
@@ -769,6 +786,8 @@ fn update(state: &mut State, message: Message) -> Task<Message> {
             | Message::SavePreset
             | Message::OpenPicker(_)
             | Message::ClosePicker
+            | Message::IoPathChanged(_)
+            | Message::ExportPreset
     );
     match message {
         Message::Set(param, value) => state.set(param, value),
@@ -894,6 +913,43 @@ fn update(state: &mut State, message: Message) -> Task<Message> {
         Message::PresetNameChanged(s) => state.preset_name = s,
         Message::OpenPicker(param) => state.picking = Some(param),
         Message::ClosePicker => state.picking = None,
+        Message::IoPathChanged(s) => state.io_path = s,
+        Message::ImportPreset => {
+            let path = expand_tilde(state.io_path.trim());
+            if state.io_path.trim().is_empty() {
+                state.status = "Enter a path to import from.".into();
+            } else {
+                match std::fs::read_to_string(&path)
+                    .map_err(|e| format!("reading {}: {e}", path.display()))
+                    .and_then(|c| Theme::parse_pair(&c).map_err(|e| format!("parsing: {e}")))
+                {
+                    Ok((night, day, window)) => {
+                        state.apply_pair(&night, &day, window);
+                        state.selected_preset = None;
+                        state.status = format!("Imported {}.", path.display());
+                    }
+                    Err(e) => state.status = format!("Import failed: {e}"),
+                }
+            }
+        }
+        Message::ExportPreset => {
+            let path = expand_tilde(state.io_path.trim());
+            if state.io_path.trim().is_empty() {
+                state.status = "Enter a destination path to export to.".into();
+            } else {
+                match (state.build(false), state.build(true)) {
+                    (Ok(night), Ok(day)) => {
+                        let body =
+                            Theme::render_pair(&night, &day, &state.day_start, &state.day_end);
+                        match std::fs::write(&path, body) {
+                            Ok(_) => state.status = format!("Exported to {}.", path.display()),
+                            Err(e) => state.status = format!("Export failed: {e}"),
+                        }
+                    }
+                    (Err(e), _) | (_, Err(e)) => state.status = format!("Fix before exporting: {e}"),
+                }
+            }
+        }
         Message::Randomize => {
             if !state.presets.is_empty() {
                 let n = std::time::SystemTime::now()
@@ -1183,6 +1239,17 @@ fn controls(state: &State) -> Element<'_, Message> {
                     .size(13)
                     .style(input_style),
                 ghost_button("Save preset", Message::SavePreset),
+            ]
+            .spacing(8)
+            .align_y(Alignment::Center),
+            row![
+                text_input("~/theme.toml — import / export path", &state.io_path)
+                    .on_input(Message::IoPathChanged)
+                    .padding(6)
+                    .size(13)
+                    .style(input_style),
+                ghost_button("Import", Message::ImportPreset),
+                ghost_button("Export", Message::ExportPreset),
             ]
             .spacing(8)
             .align_y(Alignment::Center),
@@ -2976,7 +3043,40 @@ fn glass_panel(_theme: &iced::Theme) -> container::Style {
 
 #[cfg(test)]
 mod tests {
-    use super::{hsv_to_rgb, rgb_to_hsv};
+    use super::{expand_tilde, hsv_to_rgb, rgb_to_hsv};
+    use door_theme::Theme;
+
+    /// Export → import round-trips a theme pair through a file (the glue behind the
+    /// path-field Import/Export buttons): render_pair to disk, parse_pair back equal.
+    #[test]
+    fn export_import_round_trips() {
+        let night = Theme::default();
+        let mut day = Theme::default();
+        day.accent = door_theme::Color::parse("#ffcc00").unwrap();
+        let body = Theme::render_pair(&night, &day, "07:00", "19:00");
+        let path = std::env::temp_dir().join("door-settings-io-test.toml");
+        std::fs::write(&path, &body).unwrap();
+        let read = std::fs::read_to_string(&path).unwrap();
+        let (n2, d2, (start, end)) = Theme::parse_pair(&read).unwrap();
+        assert_eq!(n2.accent, night.accent);
+        assert_eq!(d2.accent, day.accent);
+        assert_eq!((start, end), (7 * 60, 19 * 60));
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn tilde_expands_to_home() {
+        // SAFETY: single-threaded test setup.
+        unsafe { std::env::set_var("HOME", "/home/tester") };
+        assert_eq!(
+            expand_tilde("~/theme.toml"),
+            std::path::PathBuf::from("/home/tester/theme.toml")
+        );
+        assert_eq!(
+            expand_tilde("/abs/path.toml"),
+            std::path::PathBuf::from("/abs/path.toml")
+        );
+    }
 
     /// HSV ↔ RGB round-trips within rounding for a spread of saturated/dim colors —
     /// the math behind the visual picker's cursor placement and emitted hex.
