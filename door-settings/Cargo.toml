@@ -18,3 +18,6 @@ iced = { version = "0.14", features = ["image", "canvas", "svg"] }
 door-theme = { workspace = true }
 # Dependency-free local clock for the preview's custom-strftime sample.
 libc = { workspace = true }
+# Spring-eased transitions for buttons/tabs (the `widgets` feature gives drop-in
+# animated widgets whose style springs between hover/press states).
+iced_anim = { version = "0.3.1", features = ["widgets"] }

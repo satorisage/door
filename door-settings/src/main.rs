@@ -19,6 +19,9 @@ use iced::{
 };
 
 use door_theme::skyshader::{FrostShader, SkyShader, SpinnerShader};
+// Drop-in button whose style springs between hover/press states (eased transitions).
+use iced_anim::widget::button as anim_button;
+
 use door_theme::clock::AnalogClock;
 use door_theme::{CardPos, ClockStyle, Color, FontWeight, SkyMode, SpinnerStyle, Theme};
 
@@ -2150,7 +2153,7 @@ fn behavior_tab<'a>(state: &'a State, h: bool) -> Element<'a, Message> {
 /// One tab in the control panel's tab bar — accent-filled when active.
 fn tab_button(label: &str, tab: Tab, active: Tab) -> Element<'static, Message> {
     let is_active = tab == active;
-    button(text(label.to_string()).size(12))
+    anim_button(text(label.to_string()).size(12))
         .padding([6.0, 8.0])
         .on_press(Message::SelectTab(tab))
         .style(move |_t, status| {
@@ -2266,7 +2269,7 @@ fn preset_thumb(p: &Preset, selected: bool) -> Element<'_, Message> {
             c(LABEL.0, LABEL.1, LABEL.2)
         });
 
-    button(column![tile, label].spacing(4).align_x(Alignment::Center))
+    anim_button(column![tile, label].spacing(4).align_x(Alignment::Center))
         .padding(0)
         .on_press(Message::PresetPicked(p.clone()))
         .style(|_t, _s| button::Style {
@@ -2686,7 +2689,7 @@ impl canvas::Program<Message> for SwatchChip {
 
 /// A swatch that opens the visual HSV picker on click (param-routed colors only).
 fn swatch_button(value: &str, param: Param) -> Element<'static, Message> {
-    button(swatch(value))
+    anim_button(swatch(value))
         .padding(0)
         .on_press(Message::OpenPicker(param))
         .style(|_t, _s| button::Style {
@@ -2985,7 +2988,7 @@ fn input_style(_t: &iced::Theme, status: text_input::Status) -> text_input::Styl
 }
 
 fn primary_button(label: &str, msg: Message) -> Element<'_, Message> {
-    button(text(label.to_string()).size(14).color(c(0x16, 0x16, 0x1e)))
+    anim_button(text(label.to_string()).size(14).color(c(0x16, 0x16, 0x1e)))
         .padding(9)
         .on_press(msg)
         .style(|_t, status| {
@@ -3014,7 +3017,7 @@ fn primary_button(label: &str, msg: Message) -> Element<'_, Message> {
 }
 
 fn ghost_button(label: &str, msg: Message) -> Element<'_, Message> {
-    button(text(label.to_string()).size(14))
+    anim_button(text(label.to_string()).size(14))
         .padding(9)
         .on_press(msg)
         .style(|_t, status| {

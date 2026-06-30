@@ -890,6 +890,7 @@ version = "0.1.0"
 dependencies = [
  "door-theme",
  "iced",
+ "iced_anim",
  "libc",
 ]
 
@@ -1544,6 +1545,16 @@ dependencies = [
  "iced_winit",
  "image",
  "thiserror 2.0.18",
+]
+
+[[package]]
+name = "iced_anim"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ea7e0f5f848b041abf2907eda96a4c21cbd5c3aee4ade434bd650d898f39e95b"
+dependencies = [
+ "iced_core",
+ "iced_widget",
 ]
 
 [[package]]
