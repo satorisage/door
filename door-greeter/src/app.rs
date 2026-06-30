@@ -18,7 +18,7 @@ use std::time::{Duration, Instant};
 use futures::SinkExt;
 use iced::widget::{
     button, canvas, column, container, image, pick_list, row, shader, stack, text, text_input,
-    Space, Stack,
+    Column, Space, Stack,
 };
 use iced::{
     keyboard, window, Alignment, Background, Border, ContentFit, Element, Font, Length, Shadow,
@@ -85,7 +85,7 @@ fn subscription(state: &State) -> Subscription<Message> {
         Subscription::run(daemon_worker),
         Subscription::run(clock_ticker),
         Subscription::run(fade_ticker),
-        // Tab / Shift-Tab cycle focus through the fields and the sign-in button.
+        // Tab / Shift-Tab cycle focus; a CapsLock press re-reads the lock state.
         iced::event::listen_with(|event, _status, _window| match event {
             iced::Event::Keyboard(keyboard::Event::KeyPressed {
                 key: keyboard::Key::Named(keyboard::key::Named::Tab),
@@ -96,6 +96,16 @@ fn subscription(state: &State) -> Subscription<Message> {
             } else {
                 Message::FocusNext
             }),
+            iced::Event::Keyboard(
+                keyboard::Event::KeyPressed {
+                    key: keyboard::Key::Named(keyboard::key::Named::CapsLock),
+                    ..
+                }
+                | keyboard::Event::KeyReleased {
+                    key: keyboard::Key::Named(keyboard::key::Named::CapsLock),
+                    ..
+                },
+            ) => Some(Message::CapsLockChanged),
             _ => None,
         }),
     ];
@@ -210,6 +220,8 @@ pub enum Message {
     /// Tab / Shift-Tab focus traversal across the fields and sign-in.
     FocusNext,
     FocusPrev,
+    /// CapsLock was pressed/released — re-read the lock state.
+    CapsLockChanged,
     // From the UI:
     UsernameChanged(String),
     PasswordChanged(String),
@@ -242,6 +254,9 @@ struct State {
     anim: f32,
     /// When the greeter started, the zero point for `anim`.
     started: Instant,
+    /// Whether Caps Lock is currently on — read from the keyboard LED (local; no
+    /// daemon). Drives the warning shown by the password field.
+    caps_lock: bool,
 }
 
 impl State {
@@ -269,6 +284,7 @@ impl State {
             fade: 0.0,
             anim: 0.0,
             started: Instant::now(),
+            caps_lock: caps_lock_on().unwrap_or(false),
         }
     }
 
@@ -389,14 +405,41 @@ fn update(state: &mut State, message: Message) -> Task<Message> {
                 state.theme.clock_format.as_deref(),
             );
             state.date = now_date();
+            // Backstop poll of the Caps Lock LED, in case a press arrived while the
+            // greeter lacked focus (the key-event path catches the focused case).
+            if let Some(on) = caps_lock_on() {
+                state.caps_lock = on;
+            }
         }
         Message::Fade => state.fade = (state.fade + 16.0 / state.theme.fade_ms.max(16.0)).min(1.0),
         // Recompute the clock from real elapsed time each frame — smooth, jitter-free.
         Message::AnimTick => state.anim = state.started.elapsed().as_secs_f32() % 10_000.0,
         Message::FocusNext => task = iced::widget::operation::focus_next(),
         Message::FocusPrev => task = iced::widget::operation::focus_previous(),
+        Message::CapsLockChanged => {
+            if let Some(on) = caps_lock_on() {
+                state.caps_lock = on;
+            }
+        }
     }
     task
+}
+
+/// Whether Caps Lock is on, from the keyboard's `capslock` LED under
+/// `/sys/class/leds/*::capslock/brightness` (e.g. `input3::capslock`). A purely
+/// local read — no daemon, no privileged path, and it discloses nothing sensitive.
+/// `None` when no such LED exists (e.g. some laptops) so the caller can hide the
+/// hint rather than assert a state it cannot know.
+fn caps_lock_on() -> Option<bool> {
+    let entries = std::fs::read_dir("/sys/class/leds").ok()?;
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        if name.to_string_lossy().ends_with("::capslock") {
+            let brightness = std::fs::read_to_string(entry.path().join("brightness")).ok()?;
+            return Some(brightness.trim() != "0");
+        }
+    }
+    None
 }
 
 /// Local `tm` for the current epoch second, or `None` if the conversion fails.
@@ -657,7 +700,26 @@ fn view(state: &State) -> Element<'_, Message> {
             .into()
     };
 
-    let form = column![header, logo, username, password, login, picker, status]
+    // A Caps Lock warning slips in under the password field only while it's on, so
+    // there's no empty gap otherwise. Standard login-screen courtesy.
+    let mut items: Vec<Element<Message>> = vec![
+        header,
+        logo,
+        username.into(),
+        password.into(),
+    ];
+    if state.caps_lock {
+        items.push(
+            text("⇪  Caps Lock is on")
+                .size(12.0 * t.font_scale)
+                .color(t.error_color.iced_alpha(f))
+                .into(),
+        );
+    }
+    items.push(login.into());
+    items.push(picker.into());
+    items.push(status);
+    let form = Column::with_children(items)
         .spacing(12)
         .align_x(Alignment::Center);
 
