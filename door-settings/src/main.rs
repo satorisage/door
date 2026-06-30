@@ -11,7 +11,7 @@ use std::time::Instant;
 
 use iced::widget::{
     button, canvas, column, combo_box, container, image, pick_list, row, scrollable, shader,
-    slider, svg, text, text_input, toggler, tooltip, Column, Space, Stack,
+    slider, svg, text, text_input, toggler, tooltip, Column, Row, Space, Stack,
 };
 use iced::{
     mouse, Alignment, Background, Border, Color as IColor, ContentFit, Element, Length, Point,
@@ -2247,29 +2247,36 @@ fn tab_button(label: &str, tab: Tab, active: Tab) -> Element<'static, Message> {
         .into()
 }
 
-/// A titled, faintly-bordered sub-card grouping one section's controls — the panel
-/// A horizontally-scrolling gallery of live preset thumbnails — each a tiny mock of
-/// the greeter card in that preset's colors. Clicking one loads it (same as the
-/// dropdown); the active preset gets an accent ring.
+/// A wrapping grid of live preset thumbnails — each a tiny mock of the greeter card
+/// in that preset's colors. Clicking one loads it; the active preset gets an accent
+/// ring + glow. A grid (vertical scroll via the body) reads far cleaner than a
+/// horizontal strip.
 fn preset_gallery(state: &State) -> Element<'_, Message> {
-    let thumbs = state.presets.iter().map(|p| {
+    const COLS: usize = 4;
+    let mut rows: Vec<Element<Message>> = Vec::new();
+    let mut current: Vec<Element<Message>> = Vec::new();
+    for p in &state.presets {
         let selected = state.selected_preset.as_ref() == Some(p);
-        preset_thumb(p, selected)
-    });
-    let strip = row(thumbs).spacing(8);
-    scrollable(strip)
-        .direction(scrollable::Direction::Horizontal(
-            scrollable::Scrollbar::new().width(5).scroller_width(5),
-        ))
-        .width(Length::Fill)
-        .into()
+        current.push(preset_thumb(p, selected));
+        if current.len() == COLS {
+            rows.push(
+                Row::with_children(std::mem::take(&mut current))
+                    .spacing(10)
+                    .into(),
+            );
+        }
+    }
+    if !current.is_empty() {
+        rows.push(Row::with_children(current).spacing(10).into());
+    }
+    Column::with_children(rows).spacing(10).into()
 }
 
 /// One preset thumbnail: a mini greeter card (background → card → accent button +
 /// field bars) in the preset's palette, with its name beneath. A button so a click
 /// loads the preset.
 fn preset_thumb(p: &Preset, selected: bool) -> Element<'_, Message> {
-    const W: f32 = 92.0;
+    const W: f32 = 104.0;
     let sw = p.swatch.unwrap_or(PresetSwatch {
         background: Color { r: 0x1a, g: 0x1b, b: 0x26, a: 0xff },
         card: Color { r: 0x24, g: 0x28, b: 0x3b, a: 0xff },
@@ -2310,22 +2317,37 @@ fn preset_thumb(p: &Preset, selected: bool) -> Element<'_, Message> {
     // The card sits on the preset's background; the whole tile gets the accent ring
     // when selected.
     let bg_col = sw.background.iced();
-    let ring = if selected { sw.accent.iced() } else { c(0x2a, 0x2e, 0x42) };
+    let accent = sw.accent.iced();
+    let ring = if selected {
+        accent
+    } else {
+        c(0x2a, 0x2e, 0x42)
+    };
     let tile = container(mini_card)
         .center_x(Length::Fixed(W))
-        .center_y(Length::Fixed(74.0))
+        .center_y(Length::Fixed(78.0))
         .style(move |_t| container::Style {
             background: Some(Background::Color(bg_col)),
             border: Border {
-                radius: 8.0.into(),
+                radius: 10.0.into(),
                 width: if selected { 2.0 } else { 1.0 },
                 color: ring,
+            },
+            // The active preset glows in its own accent so it reads at a glance.
+            shadow: if selected {
+                Shadow {
+                    color: accent.scale_alpha(0.55),
+                    offset: Vector::new(0.0, 0.0),
+                    blur_radius: 14.0,
+                }
+            } else {
+                Shadow::default()
             },
             ..Default::default()
         });
 
     let label = text(p.name.clone())
-        .size(10)
+        .size(11)
         .width(Length::Fixed(W))
         .center()
         .color(if selected {
@@ -2334,12 +2356,24 @@ fn preset_thumb(p: &Preset, selected: bool) -> Element<'_, Message> {
             c(LABEL.0, LABEL.1, LABEL.2)
         });
 
-    anim_button(column![tile, label].spacing(4).align_x(Alignment::Center))
-        .padding(0)
+    anim_button(column![tile, label].spacing(6).align_x(Alignment::Center))
+        .padding(5)
         .on_press(Message::PresetPicked(p.clone()))
-        .style(|_t, _s| button::Style {
-            background: None,
-            ..Default::default()
+        // Faint rounded wash on hover so the whole tile feels like one target.
+        .style(|_t, status| {
+            let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
+            button::Style {
+                background: Some(Background::Color(if hovered {
+                    IColor::from_rgba8(0x7a, 0xa2, 0xf7, 0.10)
+                } else {
+                    IColor::TRANSPARENT
+                })),
+                border: Border {
+                    radius: 12.0.into(),
+                    ..Default::default()
+                },
+                ..Default::default()
+            }
         })
         .into()
 }
