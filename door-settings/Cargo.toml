@@ -14,7 +14,7 @@ path = "src/main.rs"
 # through door-theme — one source of truth.
 [dependencies]
 # image: the wallpaper in the live preview; canvas: the shared animated sky.
-iced = { version = "0.14", features = ["image", "canvas", "svg"] }
+iced = { version = "0.14", features = ["image", "canvas", "svg", "markdown"] }
 door-theme = { workspace = true }
 # Dependency-free local clock for the preview's custom-strftime sample.
 libc = { workspace = true }

@@ -28,10 +28,17 @@ use door_theme::{CardPos, ClockStyle, Color, FontWeight, SkyMode, SpinnerStyle, 
 fn main() -> iced::Result {
     iced::application(State::new, update, view)
         .title("door — greeter settings")
+        .theme(app_theme)
         .style(app_style)
         .window_size((1180.0, 940.0))
         .subscription(subscription)
         .run()
+}
+
+/// Dark base theme so the Help tab's Markdown text (which uses the theme's text
+/// color, not a per-widget style) renders light on the glass panel.
+fn app_theme(_state: &State) -> iced::Theme {
+    iced::Theme::TokyoNight
 }
 
 fn app_style(state: &State, _theme: &iced::Theme) -> iced::theme::Style {
@@ -223,6 +230,8 @@ enum Message {
     IoPathChanged(String),
     ImportPreset,
     ExportPreset,
+    // A link in the Help tab's Markdown was clicked.
+    HelpLink(String),
 }
 
 struct State {
@@ -315,6 +324,8 @@ struct State {
     /// Cached built theme for the preview/window — rebuilt on edits, not per frame
     /// (parsing every color twice each vsync frame was the day-flip stutter).
     preview: Theme,
+    /// The Help tab's Markdown, parsed once (the `markdown` widget renders it).
+    help_md: iced::widget::markdown::Content,
 }
 
 fn minutes_to_hhmm(m: u32) -> String {
@@ -524,6 +535,7 @@ impl State {
             fps: 0.0,
             last_tick: None,
             preview: Theme::default(),
+            help_md: iced::widget::markdown::Content::parse(HELP_MD),
         };
         s.rebuild_preview();
         s
@@ -793,6 +805,7 @@ fn update(state: &mut State, message: Message) -> Task<Message> {
             | Message::ClosePicker
             | Message::IoPathChanged(_)
             | Message::ExportPreset
+            | Message::HelpLink(_)
     );
     match message {
         Message::Set(param, value) => state.set(param, value),
@@ -918,6 +931,9 @@ fn update(state: &mut State, message: Message) -> Task<Message> {
         Message::PresetNameChanged(s) => state.preset_name = s,
         Message::OpenPicker(param) => state.picking = Some(param),
         Message::ClosePicker => state.picking = None,
+        Message::HelpLink(url) => {
+            let _ = std::process::Command::new("xdg-open").arg(&url).spawn();
+        }
         Message::IoPathChanged(s) => state.io_path = s,
         Message::ImportPreset => {
             let path = expand_tilde(state.io_path.trim());
@@ -1066,7 +1082,7 @@ fn subscription(state: &State) -> Subscription<Message> {
 fn view(state: &State) -> Element<'_, Message> {
     let theme = &state.preview;
 
-    let panel = container(scrollable(controls(state)))
+    let panel = container(controls(state))
         .width(Length::Fixed(560.0))
         .height(Length::Fill)
         .padding(16)
@@ -1180,10 +1196,10 @@ fn controls(state: &State) -> Element<'_, Message> {
         toggler(editing_day)
             .label(if editing_day { "Day" } else { "Night" })
             .on_toggle(Message::EditDay)
-            .size(18)
-            .text_size(13),
+            .size(16)
+            .text_size(12),
     ]
-    .spacing(16)
+    .spacing(14)
     .align_y(Alignment::Center);
 
     let tabbar = row![
@@ -1204,7 +1220,7 @@ fn controls(state: &State) -> Element<'_, Message> {
         Tab::Card => card_tab(state, h),
         Tab::Behavior => behavior_tab(state, h),
         Tab::Presets => presets_tab(state),
-        Tab::Help => help_tab(),
+        Tab::Help => help_tab(state),
     };
 
     let actions = row![
@@ -1214,10 +1230,13 @@ fn controls(state: &State) -> Element<'_, Message> {
     ]
     .spacing(8);
 
+    // Pin the header, tabs, actions, and status; scroll only the body. (This also
+    // keeps the header full-width — when it lived inside the scrollable, the Help
+    // tab's scrollbar stole width and clipped the Night toggle.)
     column![
         header,
         tabbar,
-        body,
+        scrollable(body).height(Length::Fill),
         actions,
         text(state.status.clone())
             .size(12)
@@ -2279,136 +2298,74 @@ fn preset_thumb(p: &Preset, selected: bool) -> Element<'_, Message> {
         .into()
 }
 
-/// One reference entry: a control, the config key it writes, its scope, the
-/// subsystem that renders it, and a one-line description of what it does.
-struct HelpItem {
-    control: &'static str,
-    key: &'static str,
-    scope: &'static str,
-    source: &'static str,
-    what: &'static str,
-}
+/// The Help tab content as Markdown — rendered by iced's `markdown` widget. Explains
+/// what each control does and *where it comes from* (Scope Principle 6).
+const HELP_MD: &str = r##"# Where it comes from
 
-/// Render one reference entry: name + monospace key on top, description under, and a
-/// dim "scope · source" provenance line.
-fn help_item(it: &HelpItem) -> Element<'static, Message> {
-    column![
-        row![
-            text(it.control)
-                .size(13)
-                .color(c(FG.0, FG.1, FG.2)),
-            Space::new().width(Length::Fill),
-            text(it.key)
-                .size(12)
-                .font(iced::Font::MONOSPACE)
-                .color(c(ACCENT.0, ACCENT.1, ACCENT.2)),
-        ]
-        .align_y(Alignment::Center),
-        text(it.what).size(12).color(c(LABEL.0, LABEL.1, LABEL.2)),
-        text(format!("{} · {}", it.scope, it.source))
-            .size(10)
-            .color(c(MUTED.0, MUTED.1, MUTED.2)),
-    ]
-    .spacing(2)
-    .into()
-}
+door's look is plain data — a TOML file the greeter reads at startup.
 
-/// A help section: a heading + intro line + a list of reference entries.
-fn help_section(title: &'static str, intro: &'static str, items: &[HelpItem]) -> Element<'static, Message> {
-    let mut col = column![
-        text(intro).size(12).color(c(LABEL.0, LABEL.1, LABEL.2)),
-    ]
-    .spacing(10);
-    for it in items {
-        col = col.push(help_item(it));
-    }
-    group(title, col.into())
-}
+- **Config:** `/etc/door/greeter.toml` (copied from `/usr/share/door/greeter.toml`). **Save** writes it via `pkexec`; every key is documented in that file.
+- **Two palettes:** the greeter runs *before login*, so it can't read your desktop theme — it picks a **night** or **day** palette by the local clock. The Night/Day toggle (top-right) chooses which you're editing.
+- **Shared vs day/night:** structural knobs (sizes, speeds, behavior) are shared; colors and a few sky tints are per-variant. Each entry below says which.
+- **GPU-drawn:** the sky and comet spinner are real **WGSL** shaders over **wgpu** — the comet is a native port of the `com.genny.tokyonightcomet` Plasma wallpaper. The clock is read from the system clock via `libc` (no date/time crate on the login screen).
+- **Presets** are just TOML files in `~/.config/door/presets` (plus the packaged ones). Save / Import / Export read and write them. Edits preview live to the right.
 
-/// The Help tab: what each control does and *where it comes from* — the config file,
-/// the day/night model, and which subsystem (GPU shader / card / clock) renders it.
-/// Honors Scope Principle 6 (name what the greeter is and isn't).
-fn help_tab() -> Element<'static, Message> {
-    let bullet = |s: &str| text(format!("• {s}")).size(12).color(c(LABEL.0, LABEL.1, LABEL.2));
-    let provenance = group(
-        "WHERE IT COMES FROM",
-        column![
-            text("door's look is plain data — a TOML file the greeter reads at startup.")
-                .size(12)
-                .color(c(FG.0, FG.1, FG.2)),
-            bullet("Config: /etc/door/greeter.toml (copied from /usr/share/door/greeter.toml). Save here writes it via pkexec; every key is documented in that file."),
-            bullet("Two palettes: the greeter runs before login, so it can't read your desktop theme — it picks a NIGHT or DAY palette by the local clock. The day/night toggle (top-left) chooses which you're editing."),
-            bullet("Shared vs day/night: structural knobs (sizes, speeds, behavior) are shared; colors and a few sky tints are per-variant. Each entry below says which."),
-            bullet("The sky and the comet spinner are real GPU shaders (WGSL over wgpu) — the comet is a native port of the com.genny.tokyonightcomet Plasma wallpaper. The clock is read from the system clock via libc (no date/time crate on the login screen)."),
-            bullet("Presets are just TOML files in ~/.config/door/presets (+ the packaged ones). Save / Import / Export read and write them. Edits preview live in the panel to the right."),
-        ]
-        .spacing(8)
-        .into(),
+## Colors
+
+The palette. Hex `#rrggbb` or `#rrggbbaa`; click a swatch for the visual picker.
+
+- **Background** · `background` · day/night — solid fill behind everything (and any wallpaper letterbox edges).
+- **Card** · `card` · day/night — the login card; alpha makes it translucent glass over the sky.
+- **Accent** · `accent` · day/night — focus highlight and the Sign-in button.
+- **Foreground / Muted** · `foreground` / `muted` · day/night — primary text; muted is the date, placeholders, idle controls.
+- **Error** · `error_color` · day/night — the status line on a failed login (and the Caps-Lock warning).
+
+## Sky
+
+The animated background — a GPU fragment shader.
+
+- **Scene** · `sky_mode` · shared — `auto` (day/night), `seasonal`, or a fixed scene (aurora, storm, rain, snow, meteor, moon, synthwave, fog, plasma, fire, water).
+- **Stars** · `star_density` / `star_twinkle` · shared — how many stars and how fast they shimmer.
+- **Sky glow** · `sky_glow` / `glow_color` · day/night — atmospheric haze strength and tint (night nebula / daytime sun-haze).
+- **Sun** · `sun_x` / `sun_y` / `sun_size` / `sun_intensity` · shared — daytime sun position, halo size, brightness.
+- **Grain / Vignette** · `grain` / `vignette` · shared — film grain over the sky and darkened screen edges.
+
+## Spinner
+
+The card emblem when no logo image is set — a GPU shader.
+
+- **Style** · `spinner_style` · shared — comet (door's signature), ring, dots, pulse, or **none** to hide it.
+- **Glow / Speed / Trail** · `spinner_glow` / `spinner_speed` / `spinner_trail` · shared — head bloom, rotation speed, trail length.
+- **Comet / Track** · `spinner_comet` / `spinner_track` · day/night — the rotating comet color and the static ring it passes over.
+
+## Card
+
+Shape, depth, and the optional backdrop blur.
+
+- **Rounding / Width** · `corner_radius` / `card_width` · shared — card rounding and how wide it sits.
+- **Backdrop blur** · `card_blur` · shared — frosted-glass blur of the sky behind the card (a second shader pass).
+- **Shadow** · `card_shadow_blur` / `card_shadow_opacity` · shared — drop-shadow softness and darkness.
+- **Placement** · `card_pos` · shared — center, left, right, top, or bottom of the screen.
+
+## Behavior
+
+The clock, type, and motion — mostly shared knobs.
+
+- **Clock** · `clock_style` / `clock_format` · shared — digital or a drawn analog face; an optional `strftime` format.
+- **Type** · `font` / `font_weight` / `font_scale` · shared — family (must be installed), weight, and an accessibility text-size multiplier.
+- **Motion** · `animate` / `reduced_motion` · shared — run the sky animation; reduced-motion stills everything for accessibility.
+- **Logo** · `logo` · day/night — an image (SVG drawn crisp, else raster) shown instead of the spinner.
+"##;
+
+/// The Help tab: the provenance doc, rendered from Markdown by iced's `markdown`
+/// widget. Content lives in [`State::help_md`] (parsed once); links open externally.
+fn help_tab(state: &State) -> Element<'_, Message> {
+    use iced::widget::markdown;
+    let settings = markdown::Settings::with_text_size(
+        13,
+        markdown::Style::from_palette(iced::Theme::TokyoNight.palette()),
     );
-
-    let colors = help_section(
-        "COLORS",
-        "The palette. Hex (#rrggbb or #rrggbbaa); click a swatch for the visual picker.",
-        &[
-            HelpItem { control: "Background", key: "background", scope: "day/night", source: "window fill", what: "Solid fill behind everything (and any wallpaper letterbox edges)." },
-            HelpItem { control: "Card", key: "card", scope: "day/night", source: "card", what: "The login card — alpha makes it the translucent glass over the sky." },
-            HelpItem { control: "Accent", key: "accent", scope: "day/night", source: "card", what: "Focus highlight and the Sign-in button." },
-            HelpItem { control: "Foreground / Muted", key: "foreground / muted", scope: "day/night", source: "card text", what: "Primary text; muted is the date, placeholders, and idle power controls." },
-            HelpItem { control: "Error", key: "error_color", scope: "day/night", source: "card", what: "The status line on a failed login (and the Caps-Lock warning)." },
-        ],
-    );
-
-    let sky = help_section(
-        "SKY",
-        "The animated background — a GPU fragment shader. Scene + tuning.",
-        &[
-            HelpItem { control: "Scene", key: "sky_mode", scope: "shared", source: "sky shader", what: "auto (day/night), seasonal, or a fixed scene (aurora, storm, rain, snow, meteor, moon, synthwave, fog, plasma, fire, water)." },
-            HelpItem { control: "Star density / twinkle", key: "star_density / star_twinkle", scope: "shared", source: "sky shader", what: "How many stars and how fast they shimmer." },
-            HelpItem { control: "Sky glow", key: "sky_glow / glow_color", scope: "day/night", source: "sky shader", what: "The atmospheric haze strength and tint (night nebula / daytime sun-haze)." },
-            HelpItem { control: "Sun", key: "sun_x/y/size/intensity", scope: "shared", source: "sky shader", what: "Daytime sun position, halo size, and brightness." },
-            HelpItem { control: "Grain / Vignette", key: "grain / vignette", scope: "shared", source: "sky shader", what: "Film grain over the sky and darkened screen edges." },
-        ],
-    );
-
-    let spinner = help_section(
-        "SPINNER",
-        "The card emblem when no logo image is set — a GPU shader.",
-        &[
-            HelpItem { control: "Style", key: "spinner_style", scope: "shared", source: "spinner shader", what: "comet (door's signature), ring, dots, or pulse." },
-            HelpItem { control: "Glow / Speed / Trail", key: "spinner_glow / _speed / _trail", scope: "shared", source: "spinner shader", what: "Head bloom, rotation speed, and trail length of the comet." },
-            HelpItem { control: "Comet / Track", key: "spinner_comet / spinner_track", scope: "day/night", source: "spinner shader", what: "The rotating comet color and the static ring of dots it passes over." },
-        ],
-    );
-
-    let card = help_section(
-        "CARD",
-        "The login card's shape, depth, and the optional backdrop blur.",
-        &[
-            HelpItem { control: "Corner radius / Width", key: "corner_radius / card_width", scope: "shared", source: "card", what: "Card rounding and how wide it sits." },
-            HelpItem { control: "Backdrop blur", key: "card_blur", scope: "shared", source: "frost shader", what: "Frosted-glass blur of the sky behind the card (a second shader pass)." },
-            HelpItem { control: "Shadow", key: "card_shadow_blur / _opacity", scope: "shared", source: "card", what: "The card's drop-shadow softness and darkness." },
-            HelpItem { control: "Placement", key: "card_pos", scope: "shared", source: "layout", what: "center, left, right, top, or bottom of the screen." },
-        ],
-    );
-
-    let behavior = help_section(
-        "BEHAVIOR",
-        "The clock, type, and motion — mostly shared knobs.",
-        &[
-            HelpItem { control: "Clock style / format", key: "clock_style / clock_format", scope: "shared", source: "clock (libc)", what: "Digital or a drawn analog face; an optional strftime format string." },
-            HelpItem { control: "Font / weight / scale", key: "font / font_weight / font_scale", scope: "shared", source: "text", what: "Family (must be installed), weight, and an accessibility text-size multiplier." },
-            HelpItem { control: "Animate / Reduced motion", key: "animate / reduced_motion", scope: "shared", source: "all motion", what: "Run the sky animation; reduced-motion stills everything for accessibility." },
-            HelpItem { control: "Logo", key: "logo", scope: "day/night", source: "card", what: "An image (SVG drawn crisp, else raster) shown instead of the spinner." },
-        ],
-    );
-
-    scrollable(
-        column![provenance, colors, sky, spinner, card, behavior]
-            .spacing(12)
-            .padding([0, 4]),
-    )
-    .height(Length::Fill)
-    .into()
+    markdown::view(state.help_md.items(), settings).map(Message::HelpLink)
 }
 
 /// reads as a stack of glass tiles, echoing the greeter's frosted card.
