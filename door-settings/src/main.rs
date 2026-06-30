@@ -185,6 +185,7 @@ enum Message {
     CloudLit(String),
     CloudShadow(String),
     CursorParallax(f32),
+    GlowPulse(f32),
     CardGradient(f32),
     Grain(f32),
     Vignette(f32),
@@ -273,6 +274,7 @@ struct State {
     cloud_lit: String,
     cloud_shadow: String,
     cursor_parallax: f32,
+    glow_pulse: f32,
     spinner_style: SpinnerStyle,
     card_gradient: f32,
     grain: f32,
@@ -496,6 +498,7 @@ impl State {
             cloud_lit: night.cloud_lit.to_hex(),
             cloud_shadow: night.cloud_shadow.to_hex(),
             cursor_parallax: night.cursor_parallax,
+            glow_pulse: night.glow_pulse,
             spinner_style: night.spinner_style,
             card_gradient: night.card_gradient,
             grain: night.grain,
@@ -582,6 +585,7 @@ impl State {
         self.cloud_lit = night.cloud_lit.to_hex();
         self.cloud_shadow = night.cloud_shadow.to_hex();
         self.cursor_parallax = night.cursor_parallax;
+        self.glow_pulse = night.glow_pulse;
         self.spinner_style = night.spinner_style;
         self.card_gradient = night.card_gradient;
         self.grain = night.grain;
@@ -752,6 +756,7 @@ impl State {
             cloud_lit: color("Cloud lit", &self.cloud_lit)?,
             cloud_shadow: color("Cloud shadow", &self.cloud_shadow)?,
             cursor_parallax: self.cursor_parallax,
+            glow_pulse: self.glow_pulse,
             spinner_style: self.spinner_style,
             card_gradient: self.card_gradient,
             grain: self.grain,
@@ -882,6 +887,7 @@ fn update(state: &mut State, message: Message) -> Task<Message> {
         Message::CloudLit(s) => state.cloud_lit = s,
         Message::CloudShadow(s) => state.cloud_shadow = s,
         Message::CursorParallax(v) => state.cursor_parallax = v.clamp(0.0, 3.0),
+        Message::GlowPulse(v) => state.glow_pulse = v.clamp(0.0, 2.0),
         Message::CardGradient(v) => state.card_gradient = v.clamp(0.0, 1.0),
         Message::Grain(v) => state.grain = v.clamp(0.0, 0.3),
         Message::Vignette(v) => state.vignette = v.clamp(0.0, 1.0),
@@ -1762,6 +1768,18 @@ fn sky_tab<'a>(state: &'a State, pal: &'a Palette, h: bool) -> Element<'a, Messa
                         Message::CursorParallax
                     ),
                     "How much the stars drift with the mouse (0 = off).",
+                    h
+                ),
+                helped(
+                    slider_row(
+                        "Glow pulse",
+                        state.glow_pulse,
+                        0.0..=2.0,
+                        0.05,
+                        format!("{:.2}", state.glow_pulse),
+                        Message::GlowPulse
+                    ),
+                    "Gentle breathing of the night sky-glow (0 = steady).",
                     h
                 ),
                 helped(

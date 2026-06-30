@@ -488,6 +488,9 @@ pub struct Theme {
     pub cloud_shadow: Color,
     /// Cursor-parallax strength for the starfield (0 = off; ~1 = subtle). Shared.
     pub cursor_parallax: f32,
+    /// Night sky-glow breathing depth (0 = steady, the default; ~1 = a gentle pulse).
+    /// Shared; cleared by reduced-motion.
+    pub glow_pulse: f32,
     /// Card vertical-gradient strength (0 = flat fill; ~1 = a lit top sheen). Shared.
     pub card_gradient: f32,
     /// Film-grain strength over the whole sky (0 = off). Shared.
@@ -607,6 +610,7 @@ impl Default for Theme {
             cloud_lit: Color::rgb(0xff, 0xff, 0xff),
             cloud_shadow: Color::rgb(0xb4, 0xc2, 0xdb),
             cursor_parallax: 1.0,
+            glow_pulse: 0.0,
             card_gradient: 0.45,
             grain: 0.0,
             vignette: 0.2,
@@ -701,6 +705,7 @@ impl Theme {
             cloud_lit: Color::rgb(0xff, 0xff, 0xff),
             cloud_shadow: Color::rgb(0xb4, 0xc2, 0xdb),
             cursor_parallax: 1.0,
+            glow_pulse: 0.0,
             card_gradient: 0.45,
             grain: 0.0,
             vignette: 0.2,
@@ -781,6 +786,7 @@ struct ThemeFile {
     cloud_lit: Option<String>,
     cloud_shadow: Option<String>,
     cursor_parallax: Option<f32>,
+    glow_pulse: Option<f32>,
     card_gradient: Option<f32>,
     grain: Option<f32>,
     vignette: Option<f32>,
@@ -969,6 +975,7 @@ impl Theme {
         self.cloud_lit = color("cloud_lit", file.cloud_lit, self.cloud_lit);
         self.cloud_shadow = color("cloud_shadow", file.cloud_shadow, self.cloud_shadow);
         merge_f32(&mut self.cursor_parallax, file.cursor_parallax);
+        merge_f32(&mut self.glow_pulse, file.glow_pulse);
         merge_f32(&mut self.card_gradient, file.card_gradient);
         merge_f32(&mut self.grain, file.grain);
         merge_f32(&mut self.vignette, file.vignette);
@@ -1075,6 +1082,7 @@ impl Theme {
             }
         }
         merge_f32(&mut self.cursor_parallax, file.cursor_parallax);
+        merge_f32(&mut self.glow_pulse, file.glow_pulse);
         merge_f32(&mut self.card_gradient, file.card_gradient);
         merge_f32(&mut self.grain, file.grain);
         merge_f32(&mut self.vignette, file.vignette);
@@ -1158,6 +1166,7 @@ impl Theme {
         self.accent_breathing = 0.0;
         self.grain = 0.0;
         self.cursor_parallax = 0.0;
+        self.glow_pulse = 0.0;
         self.fade_ms = 0.0;
         self.spinner_speed = 0.0;
         self.spinner_pulse = 0.0;
@@ -1353,6 +1362,7 @@ impl Theme {
         out.push_str(&format!("cloud_lit     = {:?}\n", self.cloud_lit.to_hex()));
         out.push_str(&format!("cloud_shadow  = {:?}\n", self.cloud_shadow.to_hex()));
         out.push_str(&format!("cursor_parallax = {}\n", self.cursor_parallax));
+        out.push_str(&format!("glow_pulse    = {}\n", self.glow_pulse));
         out.push_str(&format!("card_gradient = {}\n", self.card_gradient));
         out.push_str(&format!("grain         = {}\n", self.grain));
         out.push_str(&format!("vignette      = {}\n", self.vignette));

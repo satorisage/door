@@ -140,7 +140,7 @@ impl SkyShader {
             params7: [t.comet_tilt, t.comet_pause, t.comet_width, 0.0],
             cloud_lit: t.cloud_lit.iced().into_linear(),
             cloud_shadow: t.cloud_shadow.iced().into_linear(),
-            params8: [0.0, 0.0, t.cursor_parallax, 0.0], // xy set per-frame from the cursor
+            params8: [0.0, 0.0, t.cursor_parallax, t.glow_pulse], // xy set per-frame from the cursor; w = glow pulse
             params9: [t.grain, t.vignette, t.corner_radius, 0.0],
             frost: [0.0, 0.0, 1.0, 1.0], // set per frame in the frost primitive
         };
@@ -1325,7 +1325,9 @@ fn night_sky(uv: vec2<f32>, p: vec2<f32>, aspect: f32) -> vec3<f32> {
   var gc = vec2(u.params5.x, u.params5.y) - vec2(0.5, 0.5);
   gc.x = gc.x * aspect;
   let gd = length(p - gc);
-  col = col + u.glow.rgb * exp(-gd * gd * u.params3.y) * u.params.w;
+  // Optional gentle breathing of the glow (params8.w = depth; 0 = steady).
+  let glow_pulse = 1.0 + u.params8.w * 0.35 * sin(u.time * 0.7);
+  col = col + u.glow.rgb * exp(-gd * gd * u.params3.y) * u.params.w * glow_pulse;
 
   // fbm nebula for depth, concentrated near the glow.
   let nbs = u.params6.z;

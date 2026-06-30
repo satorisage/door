@@ -25,6 +25,7 @@ comet_color   = "#a0f0ff"
 # Sky
 glow_color    = "#9b6bff"
 sky_glow      = 0.9
+glow_pulse    = 0.6
 star_density  = 1
 star_twinkle  = 2
 comet_enabled = true
