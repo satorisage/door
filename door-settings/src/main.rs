@@ -313,6 +313,19 @@ fn minutes_to_hhmm(m: u32) -> String {
 struct Preset {
     name: String,
     path: PathBuf,
+    /// The preset's night palette, parsed once at scan time — drives the live
+    /// thumbnail mini-card. `None` if the file failed to parse.
+    swatch: Option<PresetSwatch>,
+}
+
+/// The handful of colors a preset thumbnail needs (its night variant).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct PresetSwatch {
+    background: Color,
+    card: Color,
+    field: Color,
+    accent: Color,
+    foreground: Color,
 }
 
 impl std::fmt::Display for Preset {
@@ -359,7 +372,18 @@ fn scan_presets() -> Vec<Preset> {
                 .unwrap_or("preset");
             let name = prettify(stem);
             if seen.insert(name.clone()) {
-                out.push(Preset { name, path });
+                // Parse the night palette now for the live thumbnail (cheap, ~small TOML).
+                let swatch = std::fs::read_to_string(&path)
+                    .ok()
+                    .and_then(|c| Theme::parse_pair(&c).ok())
+                    .map(|(night, _, _)| PresetSwatch {
+                        background: night.background,
+                        card: night.card,
+                        field: night.field,
+                        accent: night.accent,
+                        foreground: night.foreground,
+                    });
+                out.push(Preset { name, path, swatch });
             }
         }
     }
@@ -1145,6 +1169,7 @@ fn controls(state: &State) -> Element<'_, Message> {
             ]
             .spacing(8)
             .align_y(Alignment::Center),
+            preset_gallery(state),
             row![
                 text_input("name this preset", &state.preset_name)
                     .on_input(Message::PresetNameChanged)
@@ -2057,6 +2082,102 @@ fn tab_button(label: &str, tab: Tab, active: Tab) -> Element<'static, Message> {
 }
 
 /// A titled, faintly-bordered sub-card grouping one section's controls — the panel
+/// A horizontally-scrolling gallery of live preset thumbnails — each a tiny mock of
+/// the greeter card in that preset's colors. Clicking one loads it (same as the
+/// dropdown); the active preset gets an accent ring.
+fn preset_gallery(state: &State) -> Element<'_, Message> {
+    let thumbs = state.presets.iter().map(|p| {
+        let selected = state.selected_preset.as_ref() == Some(p);
+        preset_thumb(p, selected)
+    });
+    let strip = row(thumbs).spacing(8);
+    scrollable(strip)
+        .direction(scrollable::Direction::Horizontal(
+            scrollable::Scrollbar::new().width(5).scroller_width(5),
+        ))
+        .width(Length::Fill)
+        .into()
+}
+
+/// One preset thumbnail: a mini greeter card (background → card → accent button +
+/// field bars) in the preset's palette, with its name beneath. A button so a click
+/// loads the preset.
+fn preset_thumb(p: &Preset, selected: bool) -> Element<'_, Message> {
+    const W: f32 = 92.0;
+    let sw = p.swatch.unwrap_or(PresetSwatch {
+        background: Color { r: 0x1a, g: 0x1b, b: 0x26, a: 0xff },
+        card: Color { r: 0x24, g: 0x28, b: 0x3b, a: 0xff },
+        field: Color { r: 0x29, g: 0x2e, b: 0x42, a: 0xff },
+        accent: Color { r: 0x7a, g: 0xa2, b: 0xf7, a: 0xff },
+        foreground: Color { r: 0xc0, g: 0xca, b: 0xf5, a: 0xff },
+    });
+    let bar = |col: Color, w: f32, h: f32| {
+        let fill = col.iced();
+        container(Space::new())
+            .width(Length::Fixed(w))
+            .height(Length::Fixed(h))
+            .style(move |_t| container::Style {
+                background: Some(Background::Color(fill)),
+                border: Border { radius: 2.0.into(), ..Default::default() },
+                ..Default::default()
+            })
+    };
+    // The mini card: a couple of field bars + an accent "button", on the card color.
+    let card_col = sw.card.iced();
+    let mini_card = container(
+        column![
+            bar(sw.foreground, 26.0, 4.0),
+            bar(sw.field, 52.0, 7.0),
+            bar(sw.field, 52.0, 7.0),
+            bar(sw.accent, 52.0, 9.0),
+        ]
+        .spacing(4)
+        .align_x(Alignment::Center),
+    )
+    .padding(7)
+    .style(move |_t| container::Style {
+        background: Some(Background::Color(card_col)),
+        border: Border { radius: 6.0.into(), ..Default::default() },
+        ..Default::default()
+    });
+
+    // The card sits on the preset's background; the whole tile gets the accent ring
+    // when selected.
+    let bg_col = sw.background.iced();
+    let ring = if selected { sw.accent.iced() } else { c(0x2a, 0x2e, 0x42) };
+    let tile = container(mini_card)
+        .center_x(Length::Fixed(W))
+        .center_y(Length::Fixed(74.0))
+        .style(move |_t| container::Style {
+            background: Some(Background::Color(bg_col)),
+            border: Border {
+                radius: 8.0.into(),
+                width: if selected { 2.0 } else { 1.0 },
+                color: ring,
+            },
+            ..Default::default()
+        });
+
+    let label = text(p.name.clone())
+        .size(10)
+        .width(Length::Fixed(W))
+        .center()
+        .color(if selected {
+            c(ACCENT.0, ACCENT.1, ACCENT.2)
+        } else {
+            c(LABEL.0, LABEL.1, LABEL.2)
+        });
+
+    button(column![tile, label].spacing(4).align_x(Alignment::Center))
+        .padding(0)
+        .on_press(Message::PresetPicked(p.clone()))
+        .style(|_t, _s| button::Style {
+            background: None,
+            ..Default::default()
+        })
+        .into()
+}
+
 /// reads as a stack of glass tiles, echoing the greeter's frosted card.
 fn group<'a>(title: &str, body: Element<'a, Message>) -> Element<'a, Message> {
     let head = row![
