@@ -527,6 +527,40 @@ pub struct Theme {
     pub storm_bolt_color: Color,
     /// Storm whole-sky flash colour.
     pub storm_flash_color: Color,
+
+    // ── Rain scene controls (M8) ──
+    /// Rain fall speed (base; layers add to it).
+    pub rain_fall_speed: f32,
+    /// Rain density (0 = none … ~0.3 = heavy).
+    pub rain_density: f32,
+    /// Rain diagonal slant.
+    pub rain_slant: f32,
+    /// Rain streak brightness.
+    pub rain_intensity: f32,
+    /// Rain streak colour.
+    pub rain_color: Color,
+
+    // ── Snow scene controls (M8) ──
+    /// Snow fall speed (base; layers add to it).
+    pub snow_fall_speed: f32,
+    /// Snow density (0 = none … ~0.3 = heavy).
+    pub snow_density: f32,
+    /// Snow horizontal sway amount.
+    pub snow_sway: f32,
+    /// Snow flake size (higher = smaller flakes).
+    pub snow_flake_size: f32,
+    /// Snow flake colour.
+    pub snow_color: Color,
+
+    // ── Fire scene controls (M8) ──
+    /// Fire rise speed (flames scroll upward).
+    pub fire_rise_speed: f32,
+    /// Fire flame height (lower = taller flames).
+    pub fire_flame_height: f32,
+    /// Fire base flame colour.
+    pub fire_flame_color: Color,
+    /// Fire hot-tip colour.
+    pub fire_tip_color: Color,
     /// Card vertical-gradient strength (0 = flat fill; ~1 = a lit top sheen). Shared.
     pub card_gradient: f32,
     /// Film-grain strength over the whole sky (0 = off). Shared.
@@ -663,6 +697,20 @@ impl Default for Theme {
             storm_cloud_density: 1.0,
             storm_bolt_color: Color::rgb(0xd9, 0xe6, 0xff),
             storm_flash_color: Color::rgb(0x8c, 0x99, 0xcc),
+            rain_fall_speed: 5.0,
+            rain_density: 0.07,
+            rain_slant: 4.0,
+            rain_intensity: 0.5,
+            rain_color: Color::rgb(0x8c, 0x9e, 0xb8),
+            snow_fall_speed: 0.9,
+            snow_density: 0.14,
+            snow_sway: 0.6,
+            snow_flake_size: 18.0,
+            snow_color: Color::rgb(0xff, 0xff, 0xff),
+            fire_rise_speed: 2.0,
+            fire_flame_height: 0.22,
+            fire_flame_color: Color::rgb(0xff, 0x4b, 0x0d),
+            fire_tip_color: Color::rgb(0xff, 0xe6, 0x80),
             card_gradient: 0.45,
             grain: 0.0,
             vignette: 0.2,
@@ -774,6 +822,20 @@ impl Theme {
             storm_cloud_density: 1.0,
             storm_bolt_color: Color::rgb(0xd9, 0xe6, 0xff),
             storm_flash_color: Color::rgb(0x8c, 0x99, 0xcc),
+            rain_fall_speed: 5.0,
+            rain_density: 0.07,
+            rain_slant: 4.0,
+            rain_intensity: 0.5,
+            rain_color: Color::rgb(0x8c, 0x9e, 0xb8),
+            snow_fall_speed: 0.9,
+            snow_density: 0.14,
+            snow_sway: 0.6,
+            snow_flake_size: 18.0,
+            snow_color: Color::rgb(0xff, 0xff, 0xff),
+            fire_rise_speed: 2.0,
+            fire_flame_height: 0.22,
+            fire_flame_color: Color::rgb(0xff, 0x4b, 0x0d),
+            fire_tip_color: Color::rgb(0xff, 0xe6, 0x80),
             card_gradient: 0.45,
             grain: 0.0,
             vignette: 0.2,
@@ -871,6 +933,20 @@ struct ThemeFile {
     storm_cloud_density: Option<f32>,
     storm_bolt_color: Option<String>,
     storm_flash_color: Option<String>,
+    rain_fall_speed: Option<f32>,
+    rain_density: Option<f32>,
+    rain_slant: Option<f32>,
+    rain_intensity: Option<f32>,
+    rain_color: Option<String>,
+    snow_fall_speed: Option<f32>,
+    snow_density: Option<f32>,
+    snow_sway: Option<f32>,
+    snow_flake_size: Option<f32>,
+    snow_color: Option<String>,
+    fire_rise_speed: Option<f32>,
+    fire_flame_height: Option<f32>,
+    fire_flame_color: Option<String>,
+    fire_tip_color: Option<String>,
     card_gradient: Option<f32>,
     grain: Option<f32>,
     vignette: Option<f32>,
@@ -1081,6 +1157,21 @@ impl Theme {
             color("storm_bolt_color", file.storm_bolt_color, self.storm_bolt_color);
         self.storm_flash_color =
             color("storm_flash_color", file.storm_flash_color, self.storm_flash_color);
+        merge_f32(&mut self.rain_fall_speed, file.rain_fall_speed);
+        merge_f32(&mut self.rain_density, file.rain_density);
+        merge_f32(&mut self.rain_slant, file.rain_slant);
+        merge_f32(&mut self.rain_intensity, file.rain_intensity);
+        self.rain_color = color("rain_color", file.rain_color, self.rain_color);
+        merge_f32(&mut self.snow_fall_speed, file.snow_fall_speed);
+        merge_f32(&mut self.snow_density, file.snow_density);
+        merge_f32(&mut self.snow_sway, file.snow_sway);
+        merge_f32(&mut self.snow_flake_size, file.snow_flake_size);
+        self.snow_color = color("snow_color", file.snow_color, self.snow_color);
+        merge_f32(&mut self.fire_rise_speed, file.fire_rise_speed);
+        merge_f32(&mut self.fire_flame_height, file.fire_flame_height);
+        self.fire_flame_color =
+            color("fire_flame_color", file.fire_flame_color, self.fire_flame_color);
+        self.fire_tip_color = color("fire_tip_color", file.fire_tip_color, self.fire_tip_color);
         merge_f32(&mut self.card_gradient, file.card_gradient);
         merge_f32(&mut self.grain, file.grain);
         merge_f32(&mut self.vignette, file.vignette);
@@ -1199,12 +1290,26 @@ impl Theme {
         merge_f32(&mut self.storm_lightning_rate, file.storm_lightning_rate);
         merge_f32(&mut self.storm_strike_chance, file.storm_strike_chance);
         merge_f32(&mut self.storm_cloud_density, file.storm_cloud_density);
+        merge_f32(&mut self.rain_fall_speed, file.rain_fall_speed);
+        merge_f32(&mut self.rain_density, file.rain_density);
+        merge_f32(&mut self.rain_slant, file.rain_slant);
+        merge_f32(&mut self.rain_intensity, file.rain_intensity);
+        merge_f32(&mut self.snow_fall_speed, file.snow_fall_speed);
+        merge_f32(&mut self.snow_density, file.snow_density);
+        merge_f32(&mut self.snow_sway, file.snow_sway);
+        merge_f32(&mut self.snow_flake_size, file.snow_flake_size);
+        merge_f32(&mut self.fire_rise_speed, file.fire_rise_speed);
+        merge_f32(&mut self.fire_flame_height, file.fire_flame_height);
         for (slot, s) in [
             (&mut self.synthwave_grid_color, &file.synthwave_grid_color),
             (&mut self.synthwave_sky_top, &file.synthwave_sky_top),
             (&mut self.synthwave_sky_bottom, &file.synthwave_sky_bottom),
             (&mut self.storm_bolt_color, &file.storm_bolt_color),
             (&mut self.storm_flash_color, &file.storm_flash_color),
+            (&mut self.rain_color, &file.rain_color),
+            (&mut self.snow_color, &file.snow_color),
+            (&mut self.fire_flame_color, &file.fire_flame_color),
+            (&mut self.fire_tip_color, &file.fire_tip_color),
         ] {
             if let Some(s) = s {
                 if let Some(col) = Color::parse(s) {
@@ -1508,6 +1613,20 @@ impl Theme {
         out.push_str(&format!("storm_cloud_density   = {}\n", self.storm_cloud_density));
         out.push_str(&format!("storm_bolt_color      = {:?}\n", self.storm_bolt_color.to_hex()));
         out.push_str(&format!("storm_flash_color     = {:?}\n", self.storm_flash_color.to_hex()));
+        out.push_str(&format!("rain_fall_speed   = {}\n", self.rain_fall_speed));
+        out.push_str(&format!("rain_density      = {}\n", self.rain_density));
+        out.push_str(&format!("rain_slant        = {}\n", self.rain_slant));
+        out.push_str(&format!("rain_intensity    = {}\n", self.rain_intensity));
+        out.push_str(&format!("rain_color        = {:?}\n", self.rain_color.to_hex()));
+        out.push_str(&format!("snow_fall_speed   = {}\n", self.snow_fall_speed));
+        out.push_str(&format!("snow_density      = {}\n", self.snow_density));
+        out.push_str(&format!("snow_sway         = {}\n", self.snow_sway));
+        out.push_str(&format!("snow_flake_size   = {}\n", self.snow_flake_size));
+        out.push_str(&format!("snow_color        = {:?}\n", self.snow_color.to_hex()));
+        out.push_str(&format!("fire_rise_speed   = {}\n", self.fire_rise_speed));
+        out.push_str(&format!("fire_flame_height = {}\n", self.fire_flame_height));
+        out.push_str(&format!("fire_flame_color  = {:?}\n", self.fire_flame_color.to_hex()));
+        out.push_str(&format!("fire_tip_color    = {:?}\n", self.fire_tip_color.to_hex()));
         out.push_str(&format!("card_gradient = {}\n", self.card_gradient));
         out.push_str(&format!("grain         = {}\n", self.grain));
         out.push_str(&format!("vignette      = {}\n", self.vignette));

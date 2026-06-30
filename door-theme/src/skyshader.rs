@@ -138,6 +138,37 @@ impl SkyShader {
                 nom(t.storm_flash_color),
                 z,
             ),
+            crate::SkyMode::Rain => (
+                [
+                    t.rain_fall_speed,
+                    t.rain_density,
+                    t.rain_slant,
+                    t.rain_intensity,
+                ],
+                z,
+                nom(t.rain_color),
+                z,
+                z,
+            ),
+            crate::SkyMode::Snow => (
+                [
+                    t.snow_fall_speed,
+                    t.snow_density,
+                    t.snow_sway,
+                    t.snow_flake_size,
+                ],
+                z,
+                nom(t.snow_color),
+                z,
+                z,
+            ),
+            crate::SkyMode::Fire => (
+                [t.fire_rise_speed, t.fire_flame_height, 0.0, 0.0],
+                z,
+                nom(t.fire_flame_color),
+                nom(t.fire_tip_color),
+                z,
+            ),
             _ => (z, z, z, z, z),
         };
         let day = t.is_day;
@@ -1178,16 +1209,16 @@ fn rain_sky(uv: vec2<f32>, p: vec2<f32>, aspect: f32) -> vec3<f32> {
     let fl = f32(l);
     let sc = vec2(46.0 + fl * 18.0, 7.0 + fl * 2.0);
     var rp = vec2(uv.x * aspect, uv.y) * sc;
-    rp.x = rp.x + fl * 11.0 + uv.y * 4.0;        // slight diagonal slant
-    rp.y = rp.y + u.time * (5.0 + fl * 2.5) * sc.y / 7.0;
+    rp.x = rp.x + fl * 11.0 + uv.y * u.scene_a.z;        // diagonal slant
+    rp.y = rp.y + u.time * (u.scene_a.x + fl * 2.5) * sc.y / 7.0;
     let cell = floor(rp);
     let h = hash21(cell + fl * 31.0);
     let f = fract(rp) - vec2(0.5, 0.5);
     // thin in x, a short dash in y
-    let streak = step(0.93, h) * exp(-f.x * f.x * 80.0) * smoothstep(0.5, 0.0, abs(f.y));
+    let streak = step(1.0 - u.scene_a.y, h) * exp(-f.x * f.x * 80.0) * smoothstep(0.5, 0.0, abs(f.y));
     rain = rain + streak * (0.7 + fl * 0.2);
   }
-  return col + vec3(0.55, 0.62, 0.72) * rain * 0.5;
+  return col + u.scene_c1.rgb * rain * u.scene_a.w;
 }
 
 // Snow: a soft winter twilight with drifting, swaying flakes across parallax layers.
@@ -1198,15 +1229,15 @@ fn snow_sky(uv: vec2<f32>, p: vec2<f32>, aspect: f32) -> vec3<f32> {
     let fl = f32(l);
     let sc = 13.0 + fl * 7.0;
     var sp = vec2(uv.x * aspect, uv.y) * sc;
-    sp.y = sp.y + u.time * (0.9 + fl * 0.5);
-    sp.x = sp.x + sin(u.time * 0.5 + fl + sp.y * 0.25) * 0.6;   // sway
+    sp.y = sp.y + u.time * (u.scene_a.x + fl * 0.5);
+    sp.x = sp.x + sin(u.time * 0.5 + fl + sp.y * 0.25) * u.scene_a.z;   // sway
     let cell = floor(sp);
     let h = hash21(cell + fl * 23.0);
     let f = fract(sp) - vec2(0.5, 0.5);
-    let flake = step(0.86, h) * exp(-dot(f, f) * (18.0 + fl * 14.0));
+    let flake = step(1.0 - u.scene_a.y, h) * exp(-dot(f, f) * (u.scene_a.w + fl * 14.0));
     snow = snow + flake * (0.6 + fl * 0.3);
   }
-  return col + vec3(1.0, 1.0, 1.0) * snow;
+  return col + u.scene_c1.rgb * snow;
 }
 
 // A faint static starfield, shared by the night-based scenes (meteor, moon).
@@ -1357,15 +1388,17 @@ fn plasma_sky(uv: vec2<f32>, p: vec2<f32>, aspect: f32) -> vec3<f32> {
 // orange→white-yellow ramp so flames lick upward.
 fn fire_sky(uv: vec2<f32>, p: vec2<f32>, aspect: f32) -> vec3<f32> {
   let q = vec2(uv.x * aspect, uv.y);
-  let flow = fbm(q * vec2(3.0, 4.5) + vec2(0.0, u.time * 2.0));   // scroll upward
-  let flow2 = fbm(q * vec2(6.0, 8.0) + vec2(3.0, u.time * 3.0));
+  let flow = fbm(q * vec2(3.0, 4.5) + vec2(0.0, u.time * u.scene_a.x));   // scroll upward
+  let flow2 = fbm(q * vec2(6.0, 8.0) + vec2(3.0, u.time * u.scene_a.x * 1.5));
   let n = flow * 0.65 + flow2 * 0.35;
   // uv.y = 1 at the bottom; weight heat toward it.
-  var heat = clamp((uv.y - 0.22) * 1.25, 0.0, 1.0) * (0.35 + 1.1 * n);
+  var heat = clamp((uv.y - u.scene_a.y) * 1.25, 0.0, 1.0) * (0.35 + 1.1 * n);
   heat = pow(clamp(heat, 0.0, 1.0), 1.5);
   var col = vec3(0.02, 0.005, 0.0);
-  col = col + vec3(1.6, 0.45, 0.08) * heat;
-  col = col + vec3(1.0, 0.9, 0.5) * pow(heat, 3.0);
+  // scene_c1 is the normalised base hue; the 1.6 boost (kept internal) re-creates the
+  // hot, over-bright deep flame the literal vec3(1.6, …) gave.
+  col = col + u.scene_c1.rgb * 1.6 * heat;
+  col = col + u.scene_c2.rgb * pow(heat, 3.0);
   return col;
 }
 

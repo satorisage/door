@@ -202,6 +202,20 @@ enum Message {
     StCloudDensity(f32),
     StBoltColor(String),
     StFlashColor(String),
+    RainFallSpeed(f32),
+    RainDensity(f32),
+    RainSlant(f32),
+    RainIntensity(f32),
+    RainColor(String),
+    SnowFallSpeed(f32),
+    SnowDensity(f32),
+    SnowSway(f32),
+    SnowFlakeSize(f32),
+    SnowColor(String),
+    FireRiseSpeed(f32),
+    FireFlameHeight(f32),
+    FireFlameColor(String),
+    FireTipColor(String),
     CardGradient(f32),
     Grain(f32),
     Vignette(f32),
@@ -308,6 +322,20 @@ struct State {
     storm_cloud_density: f32,
     storm_bolt_color: String,
     storm_flash_color: String,
+    rain_fall_speed: f32,
+    rain_density: f32,
+    rain_slant: f32,
+    rain_intensity: f32,
+    rain_color: String,
+    snow_fall_speed: f32,
+    snow_density: f32,
+    snow_sway: f32,
+    snow_flake_size: f32,
+    snow_color: String,
+    fire_rise_speed: f32,
+    fire_flame_height: f32,
+    fire_flame_color: String,
+    fire_tip_color: String,
     spinner_style: SpinnerStyle,
     card_gradient: f32,
     grain: f32,
@@ -548,6 +576,20 @@ impl State {
             storm_cloud_density: night.storm_cloud_density,
             storm_bolt_color: night.storm_bolt_color.to_hex(),
             storm_flash_color: night.storm_flash_color.to_hex(),
+            rain_fall_speed: night.rain_fall_speed,
+            rain_density: night.rain_density,
+            rain_slant: night.rain_slant,
+            rain_intensity: night.rain_intensity,
+            rain_color: night.rain_color.to_hex(),
+            snow_fall_speed: night.snow_fall_speed,
+            snow_density: night.snow_density,
+            snow_sway: night.snow_sway,
+            snow_flake_size: night.snow_flake_size,
+            snow_color: night.snow_color.to_hex(),
+            fire_rise_speed: night.fire_rise_speed,
+            fire_flame_height: night.fire_flame_height,
+            fire_flame_color: night.fire_flame_color.to_hex(),
+            fire_tip_color: night.fire_tip_color.to_hex(),
             spinner_style: night.spinner_style,
             card_gradient: night.card_gradient,
             grain: night.grain,
@@ -651,6 +693,20 @@ impl State {
         self.storm_cloud_density = night.storm_cloud_density;
         self.storm_bolt_color = night.storm_bolt_color.to_hex();
         self.storm_flash_color = night.storm_flash_color.to_hex();
+        self.rain_fall_speed = night.rain_fall_speed;
+        self.rain_density = night.rain_density;
+        self.rain_slant = night.rain_slant;
+        self.rain_intensity = night.rain_intensity;
+        self.rain_color = night.rain_color.to_hex();
+        self.snow_fall_speed = night.snow_fall_speed;
+        self.snow_density = night.snow_density;
+        self.snow_sway = night.snow_sway;
+        self.snow_flake_size = night.snow_flake_size;
+        self.snow_color = night.snow_color.to_hex();
+        self.fire_rise_speed = night.fire_rise_speed;
+        self.fire_flame_height = night.fire_flame_height;
+        self.fire_flame_color = night.fire_flame_color.to_hex();
+        self.fire_tip_color = night.fire_tip_color.to_hex();
         self.spinner_style = night.spinner_style;
         self.card_gradient = night.card_gradient;
         self.grain = night.grain;
@@ -838,6 +894,20 @@ impl State {
             storm_cloud_density: self.storm_cloud_density,
             storm_bolt_color: color("Storm bolt", &self.storm_bolt_color)?,
             storm_flash_color: color("Storm flash", &self.storm_flash_color)?,
+            rain_fall_speed: self.rain_fall_speed,
+            rain_density: self.rain_density,
+            rain_slant: self.rain_slant,
+            rain_intensity: self.rain_intensity,
+            rain_color: color("Rain colour", &self.rain_color)?,
+            snow_fall_speed: self.snow_fall_speed,
+            snow_density: self.snow_density,
+            snow_sway: self.snow_sway,
+            snow_flake_size: self.snow_flake_size,
+            snow_color: color("Snow colour", &self.snow_color)?,
+            fire_rise_speed: self.fire_rise_speed,
+            fire_flame_height: self.fire_flame_height,
+            fire_flame_color: color("Fire flame", &self.fire_flame_color)?,
+            fire_tip_color: color("Fire tip", &self.fire_tip_color)?,
             spinner_style: self.spinner_style,
             card_gradient: self.card_gradient,
             grain: self.grain,
@@ -985,6 +1055,20 @@ fn update(state: &mut State, message: Message) -> Task<Message> {
         Message::StCloudDensity(v) => state.storm_cloud_density = v.clamp(0.0, 3.0),
         Message::StBoltColor(s) => state.storm_bolt_color = s,
         Message::StFlashColor(s) => state.storm_flash_color = s,
+        Message::RainFallSpeed(v) => state.rain_fall_speed = v.clamp(0.5, 20.0),
+        Message::RainDensity(v) => state.rain_density = v.clamp(0.0, 0.5),
+        Message::RainSlant(v) => state.rain_slant = v.clamp(0.0, 12.0),
+        Message::RainIntensity(v) => state.rain_intensity = v.clamp(0.0, 1.5),
+        Message::RainColor(s) => state.rain_color = s,
+        Message::SnowFallSpeed(v) => state.snow_fall_speed = v.clamp(0.1, 4.0),
+        Message::SnowDensity(v) => state.snow_density = v.clamp(0.0, 0.5),
+        Message::SnowSway(v) => state.snow_sway = v.clamp(0.0, 2.5),
+        Message::SnowFlakeSize(v) => state.snow_flake_size = v.clamp(6.0, 40.0),
+        Message::SnowColor(s) => state.snow_color = s,
+        Message::FireRiseSpeed(v) => state.fire_rise_speed = v.clamp(0.3, 6.0),
+        Message::FireFlameHeight(v) => state.fire_flame_height = v.clamp(0.0, 0.6),
+        Message::FireFlameColor(s) => state.fire_flame_color = s,
+        Message::FireTipColor(s) => state.fire_tip_color = s,
         Message::CardGradient(v) => state.card_gradient = v.clamp(0.0, 1.0),
         Message::Grain(v) => state.grain = v.clamp(0.0, 0.3),
         Message::Vignette(v) => state.vignette = v.clamp(0.0, 1.0),
@@ -1925,6 +2009,15 @@ fn sky_tab<'a>(state: &'a State, pal: &'a Palette, h: bool) -> Element<'a, Messa
     if matches!(state.sky_mode, SkyMode::Storm) {
         col = col.push(storm_group(state, h));
     }
+    if matches!(state.sky_mode, SkyMode::Rain) {
+        col = col.push(rain_group(state, h));
+    }
+    if matches!(state.sky_mode, SkyMode::Snow) {
+        col = col.push(snow_group(state, h));
+    }
+    if matches!(state.sky_mode, SkyMode::Fire) {
+        col = col.push(fire_group(state, h));
+    }
     col.into()
 }
 
@@ -1944,6 +2037,67 @@ fn storm_group(state: &State, h: bool) -> Element<'_, Message> {
                 "How heavy the churning clouds read.", h),
             color_cell_with("Bolt", &state.storm_bolt_color, Message::StBoltColor),
             color_cell_with("Flash", &state.storm_flash_color, Message::StFlashColor),
+        ]),
+    )
+}
+
+/// The rain scene's authoring controls (M8) — fall, density, slant, brightness, colour.
+fn rain_group(state: &State, h: bool) -> Element<'_, Message> {
+    group(
+        "RAIN",
+        two_col(vec![
+            helped(slider_row("Fall speed", state.rain_fall_speed, 1.0..=12.0, 0.1,
+                format!("{:.1}", state.rain_fall_speed), Message::RainFallSpeed),
+                "How fast the streaks fall.", h),
+            helped(slider_row("Density", state.rain_density, 0.0..=0.30, 0.005,
+                format!("{:.3}", state.rain_density), Message::RainDensity),
+                "How many streaks fill the sky (0 = clear).", h),
+            helped(slider_row("Slant", state.rain_slant, 0.0..=10.0, 0.1,
+                format!("{:.1}", state.rain_slant), Message::RainSlant),
+                "Diagonal lean of the rain (0 = straight down).", h),
+            helped(slider_row("Brightness", state.rain_intensity, 0.0..=1.2, 0.02,
+                format!("{:.2}", state.rain_intensity), Message::RainIntensity),
+                "How brightly the streaks read against the sky.", h),
+            color_cell_with("Rain", &state.rain_color, Message::RainColor),
+        ]),
+    )
+}
+
+/// The snow scene's authoring controls (M8) — fall, density, sway, flake size, colour.
+fn snow_group(state: &State, h: bool) -> Element<'_, Message> {
+    group(
+        "SNOW",
+        two_col(vec![
+            helped(slider_row("Fall speed", state.snow_fall_speed, 0.2..=3.0, 0.05,
+                format!("{:.2}", state.snow_fall_speed), Message::SnowFallSpeed),
+                "How fast the flakes drift down.", h),
+            helped(slider_row("Density", state.snow_density, 0.0..=0.30, 0.005,
+                format!("{:.3}", state.snow_density), Message::SnowDensity),
+                "How many flakes fill the sky (0 = clear).", h),
+            helped(slider_row("Sway", state.snow_sway, 0.0..=2.0, 0.02,
+                format!("{:.2}", state.snow_sway), Message::SnowSway),
+                "How much the flakes wander side to side.", h),
+            helped(slider_row("Flake size", state.snow_flake_size, 8.0..=36.0, 0.5,
+                format!("{:.0}", state.snow_flake_size), Message::SnowFlakeSize),
+                "Higher = smaller, finer flakes.", h),
+            color_cell_with("Flake", &state.snow_color, Message::SnowColor),
+        ]),
+    )
+}
+
+/// The fire scene's authoring controls (M8) — rise, height, base + tip colour.
+fn fire_group(state: &State, h: bool) -> Element<'_, Message> {
+    group(
+        "FIRE",
+        two_col(vec![
+            helped(slider_row("Rise speed", state.fire_rise_speed, 0.5..=5.0, 0.05,
+                format!("{:.2}", state.fire_rise_speed), Message::FireRiseSpeed),
+                "How fast the flames scroll upward.", h),
+            helped(slider_row("Flame height", state.fire_flame_height, 0.0..=0.5, 0.005,
+                format!("{:.3}", state.fire_flame_height), Message::FireFlameHeight),
+                "Lower = taller flames reaching up the screen.", h),
+            color_cell_with("Flame", &state.fire_flame_color, Message::FireFlameColor),
+            color_cell_with("Tip", &state.fire_tip_color, Message::FireTipColor),
         ]),
     )
 }

@@ -98,6 +98,33 @@ spinner_trail = 1.0         # trail length 0.15–1.0 (shorter = crisper on a li
 # synthwave_grid_color       = "#00e6ff" # neon grid colour
 # synthwave_sky_top          = "#290d47" # upper-sky colour
 # synthwave_sky_bottom       = "#f2458c" # lower-sky / sun-base colour
+#
+# Storm scene (only used when sky_mode = "storm"):
+# storm_lightning_rate  = 0.8       # how often lightning may strike (per second)
+# storm_strike_chance   = 0.32      # odds a given window actually flashes (0–1)
+# storm_cloud_density   = 1.0       # how heavy the churning clouds read
+# storm_bolt_color      = "#d9e6ff" # lightning bolt colour
+# storm_flash_color     = "#8c99cc" # whole-sky flash colour
+#
+# Rain scene (only used when sky_mode = "rain"):
+# rain_fall_speed   = 5.0        # how fast the streaks fall
+# rain_density      = 0.07       # how many streaks fill the sky (0 = clear, ~0.3 = heavy)
+# rain_slant        = 4.0        # diagonal lean (0 = straight down)
+# rain_intensity    = 0.5        # streak brightness against the sky
+# rain_color        = "#8c9eb8"  # rain streak colour
+#
+# Snow scene (only used when sky_mode = "snow"):
+# snow_fall_speed   = 0.9        # how fast the flakes drift down
+# snow_density      = 0.14       # how many flakes fill the sky (0 = clear, ~0.3 = heavy)
+# snow_sway         = 0.6        # how much the flakes wander side to side
+# snow_flake_size   = 18.0       # higher = smaller, finer flakes
+# snow_color        = "#ffffff"  # flake colour
+#
+# Fire scene (only used when sky_mode = "fire"):
+# fire_rise_speed   = 2.0        # how fast the flames scroll upward
+# fire_flame_height = 0.22       # lower = taller flames reaching up the screen
+# fire_flame_color  = "#ff4b0d"  # base flame hue (internally boosted for the hot glow)
+# fire_tip_color    = "#ffe680"  # hot-tip colour
 # card_gradient  = 0.45       # vertical sheen on the card (0 = flat)
 # grain          = 0.0        # film grain over the sky (0 = off)
 # vignette       = 0.2        # darken the screen edges (0 = off)
