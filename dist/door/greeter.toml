@@ -33,6 +33,7 @@ show_clock    = true       # show the clock + date in the card
 # clock_style   = "digital"  # "digital" readout or an "analog" clock face
 # clock_format  = "%a %H:%M"  # custom strftime for the digital clock (unset = HH:MM)
 # font_scale    = 1.0        # scale all card text (accessibility / large-text)
+# font_weight   = "regular"  # card text weight: light | regular | medium | semibold | bold
 # card_pos     = "center"   # card placement: center | left | right | top | bottom
 # Animated sky: a twinkling Tokyo Night starfield + a drifting comet (a native
 # port of the com.genny.tokyonightcomet Plasma wallpaper). false → still wallpaper.

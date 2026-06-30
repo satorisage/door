@@ -20,7 +20,7 @@ use iced::{
 
 use door_theme::skyshader::{FrostShader, SkyShader, SpinnerShader};
 use door_theme::clock::AnalogClock;
-use door_theme::{CardPos, ClockStyle, Color, SkyMode, SpinnerStyle, Theme};
+use door_theme::{CardPos, ClockStyle, Color, FontWeight, SkyMode, SpinnerStyle, Theme};
 
 fn main() -> iced::Result {
     iced::application(State::new, update, view)
@@ -194,6 +194,7 @@ enum Message {
     ClockStylePicked(ClockStyle),
     ClockFormat(String),
     FontScale(f32),
+    FontWeightPicked(FontWeight),
     CardBlur(bool),
     FadeMs(f32),
     // Expert
@@ -273,6 +274,7 @@ struct State {
     clock_style: ClockStyle,
     clock_format: String,
     font_scale: f32,
+    font_weight: FontWeight,
     fade_ms: f32,
     // Expert (advanced) shared controls (Tier 3).
     glow_falloff: f32,
@@ -478,6 +480,7 @@ impl State {
             clock_size: night.clock_size,
             clock_style: night.clock_style,
             clock_format: night.clock_format.clone().unwrap_or_default(),
+            font_weight: night.font_weight,
             font_scale: night.font_scale,
             fade_ms: night.fade_ms,
             glow_falloff: night.glow_falloff,
@@ -560,6 +563,7 @@ impl State {
         self.clock_size = night.clock_size;
         self.clock_style = night.clock_style;
         self.clock_format = night.clock_format.clone().unwrap_or_default();
+        self.font_weight = night.font_weight;
         self.font_scale = night.font_scale;
         self.fade_ms = night.fade_ms;
         self.glow_falloff = night.glow_falloff;
@@ -731,6 +735,7 @@ impl State {
                 let t = self.clock_format.trim();
                 (!t.is_empty()).then(|| t.to_string())
             },
+            font_weight: self.font_weight,
             font_scale: self.font_scale,
             fade_ms: self.fade_ms,
             glow_falloff: self.glow_falloff,
@@ -855,6 +860,7 @@ fn update(state: &mut State, message: Message) -> Task<Message> {
         Message::ClockStylePicked(s) => state.clock_style = s,
         Message::ClockFormat(s) => state.clock_format = s,
         Message::FontScale(v) => state.font_scale = v.clamp(0.7, 1.8),
+        Message::FontWeightPicked(w) => state.font_weight = w,
         Message::CardBlur(on) => state.card_blur = on,
         Message::FadeMs(v) => state.fade_ms = v.clamp(0.0, 2000.0),
         // Expert.
@@ -1996,6 +2002,24 @@ fn behavior_tab<'a>(state: &'a State, h: bool) -> Element<'a, Message> {
                 h
             ),
             helped(
+                row![
+                    color_label("Font weight"),
+                    pick_list(
+                        &FontWeight::ALL[..],
+                        Some(state.font_weight),
+                        Message::FontWeightPicked
+                    )
+                    .text_size(13)
+                    .padding(6)
+                    .width(Length::Fill),
+                ]
+                .spacing(10)
+                .align_y(Alignment::Center)
+                .into(),
+                "Card text weight (needs the font family to ship that weight).",
+                h
+            ),
+            helped(
                 toggle_row("Animate sky", state.animate, Message::ToggleAnimate),
                 "Run the stars + comet animation.",
                 h
@@ -2777,6 +2801,12 @@ fn sample_strftime(fmt: &str) -> String {
 fn preview_card(t: &Theme, anim: f32) -> Element<'static, Message> {
     let fg = t.foreground.iced();
     let muted = t.muted.iced();
+    // Preview the chosen weight on the card's default-family text (the greeter's own
+    // family isn't loaded here, but the weight reads).
+    let pfont = iced::Font {
+        weight: t.font_weight.iced(),
+        ..iced::Font::DEFAULT
+    };
 
     let header: Element<Message> = if t.show_clock {
         let time_widget: Element<Message> = match t.clock_style {
@@ -2790,6 +2820,7 @@ fn preview_card(t: &Theme, anim: f32) -> Element<'static, Message> {
                 };
                 text(label)
                     .size(t.clock_size * t.font_scale)
+                    .font(pfont)
                     .color(fg)
                     .into()
             }

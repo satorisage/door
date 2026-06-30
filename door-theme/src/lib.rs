@@ -319,6 +319,56 @@ impl std::fmt::Display for ClockStyle {
     }
 }
 
+/// The card text weight. Maps to an `iced::font::Weight`; applied as the greeter's
+/// default font weight (so it needs the configured family to ship that weight).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum FontWeight {
+    Light,
+    #[default]
+    Regular,
+    Medium,
+    Semibold,
+    Bold,
+}
+
+impl FontWeight {
+    /// Every weight, for the settings picker.
+    pub const ALL: [FontWeight; 5] = [
+        FontWeight::Light,
+        FontWeight::Regular,
+        FontWeight::Medium,
+        FontWeight::Semibold,
+        FontWeight::Bold,
+    ];
+    /// The lowercase name used in the config and the picker.
+    pub fn name(self) -> &'static str {
+        match self {
+            FontWeight::Light => "light",
+            FontWeight::Regular => "regular",
+            FontWeight::Medium => "medium",
+            FontWeight::Semibold => "semibold",
+            FontWeight::Bold => "bold",
+        }
+    }
+    /// The corresponding iced font weight.
+    pub fn iced(self) -> iced::font::Weight {
+        match self {
+            FontWeight::Light => iced::font::Weight::Light,
+            FontWeight::Regular => iced::font::Weight::Normal,
+            FontWeight::Medium => iced::font::Weight::Medium,
+            FontWeight::Semibold => iced::font::Weight::Semibold,
+            FontWeight::Bold => iced::font::Weight::Bold,
+        }
+    }
+}
+
+impl std::fmt::Display for FontWeight {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.name())
+    }
+}
+
 /// The resolved theme the UI renders against. Every field has a built-in default.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Theme {
@@ -478,6 +528,8 @@ pub struct Theme {
     pub clock_format: Option<String>,
     /// Text size multiplier for the whole card (1 = default; >1 = large-text). Shared.
     pub font_scale: f32,
+    /// Card text weight (applied as the greeter's default font weight). Shared.
+    pub font_weight: FontWeight,
     /// Launch fade-in duration (ms). Shared.
     pub fade_ms: f32,
 
@@ -567,6 +619,7 @@ impl Default for Theme {
             clock_style: ClockStyle::Digital,
             clock_format: None,
             font_scale: 1.0,
+            font_weight: FontWeight::Regular,
             fade_ms: 384.0,
             glow_falloff: 3.2,
             nebula_amount: 0.12,
@@ -657,6 +710,7 @@ impl Theme {
             clock_style: ClockStyle::Digital,
             clock_format: None,
             font_scale: 1.0,
+            font_weight: FontWeight::Regular,
             fade_ms: 384.0,
             glow_falloff: 3.2,
             nebula_amount: 0.12,
@@ -739,6 +793,7 @@ struct ThemeFile {
     clock_style: Option<ClockStyle>,
     clock_format: Option<String>,
     font_scale: Option<f32>,
+    font_weight: Option<FontWeight>,
     fade_ms: Option<f32>,
     glow_falloff: Option<f32>,
     nebula_amount: Option<f32>,
@@ -932,6 +987,9 @@ impl Theme {
             self.clock_format = file.clock_format.clone();
         }
         merge_f32(&mut self.font_scale, file.font_scale);
+        if let Some(w) = file.font_weight {
+            self.font_weight = w;
+        }
         merge_f32(&mut self.fade_ms, file.fade_ms);
         merge_f32(&mut self.glow_falloff, file.glow_falloff);
         merge_f32(&mut self.nebula_amount, file.nebula_amount);
@@ -1033,6 +1091,9 @@ impl Theme {
             self.clock_format = file.clock_format.clone();
         }
         merge_f32(&mut self.font_scale, file.font_scale);
+        if let Some(w) = file.font_weight {
+            self.font_weight = w;
+        }
         merge_f32(&mut self.fade_ms, file.fade_ms);
         merge_f32(&mut self.glow_falloff, file.glow_falloff);
         merge_f32(&mut self.nebula_amount, file.nebula_amount);
@@ -1317,6 +1378,7 @@ impl Theme {
             None => out.push_str("# clock_format =   # (built-in HH:MM)\n"),
         }
         out.push_str(&format!("font_scale    = {}\n", self.font_scale));
+        out.push_str(&format!("font_weight   = {:?}\n", self.font_weight.name()));
         out.push_str(&format!("fade_ms       = {}\n", self.fade_ms));
         out.push_str("# Expert\n");
         out.push_str(&format!("glow_falloff  = {}\n", self.glow_falloff));

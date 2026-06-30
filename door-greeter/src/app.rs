@@ -60,12 +60,15 @@ pub fn run() -> iced::Result {
         .style(app_style)
         .subscription(subscription);
 
-    // Render in the themed font if one is configured and installed system-wide.
-    // iced wants a 'static family name, so leak the single, process-lifetime string.
-    if let Some(name) = theme().font.clone() {
-        let name: &'static str = Box::leak(name.into_boxed_str());
-        app = app.default_font(Font::with_name(name));
-    }
+    // Render in the themed font + weight. A configured family must be installed
+    // system-wide; iced wants a 'static name, so leak the single, process-lifetime
+    // string. Weight applies whether or not a custom family is set.
+    let mut font = match theme().font.clone() {
+        Some(name) => Font::with_name(Box::leak(name.into_boxed_str())),
+        None => Font::DEFAULT,
+    };
+    font.weight = theme().font_weight.iced();
+    app = app.default_font(font);
     app.run()
 }
 
