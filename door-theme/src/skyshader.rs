@@ -169,6 +169,37 @@ impl SkyShader {
                 nom(t.fire_tip_color),
                 z,
             ),
+            crate::SkyMode::Aurora => (
+                [
+                    t.aurora_speed,
+                    t.aurora_drop,
+                    t.aurora_ray_freq,
+                    t.aurora_intensity,
+                ],
+                z,
+                nom(t.aurora_green),
+                nom(t.aurora_magenta),
+                z,
+            ),
+            crate::SkyMode::Plasma => (
+                [t.plasma_speed, t.plasma_scale, t.plasma_saturation, 0.0],
+                z,
+                nom(t.plasma_tint),
+                z,
+                z,
+            ),
+            crate::SkyMode::Water => (
+                [
+                    t.water_speed,
+                    t.water_scale,
+                    t.water_ripple,
+                    t.water_caustic,
+                ],
+                z,
+                nom(t.water_caustic_color),
+                nom(t.water_deep),
+                nom(t.water_shallow),
+            ),
             _ => (z, z, z, z, z),
         };
         let day = t.is_day;
@@ -1144,28 +1175,28 @@ fn aurora_sky(uv: vec2<f32>, p: vec2<f32>, aspect: f32) -> vec3<f32> {
   }
 
   // Curtains.
-  let green = vec3(0.18, 1.0, 0.66);
-  let magenta = vec3(0.62, 0.30, 1.0);
+  let green = u.scene_c1.rgb;
+  let magenta = u.scene_c2.rgb;
   var tint = vec3(0.0);
   for (var b = 0; b < 3; b = b + 1) {
     let fb = f32(b);
-    let ph = u.time * (0.12 + fb * 0.03) + fb * 2.0;
+    let ph = u.time * (u.scene_a.x + fb * 0.03) + fb * 2.0;
     // Wavy top edge of the curtain; light hangs *downward* from it and fades, so it
     // reads as a vertical sheet rather than a horizontal ribbon.
     let topEdge = 0.22 + fb * 0.09
                 + 0.05 * sin(uv.x * 3.0 + ph)
                 + 0.07 * fbm(vec2(uv.x * 1.5 + fb, ph * 0.5));
     let below = uv.y - topEdge;
-    let vert = smoothstep(0.0, 0.015, below) * exp(-below * (3.2 + fb * 1.5));
+    let vert = smoothstep(0.0, 0.015, below) * exp(-below * (u.scene_a.y + fb * 1.5));
     // Vertical ray striations shimmering across the sheet.
-    let rays = 0.45 + 0.55 * sin(uv.x * 50.0 + fbm(vec2(uv.x * 4.0, ph)) * 8.0 + u.time * 0.4);
+    let rays = 0.45 + 0.55 * sin(uv.x * u.scene_a.z + fbm(vec2(uv.x * 4.0, ph)) * 8.0 + u.time * 0.4);
     let glowv = 0.6 + 0.4 * sin(u.time * 0.7 + fb + uv.x * 2.0);
     let inten = vert * rays * glowv;
     tint = tint + mix(green, magenta, fract(uv.x * 0.7 + fb * 0.3)) * inten;
   }
   // Curtains live in the upper sky; fade toward the horizon.
   let fade = smoothstep(0.0, 0.4, 1.0 - uv.y);
-  return col + tint * 0.6 * fade;
+  return col + tint * u.scene_a.w * fade;
 }
 
 // Storm: dark churning clouds with periodic lightning. Each ~1.25s window has a chance
@@ -1367,21 +1398,24 @@ fn fog_sky(uv: vec2<f32>, p: vec2<f32>, aspect: f32) -> vec3<f32> {
 // Plasma: classic demoscene field — summed sines (axis, diagonal, radial) mapped to
 // color through three phase-shifted sines. Vivid and continuously morphing.
 fn plasma_sky(uv: vec2<f32>, p: vec2<f32>, aspect: f32) -> vec3<f32> {
-  let t = u.time * 0.5;
+  let t = u.time * u.scene_a.x;
+  let sc = u.scene_a.y;
   let x = uv.x * aspect;
   let y = uv.y;
-  var v = sin(x * 8.0 + t);
-  v = v + sin((y * 8.0 + t) * 1.1);
-  v = v + sin((x + y) * 6.0 + t);
+  var v = sin(x * sc + t);
+  v = v + sin((y * sc + t) * 1.1);
+  v = v + sin((x + y) * sc * 0.75 + t);
   let cx = x - 0.5 * aspect;
-  v = v + sin(length(vec2(cx, y - 0.5)) * 14.0 - t * 1.3);
+  v = v + sin(length(vec2(cx, y - 0.5)) * sc * 1.75 - t * 1.3);
   v = v * 0.25;
   let ph = v * 3.14159265;
-  return vec3(
-    0.5 + 0.5 * sin(ph),
-    0.5 + 0.5 * sin(ph + 2.094),
-    0.5 + 0.5 * sin(ph + 4.188),
+  let sat = u.scene_a.z;
+  let rgb = vec3(
+    0.5 + sat * sin(ph),
+    0.5 + sat * sin(ph + 2.094),
+    0.5 + sat * sin(ph + 4.188),
   );
+  return rgb * u.scene_c1.rgb;
 }
 
 // Fire: scrolling fbm "heat" weighted toward the bottom, mapped through a black→red→
@@ -1405,15 +1439,15 @@ fn fire_sky(uv: vec2<f32>, p: vec2<f32>, aspect: f32) -> vec3<f32> {
 // Water: animated caustics — a domain-warped sine network over a blue-green depth
 // gradient, the bright web concentrated where the warped product nears zero.
 fn water_sky(uv: vec2<f32>, p: vec2<f32>, aspect: f32) -> vec3<f32> {
-  let t = u.time * 0.6;
-  var q = vec2(uv.x * aspect, uv.y) * 5.0;
+  let t = u.time * u.scene_a.x;
+  var q = vec2(uv.x * aspect, uv.y) * u.scene_a.y;
   // Two domain-warp passes for organic ripple.
-  q = q + vec2(sin(q.y * 1.3 + t), cos(q.x * 1.3 + t)) * 0.6;
-  q = q + vec2(sin(q.y * 0.7 - t * 0.8), cos(q.x * 0.7 + t * 0.8)) * 0.4;
+  q = q + vec2(sin(q.y * 1.3 + t), cos(q.x * 1.3 + t)) * u.scene_a.z;
+  q = q + vec2(sin(q.y * 0.7 - t * 0.8), cos(q.x * 0.7 + t * 0.8)) * u.scene_a.z * 0.667;
   let web = abs(sin(q.x) * sin(q.y) + 0.5 * sin((q.x + q.y) + t));
   let caustic = pow(1.0 - clamp(web, 0.0, 1.0), 3.0);
-  let base = mix(vec3(0.0, 0.12, 0.22), vec3(0.0, 0.30, 0.42), smoothstep(0.0, 1.0, uv.y));
-  return base + vec3(0.45, 0.95, 1.0) * caustic * 0.85;
+  let base = mix(u.scene_c2.rgb, u.scene_c3.rgb, smoothstep(0.0, 1.0, uv.y));
+  return base + u.scene_c1.rgb * caustic * u.scene_a.w;
 }
 
 // The night sky (auto, after dark): gradient + radial glow + fbm nebula + parallax

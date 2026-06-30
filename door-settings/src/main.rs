@@ -216,6 +216,23 @@ enum Message {
     FireFlameHeight(f32),
     FireFlameColor(String),
     FireTipColor(String),
+    AuroraSpeed(f32),
+    AuroraDrop(f32),
+    AuroraRayFreq(f32),
+    AuroraIntensity(f32),
+    AuroraGreen(String),
+    AuroraMagenta(String),
+    PlasmaSpeed(f32),
+    PlasmaScale(f32),
+    PlasmaSaturation(f32),
+    PlasmaTint(String),
+    WaterSpeed(f32),
+    WaterScale(f32),
+    WaterRipple(f32),
+    WaterCaustic(f32),
+    WaterCausticColor(String),
+    WaterDeep(String),
+    WaterShallow(String),
     CardGradient(f32),
     Grain(f32),
     Vignette(f32),
@@ -336,6 +353,23 @@ struct State {
     fire_flame_height: f32,
     fire_flame_color: String,
     fire_tip_color: String,
+    aurora_speed: f32,
+    aurora_drop: f32,
+    aurora_ray_freq: f32,
+    aurora_intensity: f32,
+    aurora_green: String,
+    aurora_magenta: String,
+    plasma_speed: f32,
+    plasma_scale: f32,
+    plasma_saturation: f32,
+    plasma_tint: String,
+    water_speed: f32,
+    water_scale: f32,
+    water_ripple: f32,
+    water_caustic: f32,
+    water_caustic_color: String,
+    water_deep: String,
+    water_shallow: String,
     spinner_style: SpinnerStyle,
     card_gradient: f32,
     grain: f32,
@@ -590,6 +624,23 @@ impl State {
             fire_flame_height: night.fire_flame_height,
             fire_flame_color: night.fire_flame_color.to_hex(),
             fire_tip_color: night.fire_tip_color.to_hex(),
+            aurora_speed: night.aurora_speed,
+            aurora_drop: night.aurora_drop,
+            aurora_ray_freq: night.aurora_ray_freq,
+            aurora_intensity: night.aurora_intensity,
+            aurora_green: night.aurora_green.to_hex(),
+            aurora_magenta: night.aurora_magenta.to_hex(),
+            plasma_speed: night.plasma_speed,
+            plasma_scale: night.plasma_scale,
+            plasma_saturation: night.plasma_saturation,
+            plasma_tint: night.plasma_tint.to_hex(),
+            water_speed: night.water_speed,
+            water_scale: night.water_scale,
+            water_ripple: night.water_ripple,
+            water_caustic: night.water_caustic,
+            water_caustic_color: night.water_caustic_color.to_hex(),
+            water_deep: night.water_deep.to_hex(),
+            water_shallow: night.water_shallow.to_hex(),
             spinner_style: night.spinner_style,
             card_gradient: night.card_gradient,
             grain: night.grain,
@@ -707,6 +758,23 @@ impl State {
         self.fire_flame_height = night.fire_flame_height;
         self.fire_flame_color = night.fire_flame_color.to_hex();
         self.fire_tip_color = night.fire_tip_color.to_hex();
+        self.aurora_speed = night.aurora_speed;
+        self.aurora_drop = night.aurora_drop;
+        self.aurora_ray_freq = night.aurora_ray_freq;
+        self.aurora_intensity = night.aurora_intensity;
+        self.aurora_green = night.aurora_green.to_hex();
+        self.aurora_magenta = night.aurora_magenta.to_hex();
+        self.plasma_speed = night.plasma_speed;
+        self.plasma_scale = night.plasma_scale;
+        self.plasma_saturation = night.plasma_saturation;
+        self.plasma_tint = night.plasma_tint.to_hex();
+        self.water_speed = night.water_speed;
+        self.water_scale = night.water_scale;
+        self.water_ripple = night.water_ripple;
+        self.water_caustic = night.water_caustic;
+        self.water_caustic_color = night.water_caustic_color.to_hex();
+        self.water_deep = night.water_deep.to_hex();
+        self.water_shallow = night.water_shallow.to_hex();
         self.spinner_style = night.spinner_style;
         self.card_gradient = night.card_gradient;
         self.grain = night.grain;
@@ -908,6 +976,23 @@ impl State {
             fire_flame_height: self.fire_flame_height,
             fire_flame_color: color("Fire flame", &self.fire_flame_color)?,
             fire_tip_color: color("Fire tip", &self.fire_tip_color)?,
+            aurora_speed: self.aurora_speed,
+            aurora_drop: self.aurora_drop,
+            aurora_ray_freq: self.aurora_ray_freq,
+            aurora_intensity: self.aurora_intensity,
+            aurora_green: color("Aurora green", &self.aurora_green)?,
+            aurora_magenta: color("Aurora magenta", &self.aurora_magenta)?,
+            plasma_speed: self.plasma_speed,
+            plasma_scale: self.plasma_scale,
+            plasma_saturation: self.plasma_saturation,
+            plasma_tint: color("Plasma tint", &self.plasma_tint)?,
+            water_speed: self.water_speed,
+            water_scale: self.water_scale,
+            water_ripple: self.water_ripple,
+            water_caustic: self.water_caustic,
+            water_caustic_color: color("Water caustic", &self.water_caustic_color)?,
+            water_deep: color("Water deep", &self.water_deep)?,
+            water_shallow: color("Water shallow", &self.water_shallow)?,
             spinner_style: self.spinner_style,
             card_gradient: self.card_gradient,
             grain: self.grain,
@@ -1069,6 +1154,23 @@ fn update(state: &mut State, message: Message) -> Task<Message> {
         Message::FireFlameHeight(v) => state.fire_flame_height = v.clamp(0.0, 0.6),
         Message::FireFlameColor(s) => state.fire_flame_color = s,
         Message::FireTipColor(s) => state.fire_tip_color = s,
+        Message::AuroraSpeed(v) => state.aurora_speed = v.clamp(0.0, 1.0),
+        Message::AuroraDrop(v) => state.aurora_drop = v.clamp(1.0, 8.0),
+        Message::AuroraRayFreq(v) => state.aurora_ray_freq = v.clamp(10.0, 120.0),
+        Message::AuroraIntensity(v) => state.aurora_intensity = v.clamp(0.0, 1.5),
+        Message::AuroraGreen(s) => state.aurora_green = s,
+        Message::AuroraMagenta(s) => state.aurora_magenta = s,
+        Message::PlasmaSpeed(v) => state.plasma_speed = v.clamp(0.0, 2.0),
+        Message::PlasmaScale(v) => state.plasma_scale = v.clamp(2.0, 24.0),
+        Message::PlasmaSaturation(v) => state.plasma_saturation = v.clamp(0.0, 0.5),
+        Message::PlasmaTint(s) => state.plasma_tint = s,
+        Message::WaterSpeed(v) => state.water_speed = v.clamp(0.0, 2.0),
+        Message::WaterScale(v) => state.water_scale = v.clamp(1.0, 14.0),
+        Message::WaterRipple(v) => state.water_ripple = v.clamp(0.0, 1.5),
+        Message::WaterCaustic(v) => state.water_caustic = v.clamp(0.0, 2.0),
+        Message::WaterCausticColor(s) => state.water_caustic_color = s,
+        Message::WaterDeep(s) => state.water_deep = s,
+        Message::WaterShallow(s) => state.water_shallow = s,
         Message::CardGradient(v) => state.card_gradient = v.clamp(0.0, 1.0),
         Message::Grain(v) => state.grain = v.clamp(0.0, 0.3),
         Message::Vignette(v) => state.vignette = v.clamp(0.0, 1.0),
@@ -2018,6 +2120,15 @@ fn sky_tab<'a>(state: &'a State, pal: &'a Palette, h: bool) -> Element<'a, Messa
     if matches!(state.sky_mode, SkyMode::Fire) {
         col = col.push(fire_group(state, h));
     }
+    if matches!(state.sky_mode, SkyMode::Aurora) {
+        col = col.push(aurora_group(state, h));
+    }
+    if matches!(state.sky_mode, SkyMode::Plasma) {
+        col = col.push(plasma_group(state, h));
+    }
+    if matches!(state.sky_mode, SkyMode::Water) {
+        col = col.push(water_group(state, h));
+    }
     col.into()
 }
 
@@ -2098,6 +2209,72 @@ fn fire_group(state: &State, h: bool) -> Element<'_, Message> {
                 "Lower = taller flames reaching up the screen.", h),
             color_cell_with("Flame", &state.fire_flame_color, Message::FireFlameColor),
             color_cell_with("Tip", &state.fire_tip_color, Message::FireTipColor),
+        ]),
+    )
+}
+
+/// The aurora scene's authoring controls (M8) — drift, curtain shape, shimmer, colours.
+fn aurora_group(state: &State, h: bool) -> Element<'_, Message> {
+    group(
+        "AURORA",
+        two_col(vec![
+            helped(slider_row("Drift speed", state.aurora_speed, 0.0..=0.6, 0.005,
+                format!("{:.3}", state.aurora_speed), Message::AuroraSpeed),
+                "How fast the curtains wave across the sky.", h),
+            helped(slider_row("Curtain length", state.aurora_drop, 1.5..=6.0, 0.05,
+                format!("{:.2}", state.aurora_drop), Message::AuroraDrop),
+                "Lower = longer curtains hanging down the sky.", h),
+            helped(slider_row("Shimmer", state.aurora_ray_freq, 15.0..=90.0, 1.0,
+                format!("{:.0}", state.aurora_ray_freq), Message::AuroraRayFreq),
+                "Frequency of the vertical ray striations.", h),
+            helped(slider_row("Brightness", state.aurora_intensity, 0.0..=1.2, 0.02,
+                format!("{:.2}", state.aurora_intensity), Message::AuroraIntensity),
+                "Overall glow of the curtains.", h),
+            color_cell_with("Green", &state.aurora_green, Message::AuroraGreen),
+            color_cell_with("Magenta", &state.aurora_magenta, Message::AuroraMagenta),
+        ]),
+    )
+}
+
+/// The plasma scene's authoring controls (M8) — flow, scale, saturation, tint.
+fn plasma_group(state: &State, h: bool) -> Element<'_, Message> {
+    group(
+        "PLASMA",
+        two_col(vec![
+            helped(slider_row("Flow speed", state.plasma_speed, 0.0..=1.5, 0.01,
+                format!("{:.2}", state.plasma_speed), Message::PlasmaSpeed),
+                "How fast the plasma churns.", h),
+            helped(slider_row("Scale", state.plasma_scale, 3.0..=18.0, 0.1,
+                format!("{:.1}", state.plasma_scale), Message::PlasmaScale),
+                "Higher = finer, busier cells.", h),
+            helped(slider_row("Saturation", state.plasma_saturation, 0.0..=0.5, 0.01,
+                format!("{:.2}", state.plasma_saturation), Message::PlasmaSaturation),
+                "0 = washed grey, 0.5 = full rainbow.", h),
+            color_cell_with("Tint", &state.plasma_tint, Message::PlasmaTint),
+        ]),
+    )
+}
+
+/// The water scene's authoring controls (M8) — flow, ripple, caustics, depth colours.
+fn water_group(state: &State, h: bool) -> Element<'_, Message> {
+    group(
+        "WATER",
+        two_col(vec![
+            helped(slider_row("Flow speed", state.water_speed, 0.0..=1.5, 0.01,
+                format!("{:.2}", state.water_speed), Message::WaterSpeed),
+                "How fast the surface ripples move.", h),
+            helped(slider_row("Ripple scale", state.water_scale, 2.0..=10.0, 0.1,
+                format!("{:.1}", state.water_scale), Message::WaterScale),
+                "Higher = finer, tighter ripples.", h),
+            helped(slider_row("Distortion", state.water_ripple, 0.0..=1.2, 0.02,
+                format!("{:.2}", state.water_ripple), Message::WaterRipple),
+                "How much the ripples warp the caustic web.", h),
+            helped(slider_row("Caustic glow", state.water_caustic, 0.0..=1.6, 0.02,
+                format!("{:.2}", state.water_caustic), Message::WaterCaustic),
+                "Brightness of the bright caustic network.", h),
+            color_cell_with("Caustic", &state.water_caustic_color, Message::WaterCausticColor),
+            color_cell_with("Deep", &state.water_deep, Message::WaterDeep),
+            color_cell_with("Shallow", &state.water_shallow, Message::WaterShallow),
         ]),
     )
 }

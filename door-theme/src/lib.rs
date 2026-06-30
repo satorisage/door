@@ -561,6 +561,46 @@ pub struct Theme {
     pub fire_flame_color: Color,
     /// Fire hot-tip colour.
     pub fire_tip_color: Color,
+
+    // ── Aurora scene controls (M8) ──
+    /// Aurora curtain drift speed.
+    pub aurora_speed: f32,
+    /// Aurora curtain drop-off (lower = taller curtains hanging down).
+    pub aurora_drop: f32,
+    /// Aurora vertical ray frequency (shimmer detail).
+    pub aurora_ray_freq: f32,
+    /// Aurora overall brightness.
+    pub aurora_intensity: f32,
+    /// Aurora green curtain colour.
+    pub aurora_green: Color,
+    /// Aurora magenta curtain colour.
+    pub aurora_magenta: Color,
+
+    // ── Plasma scene controls (M8) ──
+    /// Plasma flow speed.
+    pub plasma_speed: f32,
+    /// Plasma pattern scale (higher = finer cells).
+    pub plasma_scale: f32,
+    /// Plasma colour saturation (0 = grey, 0.5 = full rainbow).
+    pub plasma_saturation: f32,
+    /// Plasma tint multiplier (white = the raw rainbow).
+    pub plasma_tint: Color,
+
+    // ── Water scene controls (M8) ──
+    /// Water flow speed.
+    pub water_speed: f32,
+    /// Water ripple scale (higher = finer ripples).
+    pub water_scale: f32,
+    /// Water domain-warp strength (organic distortion).
+    pub water_ripple: f32,
+    /// Water caustic brightness.
+    pub water_caustic: f32,
+    /// Water caustic web colour.
+    pub water_caustic_color: Color,
+    /// Water deep (top) colour.
+    pub water_deep: Color,
+    /// Water shallow (bottom) colour.
+    pub water_shallow: Color,
     /// Card vertical-gradient strength (0 = flat fill; ~1 = a lit top sheen). Shared.
     pub card_gradient: f32,
     /// Film-grain strength over the whole sky (0 = off). Shared.
@@ -711,6 +751,23 @@ impl Default for Theme {
             fire_flame_height: 0.22,
             fire_flame_color: Color::rgb(0xff, 0x4b, 0x0d),
             fire_tip_color: Color::rgb(0xff, 0xe6, 0x80),
+            aurora_speed: 0.12,
+            aurora_drop: 3.2,
+            aurora_ray_freq: 50.0,
+            aurora_intensity: 0.6,
+            aurora_green: Color::rgb(0x2e, 0xff, 0xa8),
+            aurora_magenta: Color::rgb(0x9e, 0x4d, 0xff),
+            plasma_speed: 0.5,
+            plasma_scale: 8.0,
+            plasma_saturation: 0.5,
+            plasma_tint: Color::rgb(0xff, 0xff, 0xff),
+            water_speed: 0.6,
+            water_scale: 5.0,
+            water_ripple: 0.6,
+            water_caustic: 0.85,
+            water_caustic_color: Color::rgb(0x73, 0xf2, 0xff),
+            water_deep: Color::rgb(0x00, 0x1f, 0x38),
+            water_shallow: Color::rgb(0x00, 0x4d, 0x6b),
             card_gradient: 0.45,
             grain: 0.0,
             vignette: 0.2,
@@ -836,6 +893,23 @@ impl Theme {
             fire_flame_height: 0.22,
             fire_flame_color: Color::rgb(0xff, 0x4b, 0x0d),
             fire_tip_color: Color::rgb(0xff, 0xe6, 0x80),
+            aurora_speed: 0.12,
+            aurora_drop: 3.2,
+            aurora_ray_freq: 50.0,
+            aurora_intensity: 0.6,
+            aurora_green: Color::rgb(0x2e, 0xff, 0xa8),
+            aurora_magenta: Color::rgb(0x9e, 0x4d, 0xff),
+            plasma_speed: 0.5,
+            plasma_scale: 8.0,
+            plasma_saturation: 0.5,
+            plasma_tint: Color::rgb(0xff, 0xff, 0xff),
+            water_speed: 0.6,
+            water_scale: 5.0,
+            water_ripple: 0.6,
+            water_caustic: 0.85,
+            water_caustic_color: Color::rgb(0x73, 0xf2, 0xff),
+            water_deep: Color::rgb(0x00, 0x1f, 0x38),
+            water_shallow: Color::rgb(0x00, 0x4d, 0x6b),
             card_gradient: 0.45,
             grain: 0.0,
             vignette: 0.2,
@@ -947,6 +1021,23 @@ struct ThemeFile {
     fire_flame_height: Option<f32>,
     fire_flame_color: Option<String>,
     fire_tip_color: Option<String>,
+    aurora_speed: Option<f32>,
+    aurora_drop: Option<f32>,
+    aurora_ray_freq: Option<f32>,
+    aurora_intensity: Option<f32>,
+    aurora_green: Option<String>,
+    aurora_magenta: Option<String>,
+    plasma_speed: Option<f32>,
+    plasma_scale: Option<f32>,
+    plasma_saturation: Option<f32>,
+    plasma_tint: Option<String>,
+    water_speed: Option<f32>,
+    water_scale: Option<f32>,
+    water_ripple: Option<f32>,
+    water_caustic: Option<f32>,
+    water_caustic_color: Option<String>,
+    water_deep: Option<String>,
+    water_shallow: Option<String>,
     card_gradient: Option<f32>,
     grain: Option<f32>,
     vignette: Option<f32>,
@@ -1172,6 +1263,24 @@ impl Theme {
         self.fire_flame_color =
             color("fire_flame_color", file.fire_flame_color, self.fire_flame_color);
         self.fire_tip_color = color("fire_tip_color", file.fire_tip_color, self.fire_tip_color);
+        merge_f32(&mut self.aurora_speed, file.aurora_speed);
+        merge_f32(&mut self.aurora_drop, file.aurora_drop);
+        merge_f32(&mut self.aurora_ray_freq, file.aurora_ray_freq);
+        merge_f32(&mut self.aurora_intensity, file.aurora_intensity);
+        self.aurora_green = color("aurora_green", file.aurora_green, self.aurora_green);
+        self.aurora_magenta = color("aurora_magenta", file.aurora_magenta, self.aurora_magenta);
+        merge_f32(&mut self.plasma_speed, file.plasma_speed);
+        merge_f32(&mut self.plasma_scale, file.plasma_scale);
+        merge_f32(&mut self.plasma_saturation, file.plasma_saturation);
+        self.plasma_tint = color("plasma_tint", file.plasma_tint, self.plasma_tint);
+        merge_f32(&mut self.water_speed, file.water_speed);
+        merge_f32(&mut self.water_scale, file.water_scale);
+        merge_f32(&mut self.water_ripple, file.water_ripple);
+        merge_f32(&mut self.water_caustic, file.water_caustic);
+        self.water_caustic_color =
+            color("water_caustic_color", file.water_caustic_color, self.water_caustic_color);
+        self.water_deep = color("water_deep", file.water_deep, self.water_deep);
+        self.water_shallow = color("water_shallow", file.water_shallow, self.water_shallow);
         merge_f32(&mut self.card_gradient, file.card_gradient);
         merge_f32(&mut self.grain, file.grain);
         merge_f32(&mut self.vignette, file.vignette);
@@ -1300,6 +1409,17 @@ impl Theme {
         merge_f32(&mut self.snow_flake_size, file.snow_flake_size);
         merge_f32(&mut self.fire_rise_speed, file.fire_rise_speed);
         merge_f32(&mut self.fire_flame_height, file.fire_flame_height);
+        merge_f32(&mut self.aurora_speed, file.aurora_speed);
+        merge_f32(&mut self.aurora_drop, file.aurora_drop);
+        merge_f32(&mut self.aurora_ray_freq, file.aurora_ray_freq);
+        merge_f32(&mut self.aurora_intensity, file.aurora_intensity);
+        merge_f32(&mut self.plasma_speed, file.plasma_speed);
+        merge_f32(&mut self.plasma_scale, file.plasma_scale);
+        merge_f32(&mut self.plasma_saturation, file.plasma_saturation);
+        merge_f32(&mut self.water_speed, file.water_speed);
+        merge_f32(&mut self.water_scale, file.water_scale);
+        merge_f32(&mut self.water_ripple, file.water_ripple);
+        merge_f32(&mut self.water_caustic, file.water_caustic);
         for (slot, s) in [
             (&mut self.synthwave_grid_color, &file.synthwave_grid_color),
             (&mut self.synthwave_sky_top, &file.synthwave_sky_top),
@@ -1310,6 +1430,12 @@ impl Theme {
             (&mut self.snow_color, &file.snow_color),
             (&mut self.fire_flame_color, &file.fire_flame_color),
             (&mut self.fire_tip_color, &file.fire_tip_color),
+            (&mut self.aurora_green, &file.aurora_green),
+            (&mut self.aurora_magenta, &file.aurora_magenta),
+            (&mut self.plasma_tint, &file.plasma_tint),
+            (&mut self.water_caustic_color, &file.water_caustic_color),
+            (&mut self.water_deep, &file.water_deep),
+            (&mut self.water_shallow, &file.water_shallow),
         ] {
             if let Some(s) = s {
                 if let Some(col) = Color::parse(s) {
@@ -1627,6 +1753,23 @@ impl Theme {
         out.push_str(&format!("fire_flame_height = {}\n", self.fire_flame_height));
         out.push_str(&format!("fire_flame_color  = {:?}\n", self.fire_flame_color.to_hex()));
         out.push_str(&format!("fire_tip_color    = {:?}\n", self.fire_tip_color.to_hex()));
+        out.push_str(&format!("aurora_speed      = {}\n", self.aurora_speed));
+        out.push_str(&format!("aurora_drop       = {}\n", self.aurora_drop));
+        out.push_str(&format!("aurora_ray_freq   = {}\n", self.aurora_ray_freq));
+        out.push_str(&format!("aurora_intensity  = {}\n", self.aurora_intensity));
+        out.push_str(&format!("aurora_green      = {:?}\n", self.aurora_green.to_hex()));
+        out.push_str(&format!("aurora_magenta    = {:?}\n", self.aurora_magenta.to_hex()));
+        out.push_str(&format!("plasma_speed      = {}\n", self.plasma_speed));
+        out.push_str(&format!("plasma_scale      = {}\n", self.plasma_scale));
+        out.push_str(&format!("plasma_saturation = {}\n", self.plasma_saturation));
+        out.push_str(&format!("plasma_tint       = {:?}\n", self.plasma_tint.to_hex()));
+        out.push_str(&format!("water_speed       = {}\n", self.water_speed));
+        out.push_str(&format!("water_scale       = {}\n", self.water_scale));
+        out.push_str(&format!("water_ripple      = {}\n", self.water_ripple));
+        out.push_str(&format!("water_caustic     = {}\n", self.water_caustic));
+        out.push_str(&format!("water_caustic_color = {:?}\n", self.water_caustic_color.to_hex()));
+        out.push_str(&format!("water_deep        = {:?}\n", self.water_deep.to_hex()));
+        out.push_str(&format!("water_shallow     = {:?}\n", self.water_shallow.to_hex()));
         out.push_str(&format!("card_gradient = {}\n", self.card_gradient));
         out.push_str(&format!("grain         = {}\n", self.grain));
         out.push_str(&format!("vignette      = {}\n", self.vignette));

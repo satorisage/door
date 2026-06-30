@@ -125,6 +125,29 @@ spinner_trail = 1.0         # trail length 0.15–1.0 (shorter = crisper on a li
 # fire_flame_height = 0.22       # lower = taller flames reaching up the screen
 # fire_flame_color  = "#ff4b0d"  # base flame hue (internally boosted for the hot glow)
 # fire_tip_color    = "#ffe680"  # hot-tip colour
+#
+# Aurora scene (only used when sky_mode = "aurora"):
+# aurora_speed      = 0.12       # how fast the curtains wave across the sky
+# aurora_drop       = 3.2        # lower = longer curtains hanging down
+# aurora_ray_freq   = 50.0       # vertical ray-striation frequency (shimmer)
+# aurora_intensity  = 0.6        # overall curtain glow
+# aurora_green      = "#2effa8"  # green curtain colour
+# aurora_magenta    = "#9e4dff"  # magenta curtain colour
+#
+# Plasma scene (only used when sky_mode = "plasma"):
+# plasma_speed      = 0.5        # how fast the plasma churns
+# plasma_scale      = 8.0        # higher = finer, busier cells
+# plasma_saturation = 0.5        # 0 = washed grey, 0.5 = full rainbow
+# plasma_tint       = "#ffffff"  # tint multiplier (white = the raw rainbow)
+#
+# Water scene (only used when sky_mode = "water"):
+# water_speed         = 0.6        # how fast the surface ripples move
+# water_scale         = 5.0        # higher = finer, tighter ripples
+# water_ripple        = 0.6        # domain-warp distortion of the caustics
+# water_caustic       = 0.85       # brightness of the bright caustic web
+# water_caustic_color = "#73f2ff"  # caustic web colour
+# water_deep          = "#001f38"  # deep (top) water colour
+# water_shallow       = "#004d6b"  # shallow (bottom) water colour
 # card_gradient  = 0.45       # vertical sheen on the card (0 = flat)
 # grain          = 0.0        # film grain over the sky (0 = off)
 # vignette       = 0.2        # darken the screen edges (0 = off)
