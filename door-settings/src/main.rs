@@ -11,7 +11,7 @@ use std::time::Instant;
 
 use iced::widget::{
     button, canvas, column, container, image, pick_list, row, scrollable, shader, slider, svg, text,
-    text_input, toggler, Space, Stack,
+    text_input, toggler, Column, Space, Stack,
 };
 use iced::{
     mouse, Alignment, Background, Border, Color as IColor, ContentFit, Element, Length, Point,
@@ -130,6 +130,7 @@ enum Tab {
     Spinner,
     Card,
     Behavior,
+    Presets,
     Help,
 }
 
@@ -1063,7 +1064,7 @@ fn view(state: &State) -> Element<'_, Message> {
     let theme = &state.preview;
 
     let panel = container(scrollable(controls(state)))
-        .width(Length::Fixed(372.0))
+        .width(Length::Fixed(560.0))
         .height(Length::Fill)
         .padding(16)
         .style(glass_panel);
@@ -1157,38 +1158,30 @@ fn controls(state: &State) -> Element<'_, Message> {
         .unwrap_or(1.0);
     let editing_day = state.editing_day;
 
-    // Header: title + the Night/Day variant toggle, a subtitle, and the Help/Advanced
-    // toggles (Advanced reveals the expert controls; it's also seeded by `--expert`).
-    let header = column![
-        row![
-            text("Greeter").size(26).color(c(FG.0, FG.1, FG.2)),
-            Space::new().width(Length::Fill),
-            toggler(editing_day)
-                .label(if editing_day { "Day" } else { "Night" })
-                .on_toggle(Message::EditDay)
-                .size(18)
-                .text_size(13),
-        ]
-        .align_y(Alignment::Center),
-        text("Edits preview live · Save asks for your password")
-            .size(12)
-            .color(c(MUTED.0, MUTED.1, MUTED.2)),
-        row![
-            toggler(state.help_on)
-                .label("Help")
-                .on_toggle(Message::ToggleHelp)
-                .size(16)
-                .text_size(12),
-            Space::new().width(Length::Fill),
-            toggler(state.expert)
-                .label("Advanced")
-                .on_toggle(Message::ToggleExpert)
-                .size(16)
-                .text_size(12),
-        ]
-        .align_y(Alignment::Center),
+    // Header: a single compact row — title, the Night/Day variant toggle, and the
+    // Help / Advanced toggles (Advanced reveals expert controls; also via `--expert`).
+    let header = row![
+        text("door").size(26).color(c(FG.0, FG.1, FG.2)),
+        text("greeter").size(26).color(c(ACCENT.0, ACCENT.1, ACCENT.2)),
+        Space::new().width(Length::Fill),
+        toggler(state.help_on)
+            .label("Help")
+            .on_toggle(Message::ToggleHelp)
+            .size(16)
+            .text_size(12),
+        toggler(state.expert)
+            .label("Advanced")
+            .on_toggle(Message::ToggleExpert)
+            .size(16)
+            .text_size(12),
+        toggler(editing_day)
+            .label(if editing_day { "Day" } else { "Night" })
+            .on_toggle(Message::EditDay)
+            .size(18)
+            .text_size(13),
     ]
-    .spacing(6);
+    .spacing(16)
+    .align_y(Alignment::Center);
 
     let tabbar = row![
         tab_button("Colors", Tab::Colors, state.tab),
@@ -1196,6 +1189,7 @@ fn controls(state: &State) -> Element<'_, Message> {
         tab_button("Spinner", Tab::Spinner, state.tab),
         tab_button("Card", Tab::Card, state.tab),
         tab_button("Behavior", Tab::Behavior, state.tab),
+        tab_button("Presets", Tab::Presets, state.tab),
         tab_button("Help", Tab::Help, state.tab),
     ]
     .spacing(5);
@@ -1206,6 +1200,7 @@ fn controls(state: &State) -> Element<'_, Message> {
         Tab::Spinner => spinner_tab(state, pal, h),
         Tab::Card => card_tab(state, h),
         Tab::Behavior => behavior_tab(state, h),
+        Tab::Presets => presets_tab(state),
         Tab::Help => help_tab(),
     };
 
@@ -1216,9 +1211,25 @@ fn controls(state: &State) -> Element<'_, Message> {
     ]
     .spacing(8);
 
-    // Presets: load a saved day+night theme, or save the current one by name.
-    let presets = group(
-        "PRESETS",
+    column![
+        header,
+        tabbar,
+        body,
+        actions,
+        text(state.status.clone())
+            .size(12)
+            .color(c(MUTED.0, MUTED.1, MUTED.2)),
+    ]
+    .spacing(14)
+    .into()
+}
+
+/// The Presets tab: load/save whole themes, the live thumbnail gallery, and
+/// import/export by path. Lives in its own tab so it doesn't tower over every other
+/// section.
+fn presets_tab(state: &State) -> Element<'_, Message> {
+    let load = group(
+        "LOAD",
         column![
             row![
                 pick_list(
@@ -1230,11 +1241,18 @@ fn controls(state: &State) -> Element<'_, Message> {
                 .text_size(13)
                 .padding(6)
                 .width(Length::Fill),
-                ghost_button("🎲", Message::Randomize),
+                ghost_button("🎲 Surprise", Message::Randomize),
             ]
             .spacing(8)
             .align_y(Alignment::Center),
             preset_gallery(state),
+        ]
+        .spacing(10)
+        .into(),
+    );
+    let save = group(
+        "SAVE & SHARE",
+        column![
             row![
                 text_input("name this preset", &state.preset_name)
                     .on_input(Message::PresetNameChanged)
@@ -1257,22 +1275,10 @@ fn controls(state: &State) -> Element<'_, Message> {
             .spacing(8)
             .align_y(Alignment::Center),
         ]
-        .spacing(8)
+        .spacing(10)
         .into(),
     );
-
-    column![
-        header,
-        presets,
-        tabbar,
-        body,
-        actions,
-        text(state.status.clone())
-            .size(12)
-            .color(c(MUTED.0, MUTED.1, MUTED.2)),
-    ]
-    .spacing(14)
-    .into()
+    column![load, save].spacing(14).into()
 }
 
 // ── Per-tab content ─────────────────────────────────────────────────────────
@@ -1361,7 +1367,9 @@ fn colors_tab<'a>(
         .spacing(9)
         .into(),
     );
-    column![assets, colors].spacing(14).into()
+    // Colors stays full-width: its cells are already two-up, so a half-width column
+    // would quarter each and clip the hex. Assets sits beside the shorter half.
+    column![colors, assets].spacing(14).into()
 }
 
 fn sky_tab<'a>(state: &'a State, pal: &'a Palette, h: bool) -> Element<'a, Message> {
@@ -1740,7 +1748,7 @@ fn sky_tab<'a>(state: &'a State, pal: &'a Palette, h: bool) -> Element<'a, Messa
             .into(),
         )
     });
-    let mut col = column![main, sun].spacing(14);
+    let mut col = column![row![main, sun].spacing(16)].spacing(14);
     if let Some(adv) = advanced {
         col = col.push(adv);
     }
@@ -1881,7 +1889,7 @@ fn spinner_tab<'a>(state: &'a State, pal: &'a Palette, h: bool) -> Element<'a, M
 fn card_tab<'a>(state: &'a State, h: bool) -> Element<'a, Message> {
     let g = group(
         "CARD",
-        column![
+        two_col(vec![
             helped(
                 row![
                     color_label("Placement"),
@@ -1980,9 +1988,7 @@ fn card_tab<'a>(state: &'a State, h: bool) -> Element<'a, Message> {
                 "Frost the sky behind the card (best with a translucent card).",
                 h
             ),
-        ]
-        .spacing(9)
-        .into(),
+        ]),
     );
     column![g].spacing(14).into()
 }
@@ -1990,7 +1996,7 @@ fn card_tab<'a>(state: &'a State, h: bool) -> Element<'a, Message> {
 fn behavior_tab<'a>(state: &'a State, h: bool) -> Element<'a, Message> {
     let g = group(
         "BEHAVIOR",
-        column![
+        two_col(vec![
             helped(
                 plain_row("Font", &state.font, "(stock font)", Param::Font),
                 "Installed font family; blank = stock.",
@@ -2136,9 +2142,7 @@ fn behavior_tab<'a>(state: &'a State, h: bool) -> Element<'a, Message> {
                 "Local times when the day theme is used.",
                 h
             ),
-        ]
-        .spacing(9)
-        .into(),
+        ]),
     );
     column![g].spacing(14).into()
 }
@@ -2423,6 +2427,27 @@ fn group<'a>(title: &str, body: Element<'a, Message>) -> Element<'a, Message> {
         .padding(14)
         .style(subcard)
         .into()
+}
+
+/// Lay a list of controls into two side-by-side columns (first half left, second
+/// half right) so a tall section reads as a compact grid instead of a long scroll.
+fn two_col<'a>(items: Vec<Element<'a, Message>>) -> Element<'a, Message> {
+    let mid = items.len().div_ceil(2);
+    let mut left = Column::new().spacing(11);
+    let mut right = Column::new().spacing(11);
+    for (i, it) in items.into_iter().enumerate() {
+        if i < mid {
+            left = left.push(it);
+        } else {
+            right = right.push(it);
+        }
+    }
+    row![
+        left.width(Length::Fill),
+        right.width(Length::Fill)
+    ]
+    .spacing(16)
+    .into()
 }
 
 /// Wrap a control with a one-line description shown only when Help is on.
