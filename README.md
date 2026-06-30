@@ -7,7 +7,7 @@ door owns the screen before any user session exists and decides which session
 begins: it owns authentication, the seat/VT, and the session handoff. The headline
 is the security model; the wallpaper is just a bonus.
 
-> ⚠️ **Status: v0.1.0 — early alpha.** Proven on hardware (Arch/CachyOS + KDE Plasma
+> ⚠️ **Status: v0.1.1 — early alpha.** Proven on hardware (Arch/CachyOS + KDE Plasma
 > Wayland), but only on the author's machine so far. It installs **disabled by
 > default** and ships a tested two-command revert, so trying it can't lock you out.
 > See [Compatibility](#compatibility) before you enable it.

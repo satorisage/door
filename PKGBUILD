@@ -6,8 +6,8 @@
 # step the admin runs separately (see the post-install note), with a tested TTY
 # revert in hand. The previous DM is left installed as the fallback.
 pkgname=door
-pkgver=0.1.0
-pkgrel=3
+pkgver=0.1.1
+pkgrel=1
 pkgdesc="Beautiful, security-first Wayland display manager / login manager with an animated GPU greeter (privilege-separated, reversible)"
 arch=('x86_64')
 url="https://github.com/satorisage/door"
