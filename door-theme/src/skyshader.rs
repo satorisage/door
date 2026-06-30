@@ -254,7 +254,7 @@ impl SkyShader {
             cloud_lit: t.cloud_lit.iced().into_linear(),
             cloud_shadow: t.cloud_shadow.iced().into_linear(),
             params8: [0.0, 0.0, t.cursor_parallax, t.glow_pulse], // xy set per-frame from the cursor; w = glow pulse
-            // w = fbm octave count (GPU level, D-0014): the dominant per-pixel cost.
+            // w = fbm octave count (the global GPU budget): the dominant per-pixel cost.
             params9: [t.grain, t.vignette, t.corner_radius, t.gpu_level.fbm_octaves()],
             frost: [0.0, 0.0, 1.0, 1.0], // set per frame in the frost primitive
             // Scene-param pool, packed above per the active sky_mode.
@@ -1097,7 +1097,7 @@ fn fbm(p0: vec2<f32>) -> f32 {
   var p = p0;
   var v = 0.0;
   var amp = 0.5;
-  // Octave count is the GPU-level dial (params9.w, D-0014): 5 = full (the default
+  // Octave count is the GPU-level dial (params9.w): 5 = full (the default
   // `high` look), fewer = softer detail for cheaper frames. Clamped for safety.
   let octaves = i32(clamp(u.params9.w, 1.0, 8.0));
   for (var i = 0; i < octaves; i = i + 1) {

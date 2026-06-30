@@ -203,7 +203,7 @@ impl std::fmt::Display for SkyMode {
     }
 }
 
-/// A single global GPU-budget level (D-0014). Wraps the *whole* render — never
+/// A single global GPU-budget level. Wraps the *whole* render — never
 /// per-scene, never per-preset. Bundles the render-cost levers: shader detail
 /// (fbm octaves), frame-rate cap, and whether the second-pass card blur is allowed.
 /// `High` is the byte-faithful default (full octaves, today's look unchanged).
@@ -484,7 +484,7 @@ pub struct Theme {
     /// Accessibility: when true, all motion is stilled at load (no sky animation,
     /// breathing, parallax, grain, fade, or spinner motion). Shared.
     pub reduced_motion: bool,
-    /// Global GPU-budget level (D-0014). Bundles render-cost levers (shader detail,
+    /// Global GPU-budget level. Bundles render-cost levers (shader detail,
     /// fps cap, blur gating). Global, never per-scene/per-preset. Shared. `High` =
     /// current look unchanged.
     pub gpu_level: GpuLevel,

@@ -114,7 +114,7 @@ fn subscription(state: &State) -> Subscription<Message> {
     ];
     // Drive the animation off the compositor's frame clock (vsync — 60/120/144 Hz),
     // not a fixed-rate thread, so motion is buttery smooth. Only when animated. The GPU
-    // level (D-0014) can cap the frame rate: capped tiers use a fixed-rate ticker,
+    // level can cap the frame rate: capped tiers use a fixed-rate ticker,
     // `bonkers` (uncapped) rides vsync.
     if state.theme.animate {
         match state.theme.gpu_level.fps_cap() {
@@ -168,7 +168,7 @@ fn fade_ticker() -> impl futures::Stream<Item = Message> {
     )
 }
 
-/// Emit [`Message::AnimTick`] at a fixed frame cap (GPU level, D-0014) instead of the
+/// Emit [`Message::AnimTick`] at a fixed frame cap (the global GPU level) instead of the
 /// uncapped vsync `window::frames()`. `anim` is recomputed from real elapsed time each
 /// tick, so motion stays time-correct — we just repaint (and re-run the sky shader)
 /// fewer times per second. A small sleeping thread, same shape as `clock_ticker`.
@@ -778,7 +778,7 @@ fn view(state: &State) -> Element<'_, Message> {
 
     // Optional true backdrop blur: a frosted sample of the sky behind the card, drawn
     // *under* the translucent card (push_under keeps the card the size-defining base)
-    // and masked to its rounded rect inside the shader. The GPU level (D-0014) can veto
+    // and masked to its rounded rect inside the shader. The GPU level can veto
     // this second full-screen pass on lower tiers, even if the user enabled it.
     let card: Element<Message> = if t.card_blur && t.gpu_level.allows_blur() {
         Stack::new()
