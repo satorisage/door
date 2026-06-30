@@ -92,6 +92,14 @@ every key is documented there.
 
 Contributions welcome — see [CONTRIBUTING.md](CONTRIBUTING.md).
 
+## Acknowledgements
+
+door was designed and built by **Satori** in partnership with
+[Claude Code](https://claude.com/claude-code) (Anthropic's Claude Opus 4.8) — the
+architecture, the WGSL shaders, the config-driven theme engine, the preset library,
+and this README were paired on end to end. The decisions are mine; the leverage was
+real. The git history reflects it (`Co-Authored-By` on the commits).
+
 ## License
 
 [MPL-2.0](LICENSE).
