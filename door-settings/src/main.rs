@@ -3296,7 +3296,7 @@ fn glass_panel(_theme: &iced::Theme) -> container::Style {
 
 #[cfg(test)]
 mod tests {
-    use super::{expand_tilde, hsv_to_rgb, rgb_to_hsv};
+    use super::{expand_tilde, hsv_to_rgb, rgb_to_hsv, State};
     use door_theme::Theme;
 
     /// Export → import round-trips a theme pair through a file (the glue behind the
@@ -3348,6 +3348,31 @@ mod tests {
             assert!((r - r2).abs() < 1e-4, "r {r} -> {r2}");
             assert!((g - g2).abs() < 1e-4, "g {g} -> {g2}");
             assert!((b - b2).abs() < 1e-4, "b {b} -> {b2}");
+        }
+    }
+
+    /// Every shipped preset parses, applies, and builds both variants without
+    /// panicking — the path the dice button (Randomize) exercises at runtime.
+    #[test]
+    fn all_presets_load_and_build() {
+        for dir in ["dist/door/presets", "/usr/share/door/presets"] {
+            let Ok(entries) = std::fs::read_dir(dir) else {
+                continue;
+            };
+            for e in entries.flatten() {
+                let path = e.path();
+                if path.extension().and_then(|x| x.to_str()) != Some("toml") {
+                    continue;
+                }
+                let body = std::fs::read_to_string(&path).unwrap();
+                let (night, day, window) = door_theme::Theme::parse_pair(&body)
+                    .unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+                let mut s = State::new();
+                s.apply_pair(&night, &day, window);
+                s.rebuild_preview();
+                let _ = s.build(false).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+                let _ = s.build(true).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+            }
         }
     }
 }
