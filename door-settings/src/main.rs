@@ -186,6 +186,17 @@ enum Message {
     CloudShadow(String),
     CursorParallax(f32),
     GlowPulse(f32),
+    SwGridSpeed(f32),
+    SwGridDensity(f32),
+    SwGridPerspective(f32),
+    SwGridGlow(f32),
+    SwSunSize(f32),
+    SwSunStripes(f32),
+    SwSunBloom(f32),
+    SwHorizon(f32),
+    SwGridColor(String),
+    SwSkyTop(String),
+    SwSkyBottom(String),
     CardGradient(f32),
     Grain(f32),
     Vignette(f32),
@@ -275,6 +286,18 @@ struct State {
     cloud_shadow: String,
     cursor_parallax: f32,
     glow_pulse: f32,
+    // Synthwave scene controls (M8 pilot).
+    synthwave_grid_speed: f32,
+    synthwave_grid_density: f32,
+    synthwave_grid_perspective: f32,
+    synthwave_grid_glow: f32,
+    synthwave_sun_size: f32,
+    synthwave_sun_stripes: f32,
+    synthwave_sun_bloom: f32,
+    synthwave_horizon: f32,
+    synthwave_grid_color: String,
+    synthwave_sky_top: String,
+    synthwave_sky_bottom: String,
     spinner_style: SpinnerStyle,
     card_gradient: f32,
     grain: f32,
@@ -499,6 +522,17 @@ impl State {
             cloud_shadow: night.cloud_shadow.to_hex(),
             cursor_parallax: night.cursor_parallax,
             glow_pulse: night.glow_pulse,
+            synthwave_grid_speed: night.synthwave_grid_speed,
+            synthwave_grid_density: night.synthwave_grid_density,
+            synthwave_grid_perspective: night.synthwave_grid_perspective,
+            synthwave_grid_glow: night.synthwave_grid_glow,
+            synthwave_sun_size: night.synthwave_sun_size,
+            synthwave_sun_stripes: night.synthwave_sun_stripes,
+            synthwave_sun_bloom: night.synthwave_sun_bloom,
+            synthwave_horizon: night.synthwave_horizon,
+            synthwave_grid_color: night.synthwave_grid_color.to_hex(),
+            synthwave_sky_top: night.synthwave_sky_top.to_hex(),
+            synthwave_sky_bottom: night.synthwave_sky_bottom.to_hex(),
             spinner_style: night.spinner_style,
             card_gradient: night.card_gradient,
             grain: night.grain,
@@ -586,6 +620,17 @@ impl State {
         self.cloud_shadow = night.cloud_shadow.to_hex();
         self.cursor_parallax = night.cursor_parallax;
         self.glow_pulse = night.glow_pulse;
+        self.synthwave_grid_speed = night.synthwave_grid_speed;
+        self.synthwave_grid_density = night.synthwave_grid_density;
+        self.synthwave_grid_perspective = night.synthwave_grid_perspective;
+        self.synthwave_grid_glow = night.synthwave_grid_glow;
+        self.synthwave_sun_size = night.synthwave_sun_size;
+        self.synthwave_sun_stripes = night.synthwave_sun_stripes;
+        self.synthwave_sun_bloom = night.synthwave_sun_bloom;
+        self.synthwave_horizon = night.synthwave_horizon;
+        self.synthwave_grid_color = night.synthwave_grid_color.to_hex();
+        self.synthwave_sky_top = night.synthwave_sky_top.to_hex();
+        self.synthwave_sky_bottom = night.synthwave_sky_bottom.to_hex();
         self.spinner_style = night.spinner_style;
         self.card_gradient = night.card_gradient;
         self.grain = night.grain;
@@ -757,6 +802,17 @@ impl State {
             cloud_shadow: color("Cloud shadow", &self.cloud_shadow)?,
             cursor_parallax: self.cursor_parallax,
             glow_pulse: self.glow_pulse,
+            synthwave_grid_speed: self.synthwave_grid_speed,
+            synthwave_grid_density: self.synthwave_grid_density,
+            synthwave_grid_perspective: self.synthwave_grid_perspective,
+            synthwave_grid_glow: self.synthwave_grid_glow,
+            synthwave_sun_size: self.synthwave_sun_size,
+            synthwave_sun_stripes: self.synthwave_sun_stripes,
+            synthwave_sun_bloom: self.synthwave_sun_bloom,
+            synthwave_horizon: self.synthwave_horizon,
+            synthwave_grid_color: color("Synthwave grid", &self.synthwave_grid_color)?,
+            synthwave_sky_top: color("Synthwave sky top", &self.synthwave_sky_top)?,
+            synthwave_sky_bottom: color("Synthwave sky bottom", &self.synthwave_sky_bottom)?,
             spinner_style: self.spinner_style,
             card_gradient: self.card_gradient,
             grain: self.grain,
@@ -888,6 +944,17 @@ fn update(state: &mut State, message: Message) -> Task<Message> {
         Message::CloudShadow(s) => state.cloud_shadow = s,
         Message::CursorParallax(v) => state.cursor_parallax = v.clamp(0.0, 3.0),
         Message::GlowPulse(v) => state.glow_pulse = v.clamp(0.0, 2.0),
+        Message::SwGridSpeed(v) => state.synthwave_grid_speed = v.clamp(0.0, 6.0),
+        Message::SwGridDensity(v) => state.synthwave_grid_density = v.clamp(0.1, 2.0),
+        Message::SwGridPerspective(v) => state.synthwave_grid_perspective = v.clamp(0.1, 2.0),
+        Message::SwGridGlow(v) => state.synthwave_grid_glow = v.clamp(0.0, 2.0),
+        Message::SwSunSize(v) => state.synthwave_sun_size = v.clamp(0.05, 0.45),
+        Message::SwSunStripes(v) => state.synthwave_sun_stripes = v.clamp(0.0, 300.0),
+        Message::SwSunBloom(v) => state.synthwave_sun_bloom = v.clamp(0.0, 1.0),
+        Message::SwHorizon(v) => state.synthwave_horizon = v.clamp(0.2, 0.9),
+        Message::SwGridColor(s) => state.synthwave_grid_color = s,
+        Message::SwSkyTop(s) => state.synthwave_sky_top = s,
+        Message::SwSkyBottom(s) => state.synthwave_sky_bottom = s,
         Message::CardGradient(v) => state.card_gradient = v.clamp(0.0, 1.0),
         Message::Grain(v) => state.grain = v.clamp(0.0, 0.3),
         Message::Vignette(v) => state.vignette = v.clamp(0.0, 1.0),
@@ -1820,7 +1887,53 @@ fn sky_tab<'a>(state: &'a State, pal: &'a Palette, h: bool) -> Element<'a, Messa
     if let Some(adv) = advanced {
         col = col.push(adv);
     }
+    // Per-scene controls: the dials that author the active scene (M8). Shown only when
+    // that scene is selected, labeled to read like the scene's blueprint.
+    if matches!(state.sky_mode, SkyMode::Synthwave) {
+        col = col.push(synthwave_group(state, h));
+    }
     col.into()
+}
+
+/// The synthwave scene's authoring controls (M8 pilot) — the exact dials behind its
+/// grid, sun, and sky. Two columns; only rendered when `sky_mode = synthwave`.
+fn synthwave_group(state: &State, h: bool) -> Element<'_, Message> {
+    let s = |label: &'static str, v: f32, range: std::ops::RangeInclusive<f32>, step: f32,
+             disp: String, on: fn(f32) -> Message| {
+        slider_row(label, v, range, step, disp, on)
+    };
+    group(
+        "SYNTHWAVE",
+        two_col(vec![
+            helped(s("Grid speed", state.synthwave_grid_speed, 0.0..=6.0, 0.1,
+                format!("{:.1}", state.synthwave_grid_speed), Message::SwGridSpeed),
+                "How fast the grid scrolls toward you.", h),
+            helped(s("Grid density", state.synthwave_grid_density, 0.1..=2.0, 0.01,
+                format!("{:.2}", state.synthwave_grid_density), Message::SwGridDensity),
+                "Spacing of the grid lines (higher = more).", h),
+            helped(s("Perspective", state.synthwave_grid_perspective, 0.1..=2.0, 0.01,
+                format!("{:.2}", state.synthwave_grid_perspective), Message::SwGridPerspective),
+                "How wide the grid spreads toward the front.", h),
+            helped(s("Grid glow", state.synthwave_grid_glow, 0.0..=2.0, 0.05,
+                format!("{:.2}", state.synthwave_grid_glow), Message::SwGridGlow),
+                "Brightness of the neon grid.", h),
+            helped(s("Sun size", state.synthwave_sun_size, 0.05..=0.45, 0.005,
+                format!("{:.3}", state.synthwave_sun_size), Message::SwSunSize),
+                "Radius of the sun on the horizon.", h),
+            helped(s("Sun stripes", state.synthwave_sun_stripes, 0.0..=300.0, 1.0,
+                format!("{:.0}", state.synthwave_sun_stripes), Message::SwSunStripes),
+                "Frequency of the sun's dark bands (0 = solid).", h),
+            helped(s("Sun bloom", state.synthwave_sun_bloom, 0.0..=1.0, 0.01,
+                format!("{:.2}", state.synthwave_sun_bloom), Message::SwSunBloom),
+                "Soft glow around the sun.", h),
+            helped(s("Horizon", state.synthwave_horizon, 0.2..=0.9, 0.01,
+                format!("{:.2}", state.synthwave_horizon), Message::SwHorizon),
+                "Where the ground meets the sky.", h),
+            color_cell_with("Grid", &state.synthwave_grid_color, Message::SwGridColor),
+            color_cell_with("Sky top", &state.synthwave_sky_top, Message::SwSkyTop),
+            color_cell_with("Sky base", &state.synthwave_sky_bottom, Message::SwSkyBottom),
+        ]),
+    )
 }
 
 fn spinner_tab<'a>(state: &'a State, pal: &'a Palette, h: bool) -> Element<'a, Message> {

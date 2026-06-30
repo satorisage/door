@@ -491,6 +491,30 @@ pub struct Theme {
     /// Night sky-glow breathing depth (0 = steady, the default; ~1 = a gentle pulse).
     /// Shared; cleared by reduced-motion.
     pub glow_pulse: f32,
+
+    // ── Synthwave scene controls (M8 pilot; shared — only read when sky_mode=synthwave) ──
+    /// Synthwave grid scroll speed (toward the viewer).
+    pub synthwave_grid_speed: f32,
+    /// Synthwave grid line density (higher = more lines).
+    pub synthwave_grid_density: f32,
+    /// Synthwave grid perspective spread (higher = wider toward the front).
+    pub synthwave_grid_perspective: f32,
+    /// Synthwave grid glow intensity.
+    pub synthwave_grid_glow: f32,
+    /// Synthwave sun radius (fraction of height).
+    pub synthwave_sun_size: f32,
+    /// Synthwave sun horizontal-stripe frequency.
+    pub synthwave_sun_stripes: f32,
+    /// Synthwave sun bloom strength.
+    pub synthwave_sun_bloom: f32,
+    /// Synthwave horizon height (0 = top … 1 = bottom).
+    pub synthwave_horizon: f32,
+    /// Synthwave neon grid colour.
+    pub synthwave_grid_color: Color,
+    /// Synthwave upper-sky colour.
+    pub synthwave_sky_top: Color,
+    /// Synthwave lower-sky / sun-base colour.
+    pub synthwave_sky_bottom: Color,
     /// Card vertical-gradient strength (0 = flat fill; ~1 = a lit top sheen). Shared.
     pub card_gradient: f32,
     /// Film-grain strength over the whole sky (0 = off). Shared.
@@ -611,6 +635,17 @@ impl Default for Theme {
             cloud_shadow: Color::rgb(0xb4, 0xc2, 0xdb),
             cursor_parallax: 1.0,
             glow_pulse: 0.0,
+            synthwave_grid_speed: 1.2,
+            synthwave_grid_density: 0.55,
+            synthwave_grid_perspective: 0.6,
+            synthwave_grid_glow: 0.7,
+            synthwave_sun_size: 0.22,
+            synthwave_sun_stripes: 120.0,
+            synthwave_sun_bloom: 0.25,
+            synthwave_horizon: 0.56,
+            synthwave_grid_color: Color::rgb(0x00, 0xe6, 0xff),
+            synthwave_sky_top: Color::rgb(0x29, 0x0d, 0x47),
+            synthwave_sky_bottom: Color::rgb(0xf2, 0x45, 0x8c),
             card_gradient: 0.45,
             grain: 0.0,
             vignette: 0.2,
@@ -706,6 +741,17 @@ impl Theme {
             cloud_shadow: Color::rgb(0xb4, 0xc2, 0xdb),
             cursor_parallax: 1.0,
             glow_pulse: 0.0,
+            synthwave_grid_speed: 1.2,
+            synthwave_grid_density: 0.55,
+            synthwave_grid_perspective: 0.6,
+            synthwave_grid_glow: 0.7,
+            synthwave_sun_size: 0.22,
+            synthwave_sun_stripes: 120.0,
+            synthwave_sun_bloom: 0.25,
+            synthwave_horizon: 0.56,
+            synthwave_grid_color: Color::rgb(0x00, 0xe6, 0xff),
+            synthwave_sky_top: Color::rgb(0x29, 0x0d, 0x47),
+            synthwave_sky_bottom: Color::rgb(0xf2, 0x45, 0x8c),
             card_gradient: 0.45,
             grain: 0.0,
             vignette: 0.2,
@@ -787,6 +833,17 @@ struct ThemeFile {
     cloud_shadow: Option<String>,
     cursor_parallax: Option<f32>,
     glow_pulse: Option<f32>,
+    synthwave_grid_speed: Option<f32>,
+    synthwave_grid_density: Option<f32>,
+    synthwave_grid_perspective: Option<f32>,
+    synthwave_grid_glow: Option<f32>,
+    synthwave_sun_size: Option<f32>,
+    synthwave_sun_stripes: Option<f32>,
+    synthwave_sun_bloom: Option<f32>,
+    synthwave_horizon: Option<f32>,
+    synthwave_grid_color: Option<String>,
+    synthwave_sky_top: Option<String>,
+    synthwave_sky_bottom: Option<String>,
     card_gradient: Option<f32>,
     grain: Option<f32>,
     vignette: Option<f32>,
@@ -976,6 +1033,20 @@ impl Theme {
         self.cloud_shadow = color("cloud_shadow", file.cloud_shadow, self.cloud_shadow);
         merge_f32(&mut self.cursor_parallax, file.cursor_parallax);
         merge_f32(&mut self.glow_pulse, file.glow_pulse);
+        merge_f32(&mut self.synthwave_grid_speed, file.synthwave_grid_speed);
+        merge_f32(&mut self.synthwave_grid_density, file.synthwave_grid_density);
+        merge_f32(&mut self.synthwave_grid_perspective, file.synthwave_grid_perspective);
+        merge_f32(&mut self.synthwave_grid_glow, file.synthwave_grid_glow);
+        merge_f32(&mut self.synthwave_sun_size, file.synthwave_sun_size);
+        merge_f32(&mut self.synthwave_sun_stripes, file.synthwave_sun_stripes);
+        merge_f32(&mut self.synthwave_sun_bloom, file.synthwave_sun_bloom);
+        merge_f32(&mut self.synthwave_horizon, file.synthwave_horizon);
+        self.synthwave_grid_color =
+            color("synthwave_grid_color", file.synthwave_grid_color, self.synthwave_grid_color);
+        self.synthwave_sky_top =
+            color("synthwave_sky_top", file.synthwave_sky_top, self.synthwave_sky_top);
+        self.synthwave_sky_bottom =
+            color("synthwave_sky_bottom", file.synthwave_sky_bottom, self.synthwave_sky_bottom);
         merge_f32(&mut self.card_gradient, file.card_gradient);
         merge_f32(&mut self.grain, file.grain);
         merge_f32(&mut self.vignette, file.vignette);
@@ -1083,6 +1154,25 @@ impl Theme {
         }
         merge_f32(&mut self.cursor_parallax, file.cursor_parallax);
         merge_f32(&mut self.glow_pulse, file.glow_pulse);
+        merge_f32(&mut self.synthwave_grid_speed, file.synthwave_grid_speed);
+        merge_f32(&mut self.synthwave_grid_density, file.synthwave_grid_density);
+        merge_f32(&mut self.synthwave_grid_perspective, file.synthwave_grid_perspective);
+        merge_f32(&mut self.synthwave_grid_glow, file.synthwave_grid_glow);
+        merge_f32(&mut self.synthwave_sun_size, file.synthwave_sun_size);
+        merge_f32(&mut self.synthwave_sun_stripes, file.synthwave_sun_stripes);
+        merge_f32(&mut self.synthwave_sun_bloom, file.synthwave_sun_bloom);
+        merge_f32(&mut self.synthwave_horizon, file.synthwave_horizon);
+        for (slot, s) in [
+            (&mut self.synthwave_grid_color, &file.synthwave_grid_color),
+            (&mut self.synthwave_sky_top, &file.synthwave_sky_top),
+            (&mut self.synthwave_sky_bottom, &file.synthwave_sky_bottom),
+        ] {
+            if let Some(s) = s {
+                if let Some(col) = Color::parse(s) {
+                    *slot = col;
+                }
+            }
+        }
         merge_f32(&mut self.card_gradient, file.card_gradient);
         merge_f32(&mut self.grain, file.grain);
         merge_f32(&mut self.vignette, file.vignette);
@@ -1363,6 +1453,17 @@ impl Theme {
         out.push_str(&format!("cloud_shadow  = {:?}\n", self.cloud_shadow.to_hex()));
         out.push_str(&format!("cursor_parallax = {}\n", self.cursor_parallax));
         out.push_str(&format!("glow_pulse    = {}\n", self.glow_pulse));
+        out.push_str(&format!("synthwave_grid_speed       = {}\n", self.synthwave_grid_speed));
+        out.push_str(&format!("synthwave_grid_density     = {}\n", self.synthwave_grid_density));
+        out.push_str(&format!("synthwave_grid_perspective = {}\n", self.synthwave_grid_perspective));
+        out.push_str(&format!("synthwave_grid_glow        = {}\n", self.synthwave_grid_glow));
+        out.push_str(&format!("synthwave_sun_size         = {}\n", self.synthwave_sun_size));
+        out.push_str(&format!("synthwave_sun_stripes      = {}\n", self.synthwave_sun_stripes));
+        out.push_str(&format!("synthwave_sun_bloom        = {}\n", self.synthwave_sun_bloom));
+        out.push_str(&format!("synthwave_horizon          = {}\n", self.synthwave_horizon));
+        out.push_str(&format!("synthwave_grid_color  = {:?}\n", self.synthwave_grid_color.to_hex()));
+        out.push_str(&format!("synthwave_sky_top     = {:?}\n", self.synthwave_sky_top.to_hex()));
+        out.push_str(&format!("synthwave_sky_bottom  = {:?}\n", self.synthwave_sky_bottom.to_hex()));
         out.push_str(&format!("card_gradient = {}\n", self.card_gradient));
         out.push_str(&format!("grain         = {}\n", self.grain));
         out.push_str(&format!("vignette      = {}\n", self.vignette));

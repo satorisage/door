@@ -64,6 +64,16 @@ struct Uniforms {
     /// Frosted-card backdrop rect in screen-normalized coords: x, y, w, h. Set per
     /// frame in the frost primitive's prepare(); unused by the full-screen sky pass.
     frost: [f32; 4],
+    /// Scene-param pool (M8) — the active `sky_mode` reinterprets these slots as its
+    /// own controls (scenes are mutually exclusive). Synthwave mapping:
+    ///   scene_a = [grid speed, grid density, grid perspective, grid glow]
+    ///   scene_b = [sun size, sun stripes, sun bloom, horizon]
+    ///   scene_c1/c2/c3 = grid / sky-top / sky-bottom colours (rgb; a unused)
+    scene_a: [f32; 4],
+    scene_b: [f32; 4],
+    scene_c1: [f32; 4],
+    scene_c2: [f32; 4],
+    scene_c3: [f32; 4],
 }
 
 fn srgb8(r: u8, g: u8, b: u8) -> Color {
@@ -143,6 +153,34 @@ impl SkyShader {
             params8: [0.0, 0.0, t.cursor_parallax, t.glow_pulse], // xy set per-frame from the cursor; w = glow pulse
             params9: [t.grain, t.vignette, t.corner_radius, 0.0],
             frost: [0.0, 0.0, 1.0, 1.0], // set per frame in the frost primitive
+            // Scene-param pool. Synthwave for now (the only scene reading it); scene
+            // colours stay sRGB-nominal (raw `.iced()`, not linearized) to match the
+            // shader's original literals exactly. Other scenes will pack here keyed by
+            // sky_mode as M8 rolls out.
+            scene_a: [
+                t.synthwave_grid_speed,
+                t.synthwave_grid_density,
+                t.synthwave_grid_perspective,
+                t.synthwave_grid_glow,
+            ],
+            scene_b: [
+                t.synthwave_sun_size,
+                t.synthwave_sun_stripes,
+                t.synthwave_sun_bloom,
+                t.synthwave_horizon,
+            ],
+            scene_c1: {
+                let c = t.synthwave_grid_color.iced();
+                [c.r, c.g, c.b, 0.0]
+            },
+            scene_c2: {
+                let c = t.synthwave_sky_top.iced();
+                [c.r, c.g, c.b, 0.0]
+            },
+            scene_c3: {
+                let c = t.synthwave_sky_bottom.iced();
+                [c.r, c.g, c.b, 0.0]
+            },
         };
         Self { uniforms }
     }
@@ -933,6 +971,11 @@ struct U {
   params8: vec4<f32>,
   params9: vec4<f32>,
   frost: vec4<f32>,
+  scene_a: vec4<f32>,
+  scene_b: vec4<f32>,
+  scene_c1: vec4<f32>,
+  scene_c2: vec4<f32>,
+  scene_c3: vec4<f32>,
 };
 @group(0) @binding(0) var<uniform> u: U;
 
@@ -1218,9 +1261,11 @@ fn moon_sky(uv: vec2<f32>, p: vec2<f32>, aspect: f32) -> vec3<f32> {
 // Synthwave: a deep purple→pink dusk, a striped neon sun on the horizon, and a glowing
 // cyan perspective grid on the "ground" (lower half), scrolling toward the viewer.
 fn synthwave_sky(uv: vec2<f32>, p: vec2<f32>, aspect: f32) -> vec3<f32> {
-  let horizon = 0.56;
-  let purple = vec3(0.16, 0.05, 0.28);
-  let pink = vec3(0.95, 0.27, 0.55);
+  // Scene-param pool (M8): scene_a=[grid speed, density, perspective, glow],
+  // scene_b=[sun size, sun stripes, sun bloom, horizon], scene_c1/2/3 = colours.
+  let horizon = u.scene_b.w;
+  let purple = u.scene_c2.rgb;
+  let pink = u.scene_c3.rgb;
   var col = mix(purple, pink, smoothstep(0.0, horizon, uv.y) * smoothstep(1.0, 0.3, uv.y / horizon));
   col = mix(purple * 0.6, col, smoothstep(0.0, 0.5, uv.y));
 
@@ -1229,23 +1274,24 @@ fn synthwave_sky(uv: vec2<f32>, p: vec2<f32>, aspect: f32) -> vec3<f32> {
   var sr = uv - sc;
   sr.x = sr.x * aspect;
   let sd = length(sr);
-  let sun = smoothstep(0.22, 0.215, sd);
-  let stripes = step(0.0, sin(uv.y * 120.0)) * step(uv.y, horizon); // dark bands, upper sun
-  let suncol = mix(vec3(1.0, 0.85, 0.3), vec3(1.0, 0.25, 0.55), smoothstep(horizon - 0.22, horizon, uv.y));
+  let sun_r = u.scene_b.x;
+  let sun = smoothstep(sun_r, sun_r - 0.005, sd);
+  let stripes = step(0.0, sin(uv.y * u.scene_b.y)) * step(uv.y, horizon); // dark bands, upper sun
+  let suncol = mix(vec3(1.0, 0.85, 0.3), vec3(1.0, 0.25, 0.55), smoothstep(horizon - sun_r, horizon, uv.y));
   col = mix(col, suncol, sun * (1.0 - stripes * 0.85));
-  col = col + vec3(1.0, 0.4, 0.6) * exp(-sd * sd * 9.0) * 0.25; // sun glow
+  col = col + vec3(1.0, 0.4, 0.6) * exp(-sd * sd * 9.0) * u.scene_b.z; // sun glow
 
   // Neon perspective grid on the ground (uv.y > horizon).
   if (uv.y > horizon) {
     let gy = uv.y - horizon + 0.02;
     let z = 1.0 / gy;
-    let scroll = u.time * 1.2;
-    let lh = abs(fract(z * 0.55 - scroll) - 0.5);
-    let px = (uv.x - 0.5) * z * 0.6;
+    let scroll = u.time * u.scene_a.x;
+    let lh = abs(fract(z * u.scene_a.y - scroll) - 0.5);
+    let px = (uv.x - 0.5) * z * u.scene_a.z;
     let lv = abs(fract(px) - 0.5);
     let grid = smoothstep(0.06, 0.0, lh) + smoothstep(0.05, 0.0, lv);
     let depth = smoothstep(0.0, 0.25, gy);
-    col = col + vec3(0.0, 0.9, 1.0) * grid * depth * 0.7;
+    col = col + u.scene_c1.rgb * grid * depth * u.scene_a.w;
   }
   return col;
 }
