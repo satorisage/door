@@ -10,7 +10,7 @@ use std::path::PathBuf;
 use std::time::Instant;
 
 use iced::widget::{
-    button, canvas, column, container, image, pick_list, row, scrollable, shader, slider, text,
+    button, canvas, column, container, image, pick_list, row, scrollable, shader, slider, svg, text,
     text_input, toggler, Space, Stack,
 };
 use iced::{
@@ -2772,6 +2772,13 @@ fn card_bg(card: IColor, gradient: f32) -> Background {
     ))
 }
 
+/// Whether a logo path is an SVG (case-insensitive `.svg`) — vector vs raster.
+fn is_svg(path: &std::path::Path) -> bool {
+    path.extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| e.eq_ignore_ascii_case("svg"))
+}
+
 /// Format the current local time with a `strftime` string, for the preview (mirrors
 /// the greeter's own formatting). Empty on a bad format → the caller shows a mock.
 fn sample_strftime(fmt: &str) -> String {
@@ -2853,6 +2860,9 @@ fn preview_card(t: &Theme, anim: f32) -> Element<'static, Message> {
     };
 
     let logo: Element<Message> = match &t.logo {
+        Some(path) if is_svg(path) => svg(svg::Handle::from_path(path.clone()))
+            .height(Length::Fixed(56.0))
+            .into(),
         Some(path) => image(image::Handle::from_path(path))
             .height(Length::Fixed(56.0))
             .into(),

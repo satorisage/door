@@ -17,7 +17,7 @@ use std::time::{Duration, Instant};
 
 use futures::SinkExt;
 use iced::widget::{
-    button, canvas, column, container, image, pick_list, row, shader, stack, text, text_input,
+    button, canvas, column, container, image, pick_list, row, shader, stack, svg, text, text_input,
     Column, Space, Stack,
 };
 use iced::{
@@ -428,6 +428,14 @@ fn update(state: &mut State, message: Message) -> Task<Message> {
     task
 }
 
+/// Whether a logo path is an SVG (case-insensitive `.svg`) — chooses the vector
+/// renderer over the raster one.
+fn is_svg(path: &std::path::Path) -> bool {
+    path.extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| e.eq_ignore_ascii_case("svg"))
+}
+
 /// Whether Caps Lock is on, from the keyboard's `capslock` LED under
 /// `/sys/class/leds/*::capslock/brightness` (e.g. `input3::capslock`). A purely
 /// local read — no daemon, no privileged path, and it discloses nothing sensitive.
@@ -621,9 +629,12 @@ fn view(state: &State) -> Element<'_, Message> {
         Space::new().into()
     };
 
-    // Logo: a user-set image overrides; otherwise the native animated comet
-    // spinner (the boot throbber's sibling) is the default card emblem.
+    // Logo: a user-set image (SVG drawn crisp at any size, else a raster) overrides;
+    // otherwise the native animated comet spinner is the default card emblem.
     let logo: Element<Message> = match &t.logo {
+        Some(path) if is_svg(path) => svg(svg::Handle::from_path(path.clone()))
+            .height(Length::Fixed(56.0))
+            .into(),
         Some(path) => image(image::Handle::from_path(path))
             .height(Length::Fixed(56.0))
             .into(),

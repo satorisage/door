@@ -11,7 +11,7 @@ path = "src/main.rs"
 [dependencies]
 futures = "0.3"
 # `image` enables the wallpaper widget; `canvas` the ambient twinkle layer.
-iced = { version = "0.14", features = ["image", "canvas"] }
+iced = { version = "0.14", features = ["image", "canvas", "svg"] }
 iced_futures = "0.14"
 protocol = { workspace = true }
 # M4 theming lives in the shared door-theme crate (also used by door-settings).
