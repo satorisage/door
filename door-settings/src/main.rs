@@ -192,6 +192,7 @@ enum Message {
     ClockSeconds(bool),
     ClockSize(f32),
     ClockStylePicked(ClockStyle),
+    ClockFormat(String),
     FontScale(f32),
     CardBlur(bool),
     FadeMs(f32),
@@ -270,6 +271,7 @@ struct State {
     clock_seconds: bool,
     clock_size: f32,
     clock_style: ClockStyle,
+    clock_format: String,
     font_scale: f32,
     fade_ms: f32,
     // Expert (advanced) shared controls (Tier 3).
@@ -451,6 +453,7 @@ impl State {
             clock_seconds: night.clock_seconds,
             clock_size: night.clock_size,
             clock_style: night.clock_style,
+            clock_format: night.clock_format.clone().unwrap_or_default(),
             font_scale: night.font_scale,
             fade_ms: night.fade_ms,
             glow_falloff: night.glow_falloff,
@@ -532,6 +535,7 @@ impl State {
         self.clock_seconds = night.clock_seconds;
         self.clock_size = night.clock_size;
         self.clock_style = night.clock_style;
+        self.clock_format = night.clock_format.clone().unwrap_or_default();
         self.font_scale = night.font_scale;
         self.fade_ms = night.fade_ms;
         self.glow_falloff = night.glow_falloff;
@@ -699,6 +703,10 @@ impl State {
             clock_seconds: self.clock_seconds,
             clock_size: self.clock_size,
             clock_style: self.clock_style,
+            clock_format: {
+                let t = self.clock_format.trim();
+                (!t.is_empty()).then(|| t.to_string())
+            },
             font_scale: self.font_scale,
             fade_ms: self.fade_ms,
             glow_falloff: self.glow_falloff,
@@ -821,6 +829,7 @@ fn update(state: &mut State, message: Message) -> Task<Message> {
         Message::ClockSeconds(on) => state.clock_seconds = on,
         Message::ClockSize(v) => state.clock_size = v.clamp(24.0, 120.0),
         Message::ClockStylePicked(s) => state.clock_style = s,
+        Message::ClockFormat(s) => state.clock_format = s,
         Message::FontScale(v) => state.font_scale = v.clamp(0.7, 1.8),
         Message::CardBlur(on) => state.card_blur = on,
         Message::FadeMs(v) => state.fade_ms = v.clamp(0.0, 2000.0),
@@ -1920,6 +1929,24 @@ fn behavior_tab<'a>(state: &'a State, h: bool) -> Element<'a, Message> {
                 h
             ),
             helped(
+                row![
+                    text("Format")
+                        .size(13)
+                        .width(Length::Fixed(92.0))
+                        .color(c(LABEL.0, LABEL.1, LABEL.2)),
+                    text_input("e.g. %a %H:%M", &state.clock_format)
+                        .on_input(Message::ClockFormat)
+                        .padding(6)
+                        .size(14)
+                        .style(input_style),
+                ]
+                .spacing(10)
+                .align_y(Alignment::Center)
+                .into(),
+                "Custom strftime format; blank = built-in. Ignored for analog.",
+                h
+            ),
+            helped(
                 slider_row(
                     "Clock size",
                     state.clock_size,
@@ -2600,6 +2627,31 @@ fn card_bg(card: IColor, gradient: f32) -> Background {
     ))
 }
 
+/// Format the current local time with a `strftime` string, for the preview (mirrors
+/// the greeter's own formatting). Empty on a bad format → the caller shows a mock.
+fn sample_strftime(fmt: &str) -> String {
+    let Ok(cfmt) = std::ffi::CString::new(fmt.trim()) else {
+        return String::new();
+    };
+    // SAFETY: localtime_r fills our owned tm; strftime writes ≤ buf.len() bytes into
+    // buf and reads only the tm and the NUL-terminated format.
+    unsafe {
+        let now = libc::time(std::ptr::null_mut());
+        let mut tm: libc::tm = std::mem::zeroed();
+        if libc::localtime_r(&now, &mut tm).is_null() {
+            return String::new();
+        }
+        let mut buf = [0u8; 128];
+        let n = libc::strftime(
+            buf.as_mut_ptr() as *mut libc::c_char,
+            buf.len(),
+            cfmt.as_ptr(),
+            &tm,
+        );
+        String::from_utf8_lossy(&buf[..n]).into_owned()
+    }
+}
+
 /// A non-interactive mock of the greeter card, themed from the draft.
 fn preview_card(t: &Theme, anim: f32) -> Element<'static, Message> {
     let fg = t.foreground.iced();
@@ -2607,10 +2659,19 @@ fn preview_card(t: &Theme, anim: f32) -> Element<'static, Message> {
 
     let header: Element<Message> = if t.show_clock {
         let time_widget: Element<Message> = match t.clock_style {
-            ClockStyle::Digital => text(if t.clock_seconds { "12:34:56" } else { "12:34" })
-                .size(t.clock_size * t.font_scale)
-                .color(fg)
-                .into(),
+            ClockStyle::Digital => {
+                // A custom strftime format previews against the real clock; otherwise a
+                // representative mock so the size/placement read without a live tick.
+                let label = match t.clock_format.as_deref() {
+                    Some(fmt) if !fmt.trim().is_empty() => sample_strftime(fmt),
+                    _ if t.clock_seconds => "12:34:56".to_string(),
+                    _ => "12:34".to_string(),
+                };
+                text(label)
+                    .size(t.clock_size * t.font_scale)
+                    .color(fg)
+                    .into()
+            }
             ClockStyle::Analog => {
                 // Preview pose: 12:34 (matching the digital mock) with the second
                 // hand sweeping live off the preview's animation clock.

@@ -473,6 +473,9 @@ pub struct Theme {
     pub clock_size: f32,
     /// Digital readout vs a drawn analog clock face. Shared.
     pub clock_style: ClockStyle,
+    /// Optional `strftime` format for the digital clock (e.g. `"%a %H:%M"`); `None`
+    /// uses the built-in `clock_24h`/`clock_seconds` formatting. Shared.
+    pub clock_format: Option<String>,
     /// Text size multiplier for the whole card (1 = default; >1 = large-text). Shared.
     pub font_scale: f32,
     /// Launch fade-in duration (ms). Shared.
@@ -562,6 +565,7 @@ impl Default for Theme {
             clock_seconds: false,
             clock_size: 56.0,
             clock_style: ClockStyle::Digital,
+            clock_format: None,
             font_scale: 1.0,
             fade_ms: 384.0,
             glow_falloff: 3.2,
@@ -651,6 +655,7 @@ impl Theme {
             clock_seconds: false,
             clock_size: 56.0,
             clock_style: ClockStyle::Digital,
+            clock_format: None,
             font_scale: 1.0,
             fade_ms: 384.0,
             glow_falloff: 3.2,
@@ -732,6 +737,7 @@ struct ThemeFile {
     clock_seconds: Option<bool>,
     clock_size: Option<f32>,
     clock_style: Option<ClockStyle>,
+    clock_format: Option<String>,
     font_scale: Option<f32>,
     fade_ms: Option<f32>,
     glow_falloff: Option<f32>,
@@ -922,6 +928,9 @@ impl Theme {
         if let Some(s) = file.clock_style {
             self.clock_style = s;
         }
+        if file.clock_format.is_some() {
+            self.clock_format = file.clock_format.clone();
+        }
         merge_f32(&mut self.font_scale, file.font_scale);
         merge_f32(&mut self.fade_ms, file.fade_ms);
         merge_f32(&mut self.glow_falloff, file.glow_falloff);
@@ -1019,6 +1028,9 @@ impl Theme {
         merge_f32(&mut self.clock_size, file.clock_size);
         if let Some(s) = file.clock_style {
             self.clock_style = s;
+        }
+        if file.clock_format.is_some() {
+            self.clock_format = file.clock_format.clone();
         }
         merge_f32(&mut self.font_scale, file.font_scale);
         merge_f32(&mut self.fade_ms, file.fade_ms);
@@ -1300,6 +1312,10 @@ impl Theme {
         out.push_str(&format!("clock_seconds = {}\n", self.clock_seconds));
         out.push_str(&format!("clock_size    = {}\n", self.clock_size));
         out.push_str(&format!("clock_style   = {:?}\n", self.clock_style.name()));
+        match &self.clock_format {
+            Some(f) => out.push_str(&format!("clock_format  = {f:?}\n")),
+            None => out.push_str("# clock_format =   # (built-in HH:MM)\n"),
+        }
         out.push_str(&format!("font_scale    = {}\n", self.font_scale));
         out.push_str(&format!("fade_ms       = {}\n", self.fade_ms));
         out.push_str("# Expert\n");

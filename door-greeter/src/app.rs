@@ -249,7 +249,11 @@ impl State {
         // Pick the day or night variant by the local clock — the greeter runs
         // pre-login, so it can't read the user's color scheme; time is the trigger.
         let theme = Theme::load_at(now_minutes(), now_month());
-        let clock = now_hm(theme.clock_24h, theme.clock_seconds);
+        let clock = now_hm(
+            theme.clock_24h,
+            theme.clock_seconds,
+            theme.clock_format.as_deref(),
+        );
         State {
             phase: Phase::Connecting,
             sessions: Vec::new(),
@@ -379,7 +383,11 @@ fn update(state: &mut State, message: Message) -> Task<Message> {
             if fresh != state.theme {
                 state.theme = fresh;
             }
-            state.clock = now_hm(state.theme.clock_24h, state.theme.clock_seconds);
+            state.clock = now_hm(
+                state.theme.clock_24h,
+                state.theme.clock_seconds,
+                state.theme.clock_format.as_deref(),
+            );
             state.date = now_date();
         }
         Message::Fade => state.fade = (state.fade + 16.0 / state.theme.fade_ms.max(16.0)).min(1.0),
@@ -408,30 +416,57 @@ fn local_tm() -> Option<libc::tm> {
     }
 }
 
-/// Local wall-clock time — `HH:MM` (24-hour) or `H:MM AM/PM` (12-hour).
-fn now_hm(clock_24h: bool, seconds: bool) -> String {
-    match local_tm() {
-        Some(tm) if clock_24h => {
-            if seconds {
-                format!("{:02}:{:02}:{:02}", tm.tm_hour, tm.tm_min, tm.tm_sec)
-            } else {
-                format!("{:02}:{:02}", tm.tm_hour, tm.tm_min)
-            }
-        }
-        Some(tm) => {
-            let h12 = match tm.tm_hour % 12 {
-                0 => 12,
-                h => h,
-            };
-            let meridiem = if tm.tm_hour < 12 { "AM" } else { "PM" };
-            if seconds {
-                format!("{}:{:02}:{:02} {}", h12, tm.tm_min, tm.tm_sec, meridiem)
-            } else {
-                format!("{}:{:02} {}", h12, tm.tm_min, meridiem)
-            }
-        }
-        None => String::new(),
+/// Local wall-clock time. A `format` (a `strftime` string) wins when set; otherwise
+/// the built-in `HH:MM` (24-hour) / `H:MM AM/PM` (12-hour), with optional seconds.
+fn now_hm(clock_24h: bool, seconds: bool, format: Option<&str>) -> String {
+    let Some(tm) = local_tm() else {
+        return String::new();
+    };
+    if let Some(fmt) = format {
+        return strftime(&tm, fmt);
     }
+    if clock_24h {
+        if seconds {
+            format!("{:02}:{:02}:{:02}", tm.tm_hour, tm.tm_min, tm.tm_sec)
+        } else {
+            format!("{:02}:{:02}", tm.tm_hour, tm.tm_min)
+        }
+    } else {
+        let h12 = match tm.tm_hour % 12 {
+            0 => 12,
+            h => h,
+        };
+        let meridiem = if tm.tm_hour < 12 { "AM" } else { "PM" };
+        if seconds {
+            format!("{}:{:02}:{:02} {}", h12, tm.tm_min, tm.tm_sec, meridiem)
+        } else {
+            format!("{}:{:02} {}", h12, tm.tm_min, meridiem)
+        }
+    }
+}
+
+/// Format a `tm` via the C library's `strftime`. Empty on a malformed format (an
+/// interior NUL) or if the result overflows the buffer — the caller keeps the last
+/// good clock. No date/time crate on the pre-auth surface.
+fn strftime(tm: &libc::tm, fmt: &str) -> String {
+    let Ok(cfmt) = std::ffi::CString::new(fmt) else {
+        return String::new();
+    };
+    let mut buf = [0u8; 128];
+    // SAFETY: strftime writes at most buf.len() bytes (including the NUL) into buf,
+    // and only reads the borrowed `tm` and our NUL-terminated format string.
+    let n = unsafe {
+        libc::strftime(
+            buf.as_mut_ptr() as *mut libc::c_char,
+            buf.len(),
+            cfmt.as_ptr(),
+            tm,
+        )
+    };
+    if n == 0 {
+        return String::new();
+    }
+    String::from_utf8_lossy(&buf[..n]).into_owned()
 }
 
 /// Local time as minutes since midnight (for the day/night window). Noon on failure.
