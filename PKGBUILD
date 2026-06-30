@@ -7,8 +7,8 @@
 # revert in hand. The previous DM is left installed as the fallback.
 pkgname=door
 pkgver=0.1.0
-pkgrel=2
-pkgdesc="Self-contained reversible Wayland login manager (privileged doord + unprivileged greeter)"
+pkgrel=3
+pkgdesc="Beautiful, security-first Wayland display manager / login manager with an animated GPU greeter (privilege-separated, reversible)"
 arch=('x86_64')
 url="https://github.com/satorisage/door"
 license=('MPL-2.0')
