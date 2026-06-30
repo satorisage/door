@@ -1129,7 +1129,12 @@ fn view(state: &State) -> Element<'_, Message> {
             .height(Length::Fill)
             .into()
     } else {
-        Space::new().into()
+        // A Fill-size base, not a zero-size Space: an empty Space here collapses the
+        // stack's layout and drops the content layer (whole window renders blank).
+        container(Space::new())
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .into()
     };
 
     // FPS badge — a small live frame-rate readout in the top-right (perf while tuning).
