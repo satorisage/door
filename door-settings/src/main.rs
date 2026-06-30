@@ -10,8 +10,8 @@ use std::path::PathBuf;
 use std::time::Instant;
 
 use iced::widget::{
-    button, column, container, image, pick_list, row, scrollable, shader, slider, text, text_input,
-    toggler, Space, Stack,
+    button, canvas, column, container, image, pick_list, row, scrollable, shader, slider, text,
+    text_input, toggler, Space, Stack,
 };
 use iced::{
     Alignment, Background, Border, Color as IColor, ContentFit, Element, Length, Shadow,
@@ -19,7 +19,8 @@ use iced::{
 };
 
 use door_theme::skyshader::{FrostShader, SkyShader, SpinnerShader};
-use door_theme::{CardPos, Color, SkyMode, SpinnerStyle, Theme};
+use door_theme::clock::AnalogClock;
+use door_theme::{CardPos, ClockStyle, Color, SkyMode, SpinnerStyle, Theme};
 
 fn main() -> iced::Result {
     iced::application(State::new, update, view)
@@ -190,6 +191,7 @@ enum Message {
     Clock24h(bool),
     ClockSeconds(bool),
     ClockSize(f32),
+    ClockStylePicked(ClockStyle),
     FontScale(f32),
     CardBlur(bool),
     FadeMs(f32),
@@ -264,6 +266,7 @@ struct State {
     clock_24h: bool,
     clock_seconds: bool,
     clock_size: f32,
+    clock_style: ClockStyle,
     font_scale: f32,
     fade_ms: f32,
     // Expert (advanced) shared controls (Tier 3).
@@ -442,6 +445,7 @@ impl State {
             clock_24h: night.clock_24h,
             clock_seconds: night.clock_seconds,
             clock_size: night.clock_size,
+            clock_style: night.clock_style,
             font_scale: night.font_scale,
             fade_ms: night.fade_ms,
             glow_falloff: night.glow_falloff,
@@ -521,6 +525,7 @@ impl State {
         self.clock_24h = night.clock_24h;
         self.clock_seconds = night.clock_seconds;
         self.clock_size = night.clock_size;
+        self.clock_style = night.clock_style;
         self.font_scale = night.font_scale;
         self.fade_ms = night.fade_ms;
         self.glow_falloff = night.glow_falloff;
@@ -665,6 +670,7 @@ impl State {
             clock_24h: self.clock_24h,
             clock_seconds: self.clock_seconds,
             clock_size: self.clock_size,
+            clock_style: self.clock_style,
             font_scale: self.font_scale,
             fade_ms: self.fade_ms,
             glow_falloff: self.glow_falloff,
@@ -784,6 +790,7 @@ fn update(state: &mut State, message: Message) -> Task<Message> {
         Message::Clock24h(on) => state.clock_24h = on,
         Message::ClockSeconds(on) => state.clock_seconds = on,
         Message::ClockSize(v) => state.clock_size = v.clamp(24.0, 120.0),
+        Message::ClockStylePicked(s) => state.clock_style = s,
         Message::FontScale(v) => state.font_scale = v.clamp(0.7, 1.8),
         Message::CardBlur(on) => state.card_blur = on,
         Message::FadeMs(v) => state.fade_ms = v.clamp(0.0, 2000.0),
@@ -1848,6 +1855,24 @@ fn behavior_tab<'a>(state: &'a State, h: bool) -> Element<'a, Message> {
                 h
             ),
             helped(
+                row![
+                    color_label("Clock style"),
+                    pick_list(
+                        &ClockStyle::ALL[..],
+                        Some(state.clock_style),
+                        Message::ClockStylePicked
+                    )
+                    .text_size(13)
+                    .padding(6)
+                    .width(Length::Fill),
+                ]
+                .spacing(10)
+                .align_y(Alignment::Center)
+                .into(),
+                "Digital readout or a drawn analog clock face.",
+                h
+            ),
+            helped(
                 toggle_row("24-hour clock", state.clock_24h, Message::Clock24h),
                 "Use 24-hour time instead of AM/PM.",
                 h
@@ -2234,10 +2259,28 @@ fn preview_card(t: &Theme, anim: f32) -> Element<'static, Message> {
     let muted = t.muted.iced();
 
     let header: Element<Message> = if t.show_clock {
-        column![
-            text(if t.clock_seconds { "12:34:56" } else { "12:34" })
+        let time_widget: Element<Message> = match t.clock_style {
+            ClockStyle::Digital => text(if t.clock_seconds { "12:34:56" } else { "12:34" })
                 .size(t.clock_size * t.font_scale)
-                .color(fg),
+                .color(fg)
+                .into(),
+            ClockStyle::Analog => {
+                // Preview pose: 12:34 (matching the digital mock) with the second
+                // hand sweeping live off the preview's animation clock.
+                let tau = std::f32::consts::TAU;
+                let sec = anim % 60.0;
+                let minute = 34.0 + sec / 60.0;
+                let hour = minute / 60.0;
+                let angles = (hour / 12.0 * tau, minute / 60.0 * tau, sec / 60.0 * tau);
+                let d = t.clock_size * t.font_scale * 2.3;
+                canvas(AnalogClock::new(t, 1.0, angles))
+                    .width(Length::Fixed(d))
+                    .height(Length::Fixed(d))
+                    .into()
+            }
+        };
+        column![
+            time_widget,
             text("Friday, June 27")
                 .size(13.0 * t.font_scale)
                 .color(muted),

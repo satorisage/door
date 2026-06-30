@@ -16,6 +16,7 @@
 //! files installed system-wide; a missing asset degrades to the solid background /
 //! stock font rather than failing.
 
+pub mod clock;
 pub mod sky;
 pub mod skyshader;
 
@@ -289,6 +290,35 @@ impl std::fmt::Display for SpinnerStyle {
     }
 }
 
+/// How the card renders the time: the default digital readout, or a drawn analog
+/// clock face (a canvas widget — hour/minute/second hands over a ticked rim). Both
+/// share `clock_size` for scale and `clock_24h`/`clock_seconds` for behavior.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ClockStyle {
+    #[default]
+    Digital,
+    Analog,
+}
+
+impl ClockStyle {
+    /// Every style, for the settings picker.
+    pub const ALL: [ClockStyle; 2] = [ClockStyle::Digital, ClockStyle::Analog];
+    /// The lowercase name used in the config and the picker.
+    pub fn name(self) -> &'static str {
+        match self {
+            ClockStyle::Digital => "digital",
+            ClockStyle::Analog => "analog",
+        }
+    }
+}
+
+impl std::fmt::Display for ClockStyle {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.name())
+    }
+}
+
 /// The resolved theme the UI renders against. Every field has a built-in default.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Theme {
@@ -439,8 +469,10 @@ pub struct Theme {
     pub clock_24h: bool,
     /// Show seconds on the clock (`HH:MM:SS`). Shared.
     pub clock_seconds: bool,
-    /// Clock font size (px). Shared.
+    /// Clock font size (px) — also the analog face scale. Shared.
     pub clock_size: f32,
+    /// Digital readout vs a drawn analog clock face. Shared.
+    pub clock_style: ClockStyle,
     /// Text size multiplier for the whole card (1 = default; >1 = large-text). Shared.
     pub font_scale: f32,
     /// Launch fade-in duration (ms). Shared.
@@ -529,6 +561,7 @@ impl Default for Theme {
             clock_24h: true,
             clock_seconds: false,
             clock_size: 56.0,
+            clock_style: ClockStyle::Digital,
             font_scale: 1.0,
             fade_ms: 384.0,
             glow_falloff: 3.2,
@@ -617,6 +650,7 @@ impl Theme {
             clock_24h: true,
             clock_seconds: false,
             clock_size: 56.0,
+            clock_style: ClockStyle::Digital,
             font_scale: 1.0,
             fade_ms: 384.0,
             glow_falloff: 3.2,
@@ -697,6 +731,7 @@ struct ThemeFile {
     clock_24h: Option<bool>,
     clock_seconds: Option<bool>,
     clock_size: Option<f32>,
+    clock_style: Option<ClockStyle>,
     font_scale: Option<f32>,
     fade_ms: Option<f32>,
     glow_falloff: Option<f32>,
@@ -884,6 +919,9 @@ impl Theme {
         merge_bool(&mut self.clock_24h, file.clock_24h);
         merge_bool(&mut self.clock_seconds, file.clock_seconds);
         merge_f32(&mut self.clock_size, file.clock_size);
+        if let Some(s) = file.clock_style {
+            self.clock_style = s;
+        }
         merge_f32(&mut self.font_scale, file.font_scale);
         merge_f32(&mut self.fade_ms, file.fade_ms);
         merge_f32(&mut self.glow_falloff, file.glow_falloff);
@@ -979,6 +1017,9 @@ impl Theme {
         merge_bool(&mut self.clock_24h, file.clock_24h);
         merge_bool(&mut self.clock_seconds, file.clock_seconds);
         merge_f32(&mut self.clock_size, file.clock_size);
+        if let Some(s) = file.clock_style {
+            self.clock_style = s;
+        }
         merge_f32(&mut self.font_scale, file.font_scale);
         merge_f32(&mut self.fade_ms, file.fade_ms);
         merge_f32(&mut self.glow_falloff, file.glow_falloff);
@@ -1258,6 +1299,7 @@ impl Theme {
         out.push_str(&format!("clock_24h     = {}\n", self.clock_24h));
         out.push_str(&format!("clock_seconds = {}\n", self.clock_seconds));
         out.push_str(&format!("clock_size    = {}\n", self.clock_size));
+        out.push_str(&format!("clock_style   = {:?}\n", self.clock_style.name()));
         out.push_str(&format!("font_scale    = {}\n", self.font_scale));
         out.push_str(&format!("fade_ms       = {}\n", self.fade_ms));
         out.push_str("# Expert\n");

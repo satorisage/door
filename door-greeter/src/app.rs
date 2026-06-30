@@ -17,8 +17,8 @@ use std::time::{Duration, Instant};
 
 use futures::SinkExt;
 use iced::widget::{
-    button, column, container, image, pick_list, row, shader, stack, text, text_input, Space,
-    Stack,
+    button, canvas, column, container, image, pick_list, row, shader, stack, text, text_input,
+    Space, Stack,
 };
 use iced::{
     keyboard, window, Alignment, Background, Border, ContentFit, Element, Font, Length, Shadow,
@@ -28,8 +28,9 @@ use iced::{
 use protocol::{PowerAction, Secret, Session};
 
 use crate::client::{AuthStep, Client, StartOutcome, DEFAULT_SOCKET};
+use door_theme::clock::AnalogClock;
 use door_theme::skyshader::{FrostShader, SkyShader, SpinnerShader};
-use door_theme::{CardPos, Color, Theme};
+use door_theme::{CardPos, ClockStyle, Color, Theme};
 
 /// The resolved theme, loaded once. `run` needs it for the default font before the
 /// app state exists, and the UI reads it every frame — so it lives here, not in
@@ -484,6 +485,29 @@ fn now_date() -> String {
     }
 }
 
+/// Clock-hand angles (radians, clockwise from 12 o'clock) for the analog face.
+/// Seconds carry a sub-second fraction from `gettimeofday`, so the second hand
+/// sweeps smoothly when the greeter is animating (and ticks at 1 Hz when it isn't).
+fn clock_angles() -> (f32, f32, f32) {
+    let Some(tm) = local_tm() else {
+        return (0.0, 0.0, 0.0);
+    };
+    // Sub-second fraction for the smooth sweep. SAFETY: fills our owned timeval.
+    let frac = unsafe {
+        let mut tv: libc::timeval = std::mem::zeroed();
+        if libc::gettimeofday(&mut tv, std::ptr::null_mut()) == 0 {
+            (tv.tv_usec as f32) / 1_000_000.0
+        } else {
+            0.0
+        }
+    };
+    let tau = std::f32::consts::TAU;
+    let sec = tm.tm_sec as f32 + frac;
+    let min = tm.tm_min as f32 + sec / 60.0;
+    let hour = (tm.tm_hour % 12) as f32 + min / 60.0;
+    (hour / 12.0 * tau, min / 60.0 * tau, sec / 60.0 * tau)
+}
+
 fn view(state: &State) -> Element<'_, Message> {
     let t = &state.theme;
     let f = state.fade.clamp(0.0, 1.0);
@@ -492,10 +516,21 @@ fn view(state: &State) -> Element<'_, Message> {
 
     // Clock + date — the minimal focal point at the top of the card.
     let header: Element<Message> = if t.show_clock {
-        column![
-            text(state.clock.clone())
+        let time_widget: Element<Message> = match t.clock_style {
+            ClockStyle::Digital => text(state.clock.clone())
                 .size(t.clock_size * t.font_scale)
-                .color(fg),
+                .color(fg)
+                .into(),
+            ClockStyle::Analog => {
+                let d = t.clock_size * t.font_scale * 2.3;
+                canvas(AnalogClock::new(t, f, clock_angles()))
+                    .width(Length::Fixed(d))
+                    .height(Length::Fixed(d))
+                    .into()
+            }
+        };
+        column![
+            time_widget,
             text(state.date.clone()).size(13.0 * t.font_scale).color(muted),
         ]
         .spacing(2)
