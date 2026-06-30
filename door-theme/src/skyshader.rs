@@ -99,6 +99,47 @@ impl SkyShader {
     /// Build the atmosphere from a theme. `anim` is the continuously-advancing clock
     /// (seconds); `fade` (0–1) ramps the whole thing in on launch.
     pub fn from_theme(t: &Theme, anim: f32, fade: f32) -> Self {
+        // Pack the active scene's authoring dials into the shared scene-param pool
+        // (M8) — keyed by the resolved sky_mode (load_at resolves Seasonal first).
+        // Scene colours stay sRGB-nominal (raw `.iced()`, not linearized) to match the
+        // shaders' original literals. Modes with no per-scene controls pack zeros.
+        let nom = |c: crate::Color| -> [f32; 4] {
+            let i = c.iced();
+            [i.r, i.g, i.b, 0.0]
+        };
+        let z = [0.0f32; 4];
+        let (scene_a, scene_b, scene_c1, scene_c2, scene_c3) = match t.sky_mode {
+            crate::SkyMode::Synthwave => (
+                [
+                    t.synthwave_grid_speed,
+                    t.synthwave_grid_density,
+                    t.synthwave_grid_perspective,
+                    t.synthwave_grid_glow,
+                ],
+                [
+                    t.synthwave_sun_size,
+                    t.synthwave_sun_stripes,
+                    t.synthwave_sun_bloom,
+                    t.synthwave_horizon,
+                ],
+                nom(t.synthwave_grid_color),
+                nom(t.synthwave_sky_top),
+                nom(t.synthwave_sky_bottom),
+            ),
+            crate::SkyMode::Storm => (
+                [
+                    t.storm_lightning_rate,
+                    t.storm_strike_chance,
+                    t.storm_cloud_density,
+                    0.0,
+                ],
+                z,
+                nom(t.storm_bolt_color),
+                nom(t.storm_flash_color),
+                z,
+            ),
+            _ => (z, z, z, z, z),
+        };
         let day = t.is_day;
         let bg = t.background.iced();
         // The glow / sun-haze tint — themeable per variant (sky-blue by day, indigo by
@@ -153,34 +194,12 @@ impl SkyShader {
             params8: [0.0, 0.0, t.cursor_parallax, t.glow_pulse], // xy set per-frame from the cursor; w = glow pulse
             params9: [t.grain, t.vignette, t.corner_radius, 0.0],
             frost: [0.0, 0.0, 1.0, 1.0], // set per frame in the frost primitive
-            // Scene-param pool. Synthwave for now (the only scene reading it); scene
-            // colours stay sRGB-nominal (raw `.iced()`, not linearized) to match the
-            // shader's original literals exactly. Other scenes will pack here keyed by
-            // sky_mode as M8 rolls out.
-            scene_a: [
-                t.synthwave_grid_speed,
-                t.synthwave_grid_density,
-                t.synthwave_grid_perspective,
-                t.synthwave_grid_glow,
-            ],
-            scene_b: [
-                t.synthwave_sun_size,
-                t.synthwave_sun_stripes,
-                t.synthwave_sun_bloom,
-                t.synthwave_horizon,
-            ],
-            scene_c1: {
-                let c = t.synthwave_grid_color.iced();
-                [c.r, c.g, c.b, 0.0]
-            },
-            scene_c2: {
-                let c = t.synthwave_sky_top.iced();
-                [c.r, c.g, c.b, 0.0]
-            },
-            scene_c3: {
-                let c = t.synthwave_sky_bottom.iced();
-                [c.r, c.g, c.b, 0.0]
-            },
+            // Scene-param pool, packed above per the active sky_mode.
+            scene_a,
+            scene_b,
+            scene_c1,
+            scene_c2,
+            scene_c3,
         };
         Self { uniforms }
     }
@@ -1127,25 +1146,27 @@ fn storm_sky(uv: vec2<f32>, p: vec2<f32>, aspect: f32) -> vec3<f32> {
   let c1 = fbm(p * 3.0 + vec2(u.time * 0.04, 0.0));
   let c2 = fbm(p * 6.0 + vec2(u.time * -0.06, 1.7));
   let clouds = clamp(c1 * 0.7 + c2 * 0.4, 0.0, 1.0);
-  col = col + vec3(0.05, 0.055, 0.075) * clouds;
+  // Scene pool (M8): scene_a = [lightning rate, strike chance, cloud density, _],
+  // scene_c1 = bolt colour, scene_c2 = flash colour.
+  col = col + vec3(0.05, 0.055, 0.075) * clouds * u.scene_a.z;
 
   // Lightning: per-window strike chance + fast decay envelope.
-  let rate = 0.8;
+  let rate = u.scene_a.x;
   let seg = floor(u.time * rate);
   let ft = fract(u.time * rate);
   let strike = hash21(vec2(seg, 3.0));
   var flash = 0.0;
-  if (strike < 0.32) {
+  if (strike < u.scene_a.y) {
     flash = exp(-ft * 9.0) * (0.7 + 0.3 * sin(ft * 90.0));
   }
   // Whole-sky flash, brighter where clouds are dense.
-  col = col + vec3(0.55, 0.6, 0.8) * flash * (0.4 + clouds);
+  col = col + u.scene_c2.rgb * flash * (0.4 + clouds);
   // A jagged bolt at a per-strike x, upper sky only.
   let boltx = 0.25 + 0.5 * hash21(vec2(seg, 7.0));
   let jag = boltx + 0.018 * sin(uv.y * 50.0) + 0.02 * fbm(vec2(uv.y * 9.0, seg));
   let bd = abs(uv.x - jag);
   let bolt = exp(-bd * bd * 7000.0) * smoothstep(0.72, 0.0, uv.y) * flash;
-  col = col + vec3(0.85, 0.9, 1.0) * bolt * 2.5;
+  col = col + u.scene_c1.rgb * bolt * 2.5;
   return col;
 }
 

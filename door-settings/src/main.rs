@@ -197,6 +197,11 @@ enum Message {
     SwGridColor(String),
     SwSkyTop(String),
     SwSkyBottom(String),
+    StLightningRate(f32),
+    StStrikeChance(f32),
+    StCloudDensity(f32),
+    StBoltColor(String),
+    StFlashColor(String),
     CardGradient(f32),
     Grain(f32),
     Vignette(f32),
@@ -298,6 +303,11 @@ struct State {
     synthwave_grid_color: String,
     synthwave_sky_top: String,
     synthwave_sky_bottom: String,
+    storm_lightning_rate: f32,
+    storm_strike_chance: f32,
+    storm_cloud_density: f32,
+    storm_bolt_color: String,
+    storm_flash_color: String,
     spinner_style: SpinnerStyle,
     card_gradient: f32,
     grain: f32,
@@ -533,6 +543,11 @@ impl State {
             synthwave_grid_color: night.synthwave_grid_color.to_hex(),
             synthwave_sky_top: night.synthwave_sky_top.to_hex(),
             synthwave_sky_bottom: night.synthwave_sky_bottom.to_hex(),
+            storm_lightning_rate: night.storm_lightning_rate,
+            storm_strike_chance: night.storm_strike_chance,
+            storm_cloud_density: night.storm_cloud_density,
+            storm_bolt_color: night.storm_bolt_color.to_hex(),
+            storm_flash_color: night.storm_flash_color.to_hex(),
             spinner_style: night.spinner_style,
             card_gradient: night.card_gradient,
             grain: night.grain,
@@ -631,6 +646,11 @@ impl State {
         self.synthwave_grid_color = night.synthwave_grid_color.to_hex();
         self.synthwave_sky_top = night.synthwave_sky_top.to_hex();
         self.synthwave_sky_bottom = night.synthwave_sky_bottom.to_hex();
+        self.storm_lightning_rate = night.storm_lightning_rate;
+        self.storm_strike_chance = night.storm_strike_chance;
+        self.storm_cloud_density = night.storm_cloud_density;
+        self.storm_bolt_color = night.storm_bolt_color.to_hex();
+        self.storm_flash_color = night.storm_flash_color.to_hex();
         self.spinner_style = night.spinner_style;
         self.card_gradient = night.card_gradient;
         self.grain = night.grain;
@@ -813,6 +833,11 @@ impl State {
             synthwave_grid_color: color("Synthwave grid", &self.synthwave_grid_color)?,
             synthwave_sky_top: color("Synthwave sky top", &self.synthwave_sky_top)?,
             synthwave_sky_bottom: color("Synthwave sky bottom", &self.synthwave_sky_bottom)?,
+            storm_lightning_rate: self.storm_lightning_rate,
+            storm_strike_chance: self.storm_strike_chance,
+            storm_cloud_density: self.storm_cloud_density,
+            storm_bolt_color: color("Storm bolt", &self.storm_bolt_color)?,
+            storm_flash_color: color("Storm flash", &self.storm_flash_color)?,
             spinner_style: self.spinner_style,
             card_gradient: self.card_gradient,
             grain: self.grain,
@@ -955,6 +980,11 @@ fn update(state: &mut State, message: Message) -> Task<Message> {
         Message::SwGridColor(s) => state.synthwave_grid_color = s,
         Message::SwSkyTop(s) => state.synthwave_sky_top = s,
         Message::SwSkyBottom(s) => state.synthwave_sky_bottom = s,
+        Message::StLightningRate(v) => state.storm_lightning_rate = v.clamp(0.1, 3.0),
+        Message::StStrikeChance(v) => state.storm_strike_chance = v.clamp(0.0, 1.0),
+        Message::StCloudDensity(v) => state.storm_cloud_density = v.clamp(0.0, 3.0),
+        Message::StBoltColor(s) => state.storm_bolt_color = s,
+        Message::StFlashColor(s) => state.storm_flash_color = s,
         Message::CardGradient(v) => state.card_gradient = v.clamp(0.0, 1.0),
         Message::Grain(v) => state.grain = v.clamp(0.0, 0.3),
         Message::Vignette(v) => state.vignette = v.clamp(0.0, 1.0),
@@ -1892,7 +1922,30 @@ fn sky_tab<'a>(state: &'a State, pal: &'a Palette, h: bool) -> Element<'a, Messa
     if matches!(state.sky_mode, SkyMode::Synthwave) {
         col = col.push(synthwave_group(state, h));
     }
+    if matches!(state.sky_mode, SkyMode::Storm) {
+        col = col.push(storm_group(state, h));
+    }
     col.into()
+}
+
+/// The storm scene's authoring controls (M8) — lightning, clouds, bolt + flash colour.
+fn storm_group(state: &State, h: bool) -> Element<'_, Message> {
+    group(
+        "STORM",
+        two_col(vec![
+            helped(slider_row("Lightning rate", state.storm_lightning_rate, 0.1..=2.0, 0.05,
+                format!("{:.2}", state.storm_lightning_rate), Message::StLightningRate),
+                "How often lightning may strike (windows per second).", h),
+            helped(slider_row("Strike chance", state.storm_strike_chance, 0.0..=1.0, 0.02,
+                format!("{:.0}%", state.storm_strike_chance * 100.0), Message::StStrikeChance),
+                "Odds a given window actually flashes.", h),
+            helped(slider_row("Cloud density", state.storm_cloud_density, 0.0..=2.5, 0.05,
+                format!("{:.2}", state.storm_cloud_density), Message::StCloudDensity),
+                "How heavy the churning clouds read.", h),
+            color_cell_with("Bolt", &state.storm_bolt_color, Message::StBoltColor),
+            color_cell_with("Flash", &state.storm_flash_color, Message::StFlashColor),
+        ]),
+    )
 }
 
 /// The synthwave scene's authoring controls (M8 pilot) — the exact dials behind its

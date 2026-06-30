@@ -515,6 +515,18 @@ pub struct Theme {
     pub synthwave_sky_top: Color,
     /// Synthwave lower-sky / sun-base colour.
     pub synthwave_sky_bottom: Color,
+
+    // ── Storm scene controls (M8; shared — read when sky_mode=storm) ──
+    /// Storm lightning rate (strike windows per second).
+    pub storm_lightning_rate: f32,
+    /// Storm per-window strike chance (0–1).
+    pub storm_strike_chance: f32,
+    /// Storm cloud-tint density multiplier.
+    pub storm_cloud_density: f32,
+    /// Storm lightning-bolt colour.
+    pub storm_bolt_color: Color,
+    /// Storm whole-sky flash colour.
+    pub storm_flash_color: Color,
     /// Card vertical-gradient strength (0 = flat fill; ~1 = a lit top sheen). Shared.
     pub card_gradient: f32,
     /// Film-grain strength over the whole sky (0 = off). Shared.
@@ -646,6 +658,11 @@ impl Default for Theme {
             synthwave_grid_color: Color::rgb(0x00, 0xe6, 0xff),
             synthwave_sky_top: Color::rgb(0x29, 0x0d, 0x47),
             synthwave_sky_bottom: Color::rgb(0xf2, 0x45, 0x8c),
+            storm_lightning_rate: 0.8,
+            storm_strike_chance: 0.32,
+            storm_cloud_density: 1.0,
+            storm_bolt_color: Color::rgb(0xd9, 0xe6, 0xff),
+            storm_flash_color: Color::rgb(0x8c, 0x99, 0xcc),
             card_gradient: 0.45,
             grain: 0.0,
             vignette: 0.2,
@@ -752,6 +769,11 @@ impl Theme {
             synthwave_grid_color: Color::rgb(0x00, 0xe6, 0xff),
             synthwave_sky_top: Color::rgb(0x29, 0x0d, 0x47),
             synthwave_sky_bottom: Color::rgb(0xf2, 0x45, 0x8c),
+            storm_lightning_rate: 0.8,
+            storm_strike_chance: 0.32,
+            storm_cloud_density: 1.0,
+            storm_bolt_color: Color::rgb(0xd9, 0xe6, 0xff),
+            storm_flash_color: Color::rgb(0x8c, 0x99, 0xcc),
             card_gradient: 0.45,
             grain: 0.0,
             vignette: 0.2,
@@ -844,6 +866,11 @@ struct ThemeFile {
     synthwave_grid_color: Option<String>,
     synthwave_sky_top: Option<String>,
     synthwave_sky_bottom: Option<String>,
+    storm_lightning_rate: Option<f32>,
+    storm_strike_chance: Option<f32>,
+    storm_cloud_density: Option<f32>,
+    storm_bolt_color: Option<String>,
+    storm_flash_color: Option<String>,
     card_gradient: Option<f32>,
     grain: Option<f32>,
     vignette: Option<f32>,
@@ -1047,6 +1074,13 @@ impl Theme {
             color("synthwave_sky_top", file.synthwave_sky_top, self.synthwave_sky_top);
         self.synthwave_sky_bottom =
             color("synthwave_sky_bottom", file.synthwave_sky_bottom, self.synthwave_sky_bottom);
+        merge_f32(&mut self.storm_lightning_rate, file.storm_lightning_rate);
+        merge_f32(&mut self.storm_strike_chance, file.storm_strike_chance);
+        merge_f32(&mut self.storm_cloud_density, file.storm_cloud_density);
+        self.storm_bolt_color =
+            color("storm_bolt_color", file.storm_bolt_color, self.storm_bolt_color);
+        self.storm_flash_color =
+            color("storm_flash_color", file.storm_flash_color, self.storm_flash_color);
         merge_f32(&mut self.card_gradient, file.card_gradient);
         merge_f32(&mut self.grain, file.grain);
         merge_f32(&mut self.vignette, file.vignette);
@@ -1162,10 +1196,15 @@ impl Theme {
         merge_f32(&mut self.synthwave_sun_stripes, file.synthwave_sun_stripes);
         merge_f32(&mut self.synthwave_sun_bloom, file.synthwave_sun_bloom);
         merge_f32(&mut self.synthwave_horizon, file.synthwave_horizon);
+        merge_f32(&mut self.storm_lightning_rate, file.storm_lightning_rate);
+        merge_f32(&mut self.storm_strike_chance, file.storm_strike_chance);
+        merge_f32(&mut self.storm_cloud_density, file.storm_cloud_density);
         for (slot, s) in [
             (&mut self.synthwave_grid_color, &file.synthwave_grid_color),
             (&mut self.synthwave_sky_top, &file.synthwave_sky_top),
             (&mut self.synthwave_sky_bottom, &file.synthwave_sky_bottom),
+            (&mut self.storm_bolt_color, &file.storm_bolt_color),
+            (&mut self.storm_flash_color, &file.storm_flash_color),
         ] {
             if let Some(s) = s {
                 if let Some(col) = Color::parse(s) {
@@ -1464,6 +1503,11 @@ impl Theme {
         out.push_str(&format!("synthwave_grid_color  = {:?}\n", self.synthwave_grid_color.to_hex()));
         out.push_str(&format!("synthwave_sky_top     = {:?}\n", self.synthwave_sky_top.to_hex()));
         out.push_str(&format!("synthwave_sky_bottom  = {:?}\n", self.synthwave_sky_bottom.to_hex()));
+        out.push_str(&format!("storm_lightning_rate  = {}\n", self.storm_lightning_rate));
+        out.push_str(&format!("storm_strike_chance   = {}\n", self.storm_strike_chance));
+        out.push_str(&format!("storm_cloud_density   = {}\n", self.storm_cloud_density));
+        out.push_str(&format!("storm_bolt_color      = {:?}\n", self.storm_bolt_color.to_hex()));
+        out.push_str(&format!("storm_flash_color     = {:?}\n", self.storm_flash_color.to_hex()));
         out.push_str(&format!("card_gradient = {}\n", self.card_gradient));
         out.push_str(&format!("grain         = {}\n", self.grain));
         out.push_str(&format!("vignette      = {}\n", self.vignette));
