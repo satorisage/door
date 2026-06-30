@@ -16,6 +16,8 @@ card_blur      = false
 card_gradient  = 0.0
 vignette       = 0.0
 font_scale     = 1.1
+font_weight    = "bold"
+spinner_style  = "none"
 error_color    = "#ff5555"
 
 # Pin this palette at all hours (an accessibility look must not flip by clock).

@@ -9,3 +9,4 @@ muted            = "#9a86c0"
 spinner_comet    = "#a0f0ff"
 spinner_track    = "#ff9ecd"
 accent_breathing = 1.8
+font_weight      = "light"

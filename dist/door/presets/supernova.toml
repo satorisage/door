@@ -42,6 +42,7 @@ error_color   = "#ff5577"
 logo_box      = "#00000000"
 logo_box_radius = 14
 clock_24h     = true
+font_weight   = "bold"
 fade_ms       = 384
 # Expert
 glow_falloff  = 2.4
