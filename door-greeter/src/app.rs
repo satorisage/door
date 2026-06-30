@@ -113,9 +113,14 @@ fn subscription(state: &State) -> Subscription<Message> {
         }),
     ];
     // Drive the animation off the compositor's frame clock (vsync — 60/120/144 Hz),
-    // not a fixed-rate thread, so motion is buttery smooth. Only when animated.
+    // not a fixed-rate thread, so motion is buttery smooth. Only when animated. The GPU
+    // level (D-0014) can cap the frame rate: capped tiers use a fixed-rate ticker,
+    // `bonkers` (uncapped) rides vsync.
     if state.theme.animate {
-        subs.push(iced::window::frames().map(|_| Message::AnimTick));
+        match state.theme.gpu_level.fps_cap() {
+            Some(_) => subs.push(Subscription::run(frame_ticker)),
+            None => subs.push(iced::window::frames().map(|_| Message::AnimTick)),
+        }
     }
     Subscription::batch(subs)
 }
@@ -155,6 +160,30 @@ fn fade_ticker() -> impl futures::Stream<Item = Message> {
                     std::thread::sleep(Duration::from_millis(16));
                     if futures::executor::block_on(output.send(Message::Fade)).is_err() {
                         return;
+                    }
+                }
+            });
+            std::future::pending::<()>().await;
+        },
+    )
+}
+
+/// Emit [`Message::AnimTick`] at a fixed frame cap (GPU level, D-0014) instead of the
+/// uncapped vsync `window::frames()`. `anim` is recomputed from real elapsed time each
+/// tick, so motion stays time-correct — we just repaint (and re-run the sky shader)
+/// fewer times per second. A small sleeping thread, same shape as `clock_ticker`.
+fn frame_ticker() -> impl futures::Stream<Item = Message> {
+    let fps = theme().gpu_level.fps_cap().unwrap_or(60);
+    let dt = Duration::from_micros(1_000_000 / fps.max(1) as u64);
+    iced_futures::stream::channel(
+        4,
+        move |output: futures::channel::mpsc::Sender<Message>| async move {
+            std::thread::spawn(move || {
+                let mut output = output;
+                loop {
+                    std::thread::sleep(dt);
+                    if futures::executor::block_on(output.send(Message::AnimTick)).is_err() {
+                        break;
                     }
                 }
             });
@@ -749,8 +778,9 @@ fn view(state: &State) -> Element<'_, Message> {
 
     // Optional true backdrop blur: a frosted sample of the sky behind the card, drawn
     // *under* the translucent card (push_under keeps the card the size-defining base)
-    // and masked to its rounded rect inside the shader.
-    let card: Element<Message> = if t.card_blur {
+    // and masked to its rounded rect inside the shader. The GPU level (D-0014) can veto
+    // this second full-screen pass on lower tiers, even if the user enabled it.
+    let card: Element<Message> = if t.card_blur && t.gpu_level.allows_blur() {
         Stack::new()
             .push(card)
             .push_under(

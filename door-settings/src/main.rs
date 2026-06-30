@@ -23,7 +23,7 @@ use door_theme::skyshader::{FrostShader, SkyShader, SpinnerShader};
 use iced_anim::widget::button as anim_button;
 
 use door_theme::clock::AnalogClock;
-use door_theme::{CardPos, ClockStyle, Color, FontWeight, SkyMode, SpinnerStyle, Theme};
+use door_theme::{CardPos, ClockStyle, Color, FontWeight, GpuLevel, SkyMode, SpinnerStyle, Theme};
 
 fn main() -> iced::Result {
     iced::application(State::new, update, view)
@@ -252,6 +252,7 @@ enum Message {
     ClockSeconds(bool),
     ClockSize(f32),
     ClockStylePicked(ClockStyle),
+    GpuLevelPicked(GpuLevel),
     ClockFormat(String),
     FontScale(f32),
     FontWeightPicked(FontWeight),
@@ -297,6 +298,7 @@ struct State {
     animate: bool,
     sky_mode: SkyMode,
     reduced_motion: bool,
+    gpu_level: GpuLevel,
     // Shared sky / spinner / card / behavior controls (Tier 1+2).
     star_density: f32,
     star_twinkle: f32,
@@ -570,6 +572,7 @@ impl State {
             animate: night.animate,
             sky_mode: night.sky_mode,
             reduced_motion: night.reduced_motion,
+            gpu_level: night.gpu_level,
             star_density: night.star_density,
             star_twinkle: night.star_twinkle,
             comet_enabled: night.comet_enabled,
@@ -704,6 +707,7 @@ impl State {
         self.animate = night.animate;
         self.sky_mode = night.sky_mode;
         self.reduced_motion = night.reduced_motion;
+        self.gpu_level = night.gpu_level;
         self.star_density = night.star_density;
         self.star_twinkle = night.star_twinkle;
         self.comet_enabled = night.comet_enabled;
@@ -911,6 +915,7 @@ impl State {
             is_day: day,
             sky_mode: self.sky_mode,
             reduced_motion: self.reduced_motion,
+            gpu_level: self.gpu_level,
             spinner_glow: pal.glow,
             spinner_speed: self.spinner_speed,
             spinner_comet: color("Comet", &pal.comet)?,
@@ -1187,6 +1192,7 @@ fn update(state: &mut State, message: Message) -> Task<Message> {
         Message::ClockSeconds(on) => state.clock_seconds = on,
         Message::ClockSize(v) => state.clock_size = v.clamp(24.0, 120.0),
         Message::ClockStylePicked(s) => state.clock_style = s,
+        Message::GpuLevelPicked(g) => state.gpu_level = g,
         Message::ClockFormat(s) => state.clock_format = s,
         Message::FontScale(v) => state.font_scale = v.clamp(0.7, 1.8),
         Message::FontWeightPicked(w) => state.font_weight = w,
@@ -2675,6 +2681,25 @@ fn behavior_tab<'a>(state: &'a State, h: bool) -> Element<'a, Message> {
                 h
             ),
             helped(
+                row![
+                    color_label("GPU level"),
+                    pick_list(
+                        &GpuLevel::ALL[..],
+                        Some(state.gpu_level),
+                        Message::GpuLevelPicked
+                    )
+                    .text_size(13)
+                    .padding(6)
+                    .width(Length::Fill),
+                ]
+                .spacing(10)
+                .align_y(Alignment::Center)
+                .into(),
+                "Global render budget: lite (½ detail, 30fps, no blur) → high (full, \
+                 default) → bonkers (uncapped). Trades richness for power/thermals.",
+                h
+            ),
+            helped(
                 slider_row(
                     "Launch fade",
                     state.fade_ms,
@@ -2931,6 +2956,7 @@ The clock, type, and motion — mostly shared knobs.
 - **Clock** · `clock_style` / `clock_format` · shared — digital or a drawn analog face; an optional `strftime` format.
 - **Type** · `font` / `font_weight` / `font_scale` · shared — family (must be installed), weight, and an accessibility text-size multiplier.
 - **Motion** · `animate` / `reduced_motion` · shared — run the sky animation; reduced-motion stills everything for accessibility.
+- **GPU level** · `gpu_level` · shared — one global render budget (lite / moderate / high / bonkers) bundling shader detail, frame-rate cap, and blur. `high` is the default and keeps the look unchanged; lower tiers trade richness for power and thermals. Global, never per-scene.
 - **Logo** · `logo` · day/night — an image (SVG drawn crisp, else raster) shown instead of the spinner.
 "##;
 

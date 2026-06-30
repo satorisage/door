@@ -203,6 +203,71 @@ impl std::fmt::Display for SkyMode {
     }
 }
 
+/// A single global GPU-budget level (D-0014). Wraps the *whole* render — never
+/// per-scene, never per-preset. Bundles the render-cost levers: shader detail
+/// (fbm octaves), frame-rate cap, and whether the second-pass card blur is allowed.
+/// `High` is the byte-faithful default (full octaves, today's look unchanged).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum GpuLevel {
+    /// Bare minimum — half the shader detail, 30 fps, no blur. For weak iGPUs / battery.
+    Lite,
+    /// Trimmed detail, 60 fps, no blur.
+    Moderate,
+    /// Full detail, 60 fps, blur on. The default — current look unchanged.
+    #[default]
+    High,
+    /// Everything uncapped (full detail, no fps cap, blur on). For strong GPUs.
+    Bonkers,
+}
+
+impl GpuLevel {
+    /// Every level, for the settings picker.
+    pub const ALL: [GpuLevel; 4] = [
+        GpuLevel::Lite,
+        GpuLevel::Moderate,
+        GpuLevel::High,
+        GpuLevel::Bonkers,
+    ];
+    /// The lowercase name used in the config and the picker.
+    pub fn name(self) -> &'static str {
+        match self {
+            GpuLevel::Lite => "lite",
+            GpuLevel::Moderate => "moderate",
+            GpuLevel::High => "high",
+            GpuLevel::Bonkers => "bonkers",
+        }
+    }
+    /// fbm octave count the shaders run (the dominant per-pixel cost). `High`/`Bonkers`
+    /// keep the original 5 → look unchanged; lower tiers soften detail to save work.
+    pub fn fbm_octaves(self) -> f32 {
+        match self {
+            GpuLevel::Lite => 2.0,
+            GpuLevel::Moderate => 3.0,
+            GpuLevel::High | GpuLevel::Bonkers => 5.0,
+        }
+    }
+    /// Target frame-rate cap (the redraw loop honors it). `None` = uncapped (vsync).
+    pub fn fps_cap(self) -> Option<u32> {
+        match self {
+            GpuLevel::Lite => Some(30),
+            GpuLevel::Moderate | GpuLevel::High => Some(60),
+            GpuLevel::Bonkers => None,
+        }
+    }
+    /// Whether the second full-screen frosted-card blur pass is allowed at this tier.
+    /// (The user's `card_blur` toggle still has to be on; this only gates it off low.)
+    pub fn allows_blur(self) -> bool {
+        matches!(self, GpuLevel::High | GpuLevel::Bonkers)
+    }
+}
+
+impl std::fmt::Display for GpuLevel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.name())
+    }
+}
+
 /// Where the login card sits on screen. The greeter maps this to container alignment;
 /// the card keeps its width and the rest of the screen shows the sky/wallpaper.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
@@ -419,6 +484,10 @@ pub struct Theme {
     /// Accessibility: when true, all motion is stilled at load (no sky animation,
     /// breathing, parallax, grain, fade, or spinner motion). Shared.
     pub reduced_motion: bool,
+    /// Global GPU-budget level (D-0014). Bundles render-cost levers (shader detail,
+    /// fps cap, blur gating). Global, never per-scene/per-preset. Shared. `High` =
+    /// current look unchanged.
+    pub gpu_level: GpuLevel,
     /// Comet-spinner head-glow intensity (0–1). Per variant: bright glow blends on a
     /// dark card but bands on a light one, so day defaults low. 0 = crisp, no bloom.
     pub spinner_glow: f32,
@@ -689,6 +758,7 @@ impl Default for Theme {
             is_day: false,
             sky_mode: SkyMode::Auto,
             reduced_motion: false,
+            gpu_level: GpuLevel::High,
             spinner_glow: 1.0,
             spinner_speed: 2.5,
             spinner_comet: Color::rgb(0x7d, 0xcf, 0xff),
@@ -823,6 +893,7 @@ impl Theme {
             is_day: true,
             sky_mode: SkyMode::Auto,
             reduced_motion: false,
+            gpu_level: GpuLevel::High,
             // No head bloom on the bright card (the bloom bands on light); crisp.
             spinner_glow: 0.0,
             spinner_speed: 2.5,
@@ -959,6 +1030,7 @@ struct ThemeFile {
     animate: Option<bool>,
     sky_mode: Option<SkyMode>,
     reduced_motion: Option<bool>,
+    gpu_level: Option<GpuLevel>,
     spinner_glow: Option<f32>,
     spinner_speed: Option<f32>,
     spinner_comet: Option<String>,
@@ -1188,6 +1260,9 @@ impl Theme {
             self.sky_mode = m;
         }
         merge_bool(&mut self.reduced_motion, file.reduced_motion);
+        if let Some(g) = file.gpu_level {
+            self.gpu_level = g;
+        }
         if let Some(g) = file.spinner_glow {
             self.spinner_glow = g;
         }
@@ -1344,6 +1419,9 @@ impl Theme {
             self.sky_mode = m;
         }
         merge_bool(&mut self.reduced_motion, file.reduced_motion);
+        if let Some(g) = file.gpu_level {
+            self.gpu_level = g;
+        }
         // spinner_speed is shared across variants; spinner_glow is per-variant ([day]).
         if let Some(s) = file.spinner_speed {
             self.spinner_speed = s;
@@ -1680,6 +1758,7 @@ impl Theme {
         out.push_str(&format!("animate       = {}\n", self.animate));
         out.push_str(&format!("sky_mode      = {:?}\n", self.sky_mode.name()));
         out.push_str(&format!("reduced_motion = {}\n", self.reduced_motion));
+        out.push_str(&format!("gpu_level     = {:?}\n", self.gpu_level.name()));
         out.push_str(&format!("spinner_glow  = {}\n", self.spinner_glow));
         out.push_str(&format!("spinner_speed = {}\n", self.spinner_speed));
         out.push_str(&format!(

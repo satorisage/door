@@ -39,6 +39,13 @@ show_clock    = true       # show the clock + date in the card
 # port of the com.genny.tokyonightcomet Plasma wallpaper). false → still wallpaper.
 animate       = true
 # reduced_motion = false     # accessibility: still all motion (overrides the above)
+# Global GPU budget — wraps the whole render (not per-scene). Bundles shader detail
+# (fbm octaves), a frame-rate cap, and whether the frosted-card blur pass runs:
+#   lite     = ½ detail, 30 fps, no blur   (weak iGPUs / battery)
+#   moderate = trimmed detail, 60 fps, no blur
+#   high     = full detail, 60 fps, blur on  (default — current look unchanged)
+#   bonkers  = full detail, uncapped, blur on  (strong GPUs)
+# gpu_level     = "high"
 # Sky scene: "auto" (day/night by the clock, the default), "seasonal" (scene by the
 # calendar — snow/winter, rain/spring, meteor/summer, fog/autumn), or a fixed scene.
 # Scenes: "aurora", "storm", "rain", "snow", "meteor", "moon", "synthwave", "fog",
