@@ -141,30 +141,56 @@ pub enum SkyMode {
 impl SkyMode {
     /// Every mode, for the settings picker.
     pub const ALL: [SkyMode; 23] = [
+        // Ordered by category (see `category`) so the settings picker groups cleanly.
+        // Basics
         SkyMode::Auto,
         SkyMode::Seasonal,
         SkyMode::Day,
         SkyMode::Night,
         SkyMode::Solid,
-        SkyMode::Aurora,
+        // Weather
         SkyMode::Storm,
         SkyMode::Rain,
         SkyMode::Snow,
+        SkyMode::Fog,
+        // Celestial
+        SkyMode::Aurora,
         SkyMode::Meteor,
         SkyMode::Moon,
+        SkyMode::Galaxy,
+        // Landscape
+        SkyMode::Mountains,
+        SkyMode::Pyramids,
+        SkyMode::Forest,
+        SkyMode::Ocean,
+        SkyMode::Sunset,
+        // Stylized
         SkyMode::Synthwave,
-        SkyMode::Fog,
         SkyMode::Plasma,
         SkyMode::Fire,
         SkyMode::Water,
-        SkyMode::Mountains,
-        SkyMode::Pyramids,
-        SkyMode::Ocean,
-        SkyMode::Sunset,
-        SkyMode::Galaxy,
         SkyMode::Matrix,
-        SkyMode::Forest,
     ];
+    /// The picker category this mode belongs to (groups the 23-entry scene list).
+    pub fn category(self) -> &'static str {
+        match self {
+            SkyMode::Auto | SkyMode::Seasonal | SkyMode::Day | SkyMode::Night | SkyMode::Solid => {
+                "Basics"
+            }
+            SkyMode::Storm | SkyMode::Rain | SkyMode::Snow | SkyMode::Fog => "Weather",
+            SkyMode::Aurora | SkyMode::Meteor | SkyMode::Moon | SkyMode::Galaxy => "Celestial",
+            SkyMode::Mountains
+            | SkyMode::Pyramids
+            | SkyMode::Forest
+            | SkyMode::Ocean
+            | SkyMode::Sunset => "Landscape",
+            SkyMode::Synthwave
+            | SkyMode::Plasma
+            | SkyMode::Fire
+            | SkyMode::Water
+            | SkyMode::Matrix => "Stylized",
+        }
+    }
     /// The shader selector value (0 = auto → the day/night renderer).
     pub fn shader_id(self) -> f32 {
         match self {

@@ -2117,6 +2117,23 @@ fn colors_tab<'a>(
     column![colors, assets].spacing(14).into()
 }
 
+/// A scene picker entry that renders as "Category · Name" so the 23-mode list groups
+/// visually (Basics / Weather / Celestial / Landscape / Stylized, in that order).
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct SceneChoice(SkyMode);
+
+impl std::fmt::Display for SceneChoice {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let name = self.0.name();
+        let mut chars = name.chars();
+        let capitalized = match chars.next() {
+            Some(c) => c.to_ascii_uppercase().to_string() + chars.as_str(),
+            None => String::new(),
+        };
+        write!(f, "{} · {}", self.0.category(), capitalized)
+    }
+}
+
 fn sky_tab<'a>(state: &'a State, pal: &'a Palette, h: bool) -> Element<'a, Message> {
     let main = group(
         "SKY",
@@ -2125,9 +2142,9 @@ fn sky_tab<'a>(state: &'a State, pal: &'a Palette, h: bool) -> Element<'a, Messa
                 row![
                     color_label("Scene"),
                     pick_list(
-                        &SkyMode::ALL[..],
-                        Some(state.sky_mode),
-                        Message::SkyModePicked
+                        SkyMode::ALL.map(SceneChoice).to_vec(),
+                        Some(SceneChoice(state.sky_mode)),
+                        |c| Message::SkyModePicked(c.0)
                     )
                     .text_size(13)
                     .padding(6)
