@@ -1,0 +1,17 @@
+# The Matrix — wake up. The rain of glyphs, classic green on black.
+sky_mode       = "matrix"
+background     = "#010401"
+card           = "#04120680"
+field          = "#0a1e0e"
+accent         = "#39ff88"
+foreground     = "#c8ffd6"
+muted          = "#4a8a5f"
+matrix_density = 30.0
+matrix_speed   = 1.2
+matrix_glow    = 1.2
+matrix_flicker = 1.4
+matrix_head    = "#e6ffe8"
+matrix_trail   = "#22cc44"
+spinner_comet  = "#5affa0"
+spinner_track  = "#2a9a55"
+error_color    = "#ff5a6a"

@@ -1,0 +1,17 @@
+# Moonlit Tide — a silver glitter path down a calm night sea.
+sky_mode          = "ocean"
+background        = "#08131f"
+card              = "#0e1c2ad8"
+field             = "#162838"
+accent            = "#9fc8ff"
+foreground        = "#dceaff"
+muted             = "#587090"
+ocean_horizon     = 0.50
+ocean_wave_speed  = 0.7
+ocean_glint       = 1.3
+ocean_wave_scale  = 0.9
+ocean_sky         = "#16263e"
+ocean_sea         = "#081726"
+ocean_glint_color = "#e0ecff"
+spinner_comet     = "#b8d4ff"
+spinner_track     = "#6a90c0"

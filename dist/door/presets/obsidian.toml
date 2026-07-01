@@ -1,0 +1,17 @@
+# Obsidian — angular black glass under a cold, misted sky.
+sky_mode          = "pyramids"
+background        = "#0a0e12"
+card              = "#10151cd8"
+field             = "#182029"
+accent            = "#8ad0e0"
+foreground        = "#dcecf2"
+muted             = "#547080"
+pyramids_density  = 7.0
+pyramids_mist     = 0.8
+pyramids_fireflies = 1.2
+pyramids_drift    = 1.1
+pyramids_sky      = "#16222c"
+pyramids_tree     = "#05080a"
+pyramids_glow     = "#9fe6ff"
+spinner_comet     = "#a8e6f4"
+spinner_track     = "#5a95a8"

@@ -3,6 +3,7 @@
 # /usr/share/door/greeter.toml. Colors are "#rrggbb" or "#rrggbbaa".
 
 # wallpaper =   # (none — solid background)
+sky_mode    = "galaxy"
 background  = "#0a0014"
 card        = "#1a0626cc"
 field       = "#2a0e3a"
@@ -22,7 +23,14 @@ spinner_track = "#00e5ff"
 spinner_trail = 1
 comet_color   = "#ff3df0"
 
-# Sky
+# Sky — a hot-pink galactic core blazing across a steeply tilted band.
+galaxy_density = 1.4
+galaxy_nebula  = 1.7
+galaxy_twinkle = 2.4
+galaxy_tilt    = -0.45
+galaxy_core    = "#ff2d95"
+galaxy_outer   = "#3a1a6c"
+galaxy_star    = "#7df0ff"
 glow_color    = "#ff2d95"
 sky_glow      = 0.95
 glow_pulse    = 0.7

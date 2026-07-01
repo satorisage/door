@@ -1,0 +1,10 @@
+# Slate — a calm, solid graphite gradient. No motion, no fuss.
+sky_mode   = "solid"
+background = "#1a1d24"
+card       = "#22262ed8"
+field      = "#2c313a"
+accent     = "#7f95b8"
+foreground = "#dfe4ec"
+muted      = "#6a7280"
+spinner_style = "none"
+animate    = false

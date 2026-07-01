@@ -1,0 +1,16 @@
+# Terminal Green — a slower, denser cascade; phosphor CRT vibes.
+sky_mode       = "matrix"
+background     = "#020602"
+card           = "#06140880"
+field          = "#0c1e10"
+accent         = "#7dffb0"
+foreground     = "#d6ffe2"
+muted          = "#5a9a70"
+matrix_density = 40.0
+matrix_speed   = 0.7
+matrix_glow    = 1.4
+matrix_flicker = 0.8
+matrix_head    = "#f0fff4"
+matrix_trail   = "#33dd66"
+spinner_comet  = "#88ffb8"
+spinner_track  = "#3aaa66"

@@ -1,0 +1,11 @@
+# Equinox — the seasonal wheel, in muted balance.
+sky_mode   = "seasonal"
+background = "#0e1418"
+card       = "#141c22d8"
+field      = "#1e2a30"
+accent     = "#8ecfa8"
+foreground = "#e6f0ea"
+muted      = "#5f7a70"
+glow_color = "#3f6a55"
+spinner_comet = "#a8e6c4"
+spinner_track = "#6aa88a"

@@ -7,3 +7,8 @@ accent              = "#e5e7eb"
 foreground          = "#f5f5fa"
 muted               = "#8a8aa0"
 card_shadow_opacity = 0.7
+
+# Scene — slow, fully-saturated rainbow flow.
+plasma_speed      = 0.4
+plasma_saturation = 0.5
+plasma_scale      = 7.0

@@ -1,0 +1,16 @@
+# Tempest — a violent squall, lightning cracking every few beats.
+sky_mode            = "storm"
+background          = "#080a10"
+card                = "#0e1018d8"
+field               = "#161a26"
+accent              = "#9db4ff"
+foreground          = "#dce4ff"
+muted               = "#586080"
+storm_lightning_rate = 1.6
+storm_strike_chance  = 0.55
+storm_cloud_density  = 1.5
+storm_bolt_color     = "#eaf2ff"
+storm_flash_color    = "#a6b6e6"
+spinner_comet        = "#c6d4ff"
+spinner_track        = "#6a7ad0"
+error_color          = "#ff6b8e"

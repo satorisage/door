@@ -1,0 +1,14 @@
+# Lava Lamp — slow, saturated blobs of psychedelic colour.
+sky_mode         = "plasma"
+background       = "#12061a"
+card             = "#1a0a24d8"
+field            = "#241030"
+accent           = "#ff5ac8"
+foreground       = "#ffdcf4"
+muted            = "#8a5a8a"
+plasma_speed     = 0.3
+plasma_scale     = 5.5
+plasma_saturation = 0.5
+plasma_tint      = "#ffd0f0"
+spinner_comet    = "#ff8ae0"
+spinner_track    = "#a85ac8"

@@ -8,3 +8,8 @@ foreground    = "#eaf2fb"
 muted         = "#6b7787"
 spinner_comet = "#dbeafe"
 spinner_track = "#7dd3fc"
+
+# Scene — gentle, fuller snow.
+snow_density    = 0.16
+snow_fall_speed = 0.8
+snow_sway       = 0.7

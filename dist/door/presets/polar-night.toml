@@ -1,0 +1,16 @@
+# Polar Night — a wide, slow aurora over the dark of a frozen sky.
+sky_mode         = "aurora"
+background       = "#03060c"
+card             = "#0a0f18d4"
+field            = "#121a26"
+accent           = "#66f0c8"
+foreground       = "#d6f5ec"
+muted            = "#4f7a70"
+aurora_speed     = 0.09
+aurora_drop      = 2.6
+aurora_ray_freq  = 40.0
+aurora_intensity = 0.85
+aurora_green     = "#3affc0"
+aurora_magenta   = "#7a6bff"
+spinner_comet    = "#8affd8"
+spinner_track    = "#5ab0a0"

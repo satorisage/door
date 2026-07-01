@@ -1,0 +1,15 @@
+# Starlit — a deep, dense night sky, quiet and vast.
+sky_mode      = "night"
+background    = "#05060f"
+card          = "#0a0c1ad4"
+field         = "#141834"
+accent        = "#8ab4ff"
+foreground    = "#d6e2ff"
+muted         = "#586090"
+glow_color    = "#2a3a7a"
+sky_glow      = 0.7
+star_density  = 0.9
+star_twinkle  = 1.4
+star_layers   = 5
+spinner_comet = "#a8c4ff"
+spinner_track = "#6a7ad0"

@@ -10,3 +10,10 @@ spinner_comet = "#faff00"
 spinner_track = "#ff2d95"
 error_color   = "#ff2d95"
 font_weight   = "bold"
+
+# Scene — hot-magenta neon caustics rippling in the dark.
+water_caustic_color = "#ff2d95"
+water_deep          = "#0a0018"
+water_shallow       = "#1a0630"
+water_caustic       = 1.1
+water_ripple        = 0.7

@@ -8,3 +8,10 @@ foreground    = "#e8e6ff"
 muted         = "#6a6790"
 glow_color    = "#1e1b4b"
 star_density  = 0.85
+
+# Scene — a busy, bright shower with long trails.
+meteor_count      = 14
+meteor_intensity  = 1.2
+meteor_trail      = 22
+meteor_color      = "#dbe8ff"
+meteor_star_color = "#aebfe6"

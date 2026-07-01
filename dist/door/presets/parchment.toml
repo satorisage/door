@@ -1,0 +1,10 @@
+# Parchment — a warm, solid light backdrop for daytime desks.
+sky_mode   = "solid"
+background = "#efe7d6"
+card       = "#f6f0e4cc"
+field      = "#fffaf0cc"
+accent     = "#b07a3c"
+foreground = "#3a2f22"
+muted      = "#8a7a60"
+spinner_style = "none"
+animate    = false

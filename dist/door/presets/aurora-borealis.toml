@@ -11,3 +11,8 @@ comet_color   = "#7dd3fc"
 spinner_comet = "#5eead4"
 spinner_track = "#a78bfa"
 star_density  = 0.7
+
+# Scene — a bright classic green/violet curtain.
+aurora_intensity = 0.8
+aurora_green     = "#4dffb0"
+aurora_magenta   = "#8a6bff"

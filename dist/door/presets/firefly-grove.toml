@@ -1,0 +1,17 @@
+# Firefly Grove — a warm summer wood alive with drifting light.
+sky_mode         = "forest"
+background       = "#100f0a"
+card             = "#181610d8"
+field            = "#221f16"
+accent           = "#ffd45a"
+foreground       = "#f4ecd6"
+muted            = "#8a7a54"
+forest_density   = 9.0
+forest_haze      = 0.6
+forest_fireflies = 2.0
+forest_drift     = 1.4
+forest_sky       = "#1a2418"
+forest_tree      = "#0a120a"
+forest_glow      = "#ffdf7a"
+spinner_comet    = "#ffe68a"
+spinner_track    = "#c8a84a"

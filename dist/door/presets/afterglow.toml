@@ -1,0 +1,17 @@
+# Afterglow — deep pink and violet, minutes after the sun is gone.
+sky_mode       = "sunset"
+background     = "#1c1024"
+card           = "#24162cd8"
+field          = "#2e1c38"
+accent         = "#ff6ba8"
+foreground     = "#ffdcec"
+muted          = "#8a5a74"
+sunset_sun_y   = 0.80
+sunset_sun_size = 0.09
+sunset_glow    = 0.8
+sunset_bands   = 1.4
+sunset_sky     = "#2a1848"
+sunset_horizon = "#e0487a"
+sunset_sun     = "#ffb0d0"
+spinner_comet  = "#ff8ec0"
+spinner_track  = "#c05a90"

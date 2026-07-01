@@ -1,0 +1,19 @@
+# Bluebird — a crisp, cold high-altitude day.
+sky_mode      = "day"
+background    = "#bfe0ff"
+card          = "#e0f0ffcc"
+field         = "#ffffffcc"
+accent        = "#1f6fd6"
+foreground    = "#0a223a"
+muted         = "#4a6a8a"
+sun_x         = 0.72
+sun_y         = 0.16
+sun_size      = 0.22
+sun_intensity = 0.42
+sun_color     = "#ffffff"
+cloud_amount  = 0.5
+cloud_speed   = 0.7
+day_haze      = 0.12
+spinner_glow  = 0
+spinner_comet = "#1f6fd6"
+spinner_track = "#7fb0e6"

@@ -1,0 +1,15 @@
+# Petrichor — soft, steady rain on a muted grey-green evening.
+sky_mode        = "rain"
+background      = "#141a1c"
+card            = "#1a2224d8"
+field           = "#232c2e"
+accent          = "#7fb8b0"
+foreground      = "#dce8e6"
+muted           = "#5f7a76"
+rain_fall_speed = 4.0
+rain_density    = 0.10
+rain_slant      = 2.5
+rain_intensity  = 0.45
+rain_color      = "#9fc0bc"
+spinner_comet   = "#a8dcd4"
+spinner_track   = "#6aa8a0"

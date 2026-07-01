@@ -10,3 +10,9 @@ spinner_comet = "#ffb3d1"
 spinner_track = "#ff6f9f"
 error_color   = "#ff5d8f"
 font_weight   = "light"
+
+# Scene — soft pink petals, larger and drifting on the breeze.
+snow_color      = "#ffd0e0"
+snow_flake_size = 13
+snow_sway       = 1.0
+snow_density    = 0.14

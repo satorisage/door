@@ -1,0 +1,17 @@
+# Horizon — a warm sun-glittered sea meeting a golden sky.
+sky_mode          = "ocean"
+background        = "#141020"
+card              = "#1c1628d8"
+field             = "#261e34"
+accent            = "#ffb86a"
+foreground        = "#ffe8d0"
+muted             = "#8a6f7a"
+ocean_horizon     = 0.58
+ocean_wave_speed  = 1.1
+ocean_glint       = 1.5
+ocean_wave_scale  = 1.2
+ocean_sky         = "#3a2a4a"
+ocean_sea         = "#12203a"
+ocean_glint_color = "#ffdca8"
+spinner_comet     = "#ffcf94"
+spinner_track     = "#c88a6a"

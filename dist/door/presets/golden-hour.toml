@@ -1,0 +1,17 @@
+# Golden Hour — the last warm light spilling across the sky.
+sky_mode       = "sunset"
+background     = "#241428"
+card           = "#2c1a30d8"
+field          = "#38223c"
+accent         = "#ff9a5a"
+foreground     = "#ffe8d6"
+muted          = "#9a6f74"
+sunset_sun_y   = 0.66
+sunset_sun_size = 0.14
+sunset_glow    = 1.2
+sunset_bands   = 1.2
+sunset_sky     = "#3a2560"
+sunset_horizon = "#ff7a3d"
+sunset_sun     = "#ffe08a"
+spinner_comet  = "#ffb87a"
+spinner_track  = "#d88a5a"

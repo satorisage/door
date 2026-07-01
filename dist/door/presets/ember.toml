@@ -10,3 +10,8 @@ glow_color    = "#7c2d12"
 spinner_comet = "#fdba74"
 spinner_track = "#f97316"
 error_color   = "#ff6b4a"
+
+# Scene — a hot orange fire with bright tips.
+fire_flame_color = "#ff5a1a"
+fire_tip_color   = "#ffd890"
+fire_rise_speed  = 1.6

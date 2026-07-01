@@ -9,3 +9,9 @@ muted         = "#4a8090"
 glow_color    = "#0e4a5a"
 spinner_comet = "#67e8f9"
 spinner_track = "#06b6d4"
+
+# Scene — cold caustics over a deep blue-green.
+water_caustic_color = "#5ad0e0"
+water_deep          = "#001824"
+water_shallow       = "#00485e"
+water_caustic       = 0.9

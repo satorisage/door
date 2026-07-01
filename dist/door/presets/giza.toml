@@ -1,0 +1,17 @@
+# Giza — sharp silhouettes against a desert dusk, dust motes adrift.
+sky_mode          = "pyramids"
+background        = "#1c1610"
+card              = "#241c12d8"
+field             = "#2e2418"
+accent            = "#e6b45a"
+foreground        = "#f4e6cc"
+muted             = "#9a7f56"
+pyramids_density  = 4.0
+pyramids_mist     = 0.5
+pyramids_fireflies = 0.8
+pyramids_drift    = 0.7
+pyramids_sky      = "#3a2c1c"
+pyramids_tree     = "#120c06"
+pyramids_glow     = "#ffd27a"
+spinner_comet     = "#ffcf88"
+spinner_track     = "#c89a54"

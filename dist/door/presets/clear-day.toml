@@ -1,0 +1,18 @@
+# Clear Day — a bright bluebird sky, sun high and soft clouds.
+sky_mode      = "day"
+background    = "#dcefff"
+card          = "#eef7ffcc"
+field         = "#ffffffcc"
+accent        = "#0093d6"
+foreground    = "#0d2a3d"
+muted         = "#517387"
+sun_x         = 0.30
+sun_y         = 0.20
+sun_size      = 0.30
+sun_intensity = 0.55
+sun_color     = "#fff2c8"
+cloud_amount  = 1.4
+cloud_speed   = 1.1
+spinner_glow  = 0
+spinner_comet = "#0093d6"
+spinner_track = "#67c4ec"

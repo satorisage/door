@@ -9,3 +9,9 @@ muted         = "#5b6675"
 glow_color    = "#1e3a5f"
 spinner_comet = "#bae6fd"
 spinner_track = "#38bdf8"
+
+# Scene — frequent white bolts over heavy cloud.
+storm_lightning_rate = 1.2
+storm_strike_chance  = 0.42
+storm_cloud_density  = 1.3
+storm_bolt_color     = "#eaf2ff"

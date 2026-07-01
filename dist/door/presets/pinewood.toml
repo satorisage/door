@@ -1,0 +1,17 @@
+# Pinewood — deep conifer rows fading into evening mist.
+sky_mode         = "forest"
+background       = "#0e1712"
+card             = "#141f18d8"
+field            = "#1c2a20"
+accent           = "#7fd6a0"
+foreground       = "#dcefe2"
+muted            = "#5a7a66"
+forest_density   = 12.0
+forest_haze      = 0.9
+forest_fireflies = 0.7
+forest_drift     = 0.8
+forest_sky       = "#18281e"
+forest_tree      = "#08130c"
+forest_glow      = "#ffe08a"
+spinner_comet    = "#a8e6bc"
+spinner_track    = "#6aa87e"

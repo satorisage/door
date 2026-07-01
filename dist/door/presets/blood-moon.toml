@@ -9,3 +9,9 @@ muted         = "#9a5560"
 glow_color    = "#5a1015"
 comet_color   = "#ff6b6b"
 error_color   = "#ff4444"
+
+# Scene — a deep red eclipse moon with a dim crimson halo.
+moon_color      = "#d94a3a"
+moon_halo_color = "#7a2626"
+moon_texture    = 0.28
+moon_halo       = 0.34

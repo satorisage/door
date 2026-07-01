@@ -1,0 +1,15 @@
+# Moonless — a spare, near-black night; only a few faint stars.
+sky_mode      = "night"
+background    = "#020308"
+card          = "#080a12d8"
+field         = "#10131f"
+accent        = "#5f74b0"
+foreground    = "#c0c8e0"
+muted         = "#454d6a"
+glow_color    = "#1a2244"
+sky_glow      = 0.35
+star_density  = 0.35
+star_twinkle  = 0.7
+comet_enabled = false
+spinner_comet = "#8090c0"
+spinner_track = "#4a5680"

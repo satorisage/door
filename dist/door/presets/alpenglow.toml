@@ -1,0 +1,17 @@
+# Alpenglow — dusk light warming the far peaks over deep valley shadow.
+sky_mode       = "mountains"
+background     = "#1a1420"
+card           = "#201826d8"
+field          = "#2a2032"
+accent         = "#ff9e7a"
+foreground     = "#ffe6da"
+muted          = "#8a6a70"
+mtn_layers     = 5
+mtn_peak       = 0.17
+mtn_drift      = 0.8
+mtn_haze       = 0.8
+mtn_sky        = "#4a2f4a"
+mtn_ridge      = "#140f1a"
+mtn_haze_color = "#c86a5a"
+spinner_comet  = "#ffb894"
+spinner_track  = "#c87a6a"

@@ -1,0 +1,17 @@
+# Blue Ridge — endless hazy ranges fading into a cool morning.
+sky_mode       = "mountains"
+background     = "#101820"
+card           = "#16202ad8"
+field          = "#1e2a36"
+accent          = "#7fb0d6"
+foreground     = "#dce8f2"
+muted          = "#5a748a"
+mtn_layers     = 6
+mtn_peak       = 0.13
+mtn_drift      = 1.2
+mtn_haze       = 0.9
+mtn_sky        = "#2a4560"
+mtn_ridge      = "#0c141c"
+mtn_haze_color = "#5a7a9c"
+spinner_comet  = "#a8ccec"
+spinner_track  = "#6a90b0"

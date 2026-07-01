@@ -8,3 +8,8 @@ foreground    = "#d7fbe9"
 muted         = "#5a8a74"
 glow_color    = "#0e3a28"
 star_density  = 0.85
+
+# Scene — emerald-green meteors over green-tinted stars.
+meteor_color      = "#8affa8"
+meteor_star_color = "#a0e0b8"
+meteor_intensity  = 1.1

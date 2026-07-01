@@ -1,0 +1,14 @@
+# Hearth — a low, steady fire; embers breathing in the dark.
+sky_mode          = "fire"
+background        = "#160a06"
+card              = "#20100ad8"
+field             = "#2c180e"
+accent            = "#ffb15a"
+foreground        = "#ffe6d0"
+muted             = "#9a6a4a"
+fire_rise_speed   = 1.4
+fire_flame_height = 0.30
+fire_flame_color  = "#ff5a1a"
+fire_tip_color    = "#ffe0a0"
+spinner_comet     = "#ffc078"
+spinner_track     = "#e0803c"
