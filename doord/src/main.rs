@@ -24,16 +24,14 @@
 mod config;
 mod fdpass;
 mod hardening;
-// M5 sandbox groundwork: the pre-forked spawner + its supervisor-side
-// helpers. Built and tested against a stand-in worker; not yet wired onto the
-// production login path (that flip needs hardware validation of a real session
-// spawn), so its public surface is unused in a non-test build for now.
 mod ipc;
 mod pam;
 mod privdrop;
 mod sessions;
 mod spawn;
-#[allow(dead_code)]
+// M5 sandbox groundwork: the pre-forked spawner + its supervisor-side helpers.
+// Opt-in via DOORD_SPAWNER (below) pending hardware validation of a real session
+// spawn; the default path is unchanged.
 mod spawner;
 mod user;
 mod worker;
@@ -58,7 +56,26 @@ fn main() -> ExitCode {
     hardening::apply_baseline();
 
     let config = Config::from_env();
-    let logins = WorkerLoginFactory::new();
+
+    // Worker creation: by default the daemon forks each worker itself. Opt into the
+    // sandbox split with DOORD_SPAWNER — a spawner is forked here (after the baseline
+    // but before serving) that owns worker creation, so a future supervisor
+    // self-sandbox is never inherited by the session. Fails open to the direct path
+    // if the spawner can't be forked. Off by default until hardware-validated.
+    let logins = if std::env::var_os("DOORD_SPAWNER").is_some() {
+        match spawner::fork_spawner(pam::spawn_worker_raw) {
+            Ok(sock) => {
+                eprintln!("doord: spawner mode — workers are created by a pre-forked helper");
+                WorkerLoginFactory::with_spawner(sock)
+            }
+            Err(e) => {
+                eprintln!("doord: could not fork the spawner ({e}); using the direct worker path");
+                WorkerLoginFactory::new()
+            }
+        }
+    } else {
+        WorkerLoginFactory::new()
+    };
 
     match ipc::serve(&config, &logins) {
         Ok(()) => ExitCode::SUCCESS,

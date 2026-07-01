@@ -162,3 +162,59 @@ fn rejects_an_incompatible_version() {
         }
     );
 }
+
+#[test]
+fn boots_and_serves_in_spawner_mode() {
+    // DOORD_SPAWNER forks the pre-forked spawner at startup (worker creation routes
+    // through it). The daemon must still come up and serve the framed protocol; a
+    // worker isn't created until BeginAuth, so this exercises the spawner-mode boot
+    // + basic serving without needing PAM or a real session.
+    let socket = std::env::temp_dir().join(format!("doord-spawner-{}.sock", std::process::id()));
+    let _ = std::fs::remove_file(&socket);
+    let session_root =
+        std::env::temp_dir().join(format!("doord-spawner-sess-{}", std::process::id()));
+    let wayland = session_root.join("wayland-sessions");
+    std::fs::create_dir_all(&wayland).expect("create session dir");
+    std::fs::write(
+        wayland.join("testde.desktop"),
+        "[Desktop Entry]\nName=Test DE\nExec=/usr/bin/test-de\n",
+    )
+    .expect("write session entry");
+
+    let child = Command::new(env!("CARGO_BIN_EXE_doord"))
+        .env("DOORD_SOCKET", &socket)
+        .env("DOORD_SESSION_DIRS", &session_root)
+        .env("DOORD_SPAWNER", "1")
+        .spawn()
+        .expect("spawn doord in spawner mode");
+    let daemon = Daemon {
+        child,
+        socket,
+        session_root,
+    };
+
+    let mut conn = connect(&daemon.socket);
+    write_frame(
+        &mut conn,
+        &Request::Hello {
+            protocol_version: PROTOCOL_VERSION,
+        },
+    )
+    .unwrap();
+    let resp: Response = read_frame(&mut conn).unwrap();
+    assert_eq!(
+        resp,
+        Response::Welcome {
+            protocol_version: PROTOCOL_VERSION
+        },
+        "spawner-mode daemon must complete the handshake"
+    );
+
+    // A request that needs no worker still works in spawner mode.
+    write_frame(&mut conn, &Request::ListSessions).unwrap();
+    let resp: Response = read_frame(&mut conn).unwrap();
+    assert!(
+        matches!(resp, Response::Sessions(_)),
+        "spawner-mode daemon must serve ListSessions, got {resp:?}"
+    );
+}

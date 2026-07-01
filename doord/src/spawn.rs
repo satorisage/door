@@ -17,8 +17,9 @@
 //! context this layer does not hold.
 
 use std::ffi::{CString, OsString};
-use std::io;
-use std::os::unix::process::CommandExt;
+use std::io::{self, Read};
+use std::os::unix::net::UnixStream;
+use std::os::unix::process::{CommandExt, ExitStatusExt};
 use std::process::{Child, Command, ExitStatus};
 
 use crate::config::SeatTarget;
@@ -47,44 +48,113 @@ impl std::fmt::Display for LaunchError {
 /// the caller can wait on (and reap) it after telling the greeter the session
 /// started. A childless handle waits trivially — used by the test login seam,
 /// which records the launch without forking.
-pub struct SessionChild(Option<Child>);
+pub struct SessionChild(Backend);
+
+/// How a [`SessionChild`] observes the session's exit.
+enum Backend {
+    /// The worker is the daemon's own child (the direct path, and the worker's own
+    /// handle on the session): reap it with `wait`/`try_wait`.
+    Owned(Option<Child>),
+    /// The worker is the *spawner's* child (the sandbox split), so the daemon cannot
+    /// `waitpid` it. The worker holds this control fd open for the session's lifetime
+    /// and closes it on exit, so the daemon reads session-end as EOF here. The
+    /// spawner reaps the pid; the daemon only watches the fd. `pid` is retained for
+    /// [`id`](SessionChild::id) (the greeter-handoff terminate path).
+    Control {
+        pid: u32,
+        control: UnixStream,
+        ended: bool,
+    },
+}
 
 impl SessionChild {
     /// Wrap a child process the caller already spawned (the session worker) as a
     /// waitable session handle.
     pub fn new(child: Child) -> Self {
-        SessionChild(Some(child))
+        SessionChild(Backend::Owned(Some(child)))
     }
 
     /// A handle with no underlying child; [`wait`](Self::wait) returns `None`.
     #[cfg(test)]
     pub fn detached() -> Self {
-        SessionChild(None)
+        SessionChild(Backend::Owned(None))
     }
 
-    /// The child's pid, if there is one. The greeter path needs it to forward a
-    /// terminate to the compositor at handoff (a childless test handle has none).
+    /// A handle whose worker lives under the spawner: session-end is EOF on the
+    /// worker's control fd. The fd is set non-blocking so [`try_wait`] can poll it.
+    pub fn via_control(pid: u32, control: UnixStream) -> io::Result<Self> {
+        control.set_nonblocking(true)?;
+        Ok(SessionChild(Backend::Control {
+            pid,
+            control,
+            ended: false,
+        }))
+    }
+
+    /// The worker's pid, if known. The greeter path needs it to forward a terminate
+    /// to the compositor at handoff (a childless test handle has none).
     pub fn id(&self) -> Option<u32> {
-        self.0.as_ref().map(Child::id)
-    }
-
-    /// Block until the session exits, reaping it. Returns its exit status, or
-    /// `None` for a childless handle.
-    pub fn wait(mut self) -> io::Result<Option<ExitStatus>> {
-        match self.0.take() {
-            Some(mut child) => child.wait().map(Some),
-            None => Ok(None),
+        match &self.0 {
+            Backend::Owned(child) => child.as_ref().map(Child::id),
+            Backend::Control { pid, .. } => Some(*pid),
         }
     }
 
-    /// Non-blocking check for session exit, reaping it if it has. `Ok(Some(status))`
-    /// once it exits, `Ok(None)` while it still runs. A childless test handle is
-    /// always `Ok(None)` (the caller drives it via [`wait`](Self::wait) instead).
-    /// Lets the daemon poll the session while also watching for an admin teardown.
+    /// Block until the session exits. Returns its exit status (a synthetic success
+    /// for the control-fd path, which conveys end-of-session but no status), or
+    /// `None` for a childless handle.
+    pub fn wait(mut self) -> io::Result<Option<ExitStatus>> {
+        match &mut self.0 {
+            Backend::Owned(child) => match child.take() {
+                Some(mut c) => c.wait().map(Some),
+                None => Ok(None),
+            },
+            Backend::Control { control, .. } => {
+                control.set_nonblocking(false)?;
+                let mut sink = [0u8; 64];
+                // Drain to EOF: the worker closes the control fd when it exits.
+                loop {
+                    match control.read(&mut sink) {
+                        Ok(0) => break,
+                        Ok(_) => {}
+                        Err(e) if e.kind() == io::ErrorKind::Interrupted => {}
+                        Err(e) => return Err(e),
+                    }
+                }
+                Ok(Some(ExitStatus::from_raw(0)))
+            }
+        }
+    }
+
+    /// Non-blocking check for session exit. `Ok(Some(status))` once it has ended,
+    /// `Ok(None)` while it still runs. Lets the daemon poll the session while also
+    /// watching for an admin teardown.
     pub fn try_wait(&mut self) -> io::Result<Option<ExitStatus>> {
-        match self.0.as_mut() {
-            Some(child) => child.try_wait(),
-            None => Ok(None),
+        match &mut self.0 {
+            Backend::Owned(Some(child)) => child.try_wait(),
+            Backend::Owned(None) => Ok(None),
+            Backend::Control { control, ended, .. } => {
+                if *ended {
+                    return Ok(Some(ExitStatus::from_raw(0)));
+                }
+                let mut sink = [0u8; 64];
+                match control.read(&mut sink) {
+                    // EOF: the worker closed control → the session has ended.
+                    Ok(0) => {
+                        *ended = true;
+                        Ok(Some(ExitStatus::from_raw(0)))
+                    }
+                    // Unexpected bytes after `Started` — ignore; still running.
+                    Ok(_) => Ok(None),
+                    Err(e) if e.kind() == io::ErrorKind::WouldBlock => Ok(None),
+                    Err(e) if e.kind() == io::ErrorKind::Interrupted => Ok(None),
+                    // A hard error on the fd — treat as ended so the daemon proceeds.
+                    Err(_) => {
+                        *ended = true;
+                        Ok(Some(ExitStatus::from_raw(0)))
+                    }
+                }
+            }
         }
     }
 }
@@ -139,7 +209,7 @@ pub fn launch(
     }
 
     let child = cmd.spawn().map_err(LaunchError::Spawn)?;
-    Ok(SessionChild(Some(child)))
+    Ok(SessionChild::new(child))
 }
 
 /// Post-fork, pre-exec child setup: become a session leader, take the VT as the

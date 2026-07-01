@@ -19,6 +19,7 @@
 //! The [`Login`]/[`LoginFactory`] seam is abstracted so the IPC flow can be tested
 //! in-process without root, a live PAM stack, or a real worker.
 
+use std::cell::RefCell;
 use std::io;
 use std::os::unix::io::AsRawFd;
 use std::os::unix::net::UnixStream;
@@ -30,6 +31,7 @@ use protocol::{read_frame, write_frame, AuthPrompt, Request, Response};
 use crate::config::SeatTarget;
 use crate::sessions::{DiscoveredSession, SessionKind};
 use crate::spawn::{LaunchError, SessionChild};
+use crate::spawner;
 use crate::worker::{
     self, Verdict, WorkerCommand, WorkerEvent, WorkerSeat, WorkerSession, CONTROL_FD,
 };
@@ -94,14 +96,30 @@ pub trait LoginFactory {
     fn begin(&self, greeter: UnixStream) -> Box<dyn Login>;
 }
 
-/// Production [`LoginFactory`]: each login re-execs the daemon as a session
-/// worker. The worker reads its configuration (PAM service, seat, …) from the
-/// inherited environment, so the factory itself carries no state.
-pub struct WorkerLoginFactory;
+/// Production [`LoginFactory`]. Each login gets a session worker; the worker reads
+/// its configuration (PAM service, seat, …) from the inherited environment, so the
+/// factory carries no auth state. With a **spawner** present (the sandbox split), the
+/// worker is created by the pre-forked spawner and its control fd is passed back;
+/// without one, the factory forks the worker directly (the original path).
+pub struct WorkerLoginFactory {
+    /// The supervisor's end of the spawner control socket, when running split.
+    /// `None` = fork the worker directly. `RefCell` because `begin` takes `&self`
+    /// and logins are strictly serial.
+    spawner: Option<RefCell<UnixStream>>,
+}
 
 impl WorkerLoginFactory {
+    /// The direct path: the factory forks each worker itself.
     pub fn new() -> Self {
-        WorkerLoginFactory
+        WorkerLoginFactory { spawner: None }
+    }
+
+    /// The split path: worker creation is delegated to the pre-forked spawner over
+    /// `spawner` (the supervisor's control-socket end).
+    pub fn with_spawner(spawner: UnixStream) -> Self {
+        WorkerLoginFactory {
+            spawner: Some(RefCell::new(spawner)),
+        }
     }
 }
 
@@ -113,11 +131,27 @@ impl Default for WorkerLoginFactory {
 
 impl LoginFactory for WorkerLoginFactory {
     fn begin(&self, greeter: UnixStream) -> Box<dyn Login> {
+        // Split path: ask the spawner for a worker; it hands back the control fd.
+        if let Some(cell) = &self.spawner {
+            return match spawner::request_worker(&mut cell.borrow_mut()) {
+                Ok(worker) => Box::new(WorkerLogin {
+                    greeter,
+                    control: worker.control,
+                    backend: Backend::Spawned(worker.pid),
+                    username: None,
+                }),
+                Err(e) => {
+                    eprintln!("doord: spawner could not start a session worker: {e}");
+                    Box::new(DeadLogin)
+                }
+            };
+        }
+        // Direct path: fork the worker here.
         match spawn_worker() {
             Ok((child, control)) => Box::new(WorkerLogin {
                 greeter,
                 control,
-                child: Some(child),
+                backend: Backend::Direct(Some(child)),
                 username: None,
             }),
             Err(e) => {
@@ -128,15 +162,24 @@ impl LoginFactory for WorkerLoginFactory {
     }
 }
 
-/// A worker-backed login: the daemon's end of the control socket plus the worker
-/// process and the greeter socket it relays the conversation over.
+/// A worker-backed login: the daemon's end of the control socket plus how the
+/// worker is owned, and the greeter socket it relays the conversation over.
 pub struct WorkerLogin {
     greeter: UnixStream,
     control: UnixStream,
-    /// The worker process. Taken at [`start`](Login::start) and wrapped in the
-    /// returned [`SessionChild`]; the daemon waits on it for the session lifetime.
-    child: Option<Child>,
+    backend: Backend,
     username: Option<String>,
+}
+
+/// How this login's worker is owned — which decides how the daemon observes the
+/// session's exit.
+enum Backend {
+    /// Direct path: the worker is the daemon's child; wait on it directly. Taken at
+    /// [`start`](Login::start) into the returned [`SessionChild`].
+    Direct(Option<Child>),
+    /// Split path: the worker is the *spawner's* child (pid retained). The daemon
+    /// observes session-end via EOF on `control` instead of `waitpid`.
+    Spawned(libc::pid_t),
 }
 
 impl Login for WorkerLogin {
@@ -243,10 +286,29 @@ impl Login for WorkerLogin {
         loop {
             match read_frame::<_, WorkerEvent>(&mut self.control) {
                 Ok(WorkerEvent::Started) => {
-                    let child = self.child.take().ok_or_else(|| {
-                        LaunchError::Spawn(io::Error::other("session worker already consumed"))
-                    })?;
-                    return Ok(SessionChild::new(child));
+                    return match &mut self.backend {
+                        // Direct: hand off the worker child to be waited on.
+                        Backend::Direct(child) => {
+                            let child = child.take().ok_or_else(|| {
+                                LaunchError::Spawn(io::Error::other(
+                                    "session worker already consumed",
+                                ))
+                            })?;
+                            Ok(SessionChild::new(child))
+                        }
+                        // Split: the worker is the spawner's child, so observe
+                        // session-end as EOF on a clone of the control socket (the
+                        // worker closes its end when it exits). The spawner reaps.
+                        Backend::Spawned(pid) => {
+                            let control = self.control.try_clone().map_err(|e| {
+                                LaunchError::Spawn(io::Error::other(format!(
+                                    "could not clone the control socket for session-wait: {e}"
+                                )))
+                            })?;
+                            SessionChild::via_control(*pid as u32, control)
+                                .map_err(LaunchError::Spawn)
+                        }
+                    };
                 }
                 Ok(WorkerEvent::StartFailed) => {
                     return Err(LaunchError::Spawn(io::Error::other(
@@ -298,6 +360,18 @@ fn spawn_worker() -> io::Result<(Child, UnixStream)> {
     // gone after exec — only the dup'd CONTROL_FD survives there.
     drop(worker_end);
     Ok((child, daemon_end))
+}
+
+/// The [`spawner::SpawnFn`] for the pre-forked spawner: fork a worker exactly as
+/// [`spawn_worker`] does, but return the raw pid (so the spawner can `waitpid`-reap
+/// it) instead of a `Child`. Dropping the `Child` here does not reap — it only
+/// releases std's handle; the process becomes a zombie the spawner then reaps. Runs
+/// inside the spawner process, which is single-threaded, so the fork is safe.
+pub fn spawn_worker_raw() -> io::Result<(libc::pid_t, UnixStream)> {
+    let (child, control) = spawn_worker()?;
+    let pid = child.id() as libc::pid_t;
+    drop(child);
+    Ok((pid, control))
 }
 
 /// A login whose worker could not be started: every operation fails closed, so a

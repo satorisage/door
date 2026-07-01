@@ -10,9 +10,15 @@
 //! This spawner is forked once at startup, *before* any sandbox. It owns worker
 //! creation: on the supervisor's request it forks/re-execs the worker, hands the
 //! worker's control-socket fd back to the supervisor with `SCM_RIGHTS`
-//! ([`crate::fdpass`]), then reaps the worker and reports its exit. Because the
-//! worker is the spawner's child (not the sandboxed supervisor's), neither PAM nor
-//! the session inherits the supervisor's sandbox.
+//! ([`crate::fdpass`]), then reaps the worker when it exits (a bare `waitpid` — no
+//! zombie). Because the worker is the spawner's child (not the sandboxed
+//! supervisor's), neither PAM nor the session inherits the supervisor's sandbox.
+//!
+//! The spawner reports **no** exit status: the worker holds its control socket open
+//! for the session's lifetime and closes it only when it exits (after the session
+//! ends), so the *supervisor* detects session-end directly, as EOF on the control
+//! fd it was handed. The spawner's `waitpid` runs purely to reap. This keeps the
+//! codec a one-shot request→reply with nothing to desynchronize.
 //!
 //! Trust surface: the spawner parses no untrusted input — it speaks only this tiny
 //! codec to the supervisor over a socketpair, holds no greeter fd, and its only
@@ -35,8 +41,6 @@ const REQ_SPAWN: u8 = b'S';
 const EV_STARTED: u8 = b'R';
 /// Spawner → supervisor: the spawn failed; no fd follows.
 const EV_ERROR: u8 = b'E';
-/// Spawner → supervisor: the worker exited; a 4-byte LE pid + 4-byte LE status follow.
-const EV_EXITED: u8 = b'X';
 
 /// How the spawner creates a worker: returns `(child_pid, supervisor_end_of_control)`.
 /// Production will inject a `pam`-side worker fork; tests inject a stand-in.
@@ -76,9 +80,9 @@ pub fn fork_spawner(spawn: SpawnFn) -> io::Result<UnixStream> {
     }
 }
 
-/// The spawner's serve loop. Reads requests, forks workers via `spawn`, passes the
-/// control fd back, reaps each worker, and reports its exit. Returns on EOF (the
-/// supervisor is gone).
+/// The spawner's serve loop. Reads requests, forks workers via `spawn`, passes each
+/// worker's control fd back to the supervisor, and reaps the worker when it exits.
+/// Returns on EOF (the supervisor is gone).
 pub fn run_spawner(mut sock: UnixStream, spawn: SpawnFn) {
     loop {
         let mut tag = [0u8; 1];
@@ -105,37 +109,26 @@ pub fn run_spawner(mut sock: UnixStream, spawn: SpawnFn) {
         let mut header = [0u8; 5];
         header[0] = EV_STARTED;
         header[1..].copy_from_slice(&pid.to_le_bytes());
-        if sock.write_all(&header).is_err() || fdpass::send_fd(&sock, control.as_raw()).is_err() {
-            // Supervisor vanished mid-reply; the worker will die on its own control
-            // EOF and be reaped below (or on the next iteration).
-            let _ = wait_pid(pid);
-            return;
-        }
-        drop(control); // the supervisor now owns the control fd; the spawner does not
+        let handed =
+            sock.write_all(&header).is_ok() && fdpass::send_fd(&sock, control.as_raw()).is_ok();
+        drop(control); // the supervisor owns the control fd now; the spawner does not
 
-        // Block until the worker exits (serial model — no other request comes until
-        // this login ends), then report its exit so the supervisor's session-wait
-        // can complete.
-        let status = wait_pid(pid);
-        let mut ev = [0u8; 9];
-        ev[0] = EV_EXITED;
-        ev[1..5].copy_from_slice(&pid.to_le_bytes());
-        ev[5..9].copy_from_slice(&status.to_le_bytes());
-        if sock.write_all(&ev).is_err() {
+        // Reap the worker when it exits (serial model — no other request comes until
+        // this login ends). The status is discarded: the supervisor already learns
+        // session-end from control-fd EOF; this `waitpid` exists only to avoid a
+        // zombie. If handing the fd failed the supervisor is gone, but we still reap.
+        reap(pid);
+        if !handed {
             return;
         }
     }
 }
 
-/// `waitpid` a worker to completion, returning its raw wait status (or -1 on error).
-fn wait_pid(pid: libc::pid_t) -> i32 {
+/// `waitpid` a worker to completion purely to reap it (no zombie). Status discarded.
+fn reap(pid: libc::pid_t) {
     let mut status: libc::c_int = 0;
     // SAFETY: waitpid on our own child; status is a valid out-pointer.
-    let r = unsafe { libc::waitpid(pid, &mut status, 0) };
-    if r < 0 {
-        return -1;
-    }
-    status
+    unsafe { libc::waitpid(pid, &mut status, 0) };
 }
 
 // ─────────────────────────── supervisor-side helpers ───────────────────────────
@@ -169,23 +162,6 @@ pub fn request_worker(sock: &mut UnixStream) -> io::Result<SpawnedWorker> {
         other => Err(io::Error::other(format!(
             "spawner sent an unexpected reply tag {other:#x}"
         ))),
-    }
-}
-
-/// Block until the spawner reports the current worker's exit, returning its raw wait
-/// status. This is what the supervisor's session-wait uses instead of `waitpid` now
-/// that the worker is the spawner's child, not the supervisor's.
-pub fn wait_worker_exit(sock: &mut UnixStream) -> io::Result<i32> {
-    loop {
-        let mut tag = [0u8; 1];
-        sock.read_exact(&mut tag)?;
-        if tag[0] != EV_EXITED {
-            continue; // skip a stray tag rather than desync
-        }
-        let mut buf = [0u8; 8];
-        sock.read_exact(&mut buf)?;
-        let status = i32::from_le_bytes(buf[4..8].try_into().unwrap());
-        return Ok(status);
     }
 }
 
@@ -230,27 +206,25 @@ mod tests {
         }
     }
 
-    /// End-to-end of the spawner mechanism (no real worker): fork the spawner, ask
-    /// it for a worker, prove the passed control fd is live, then release it and
-    /// confirm the spawner reaps the worker and reports its exit.
+    /// The spawner mechanism end to end (no real worker): fork the spawner, request a
+    /// worker, prove the passed control fd is live and its pid distinct, release it —
+    /// then request a *second* worker. The second request only succeeds if the
+    /// spawner reaped the first (its blocking `waitpid` returned) and looped back to
+    /// serve again — so this covers the fork → fd-pass → reap → loop cycle.
     #[test]
-    fn spawns_a_worker_passes_its_control_fd_and_reports_exit() {
+    fn spawns_workers_passing_a_live_control_fd_and_reaping_between() {
         let mut sup = fork_spawner(stand_in_worker).expect("fork spawner");
 
-        let worker = request_worker(&mut sup).expect("request worker");
-        assert!(worker.pid > 0, "got a real pid");
+        let w1 = request_worker(&mut sup).expect("request worker 1");
+        assert!(w1.pid > 0, "got a real pid");
+        let mut c1 = w1.control;
+        c1.write_all(b"ping").expect("control fd 1 is writable");
+        drop(c1); // → stand-in 1 sees EOF, exits; the spawner reaps it and loops
 
-        // The control fd is live: a write to it succeeds (the stand-in drains it).
-        let mut control = worker.control;
-        control.write_all(b"ping").expect("control fd is writable");
-
-        // Release the control socket → the stand-in sees EOF → exits 0.
-        drop(control);
-
-        let status = wait_worker_exit(&mut sup).expect("exit report");
-        assert!(
-            libc::WIFEXITED(status) && libc::WEXITSTATUS(status) == 0,
-            "worker should exit cleanly, raw status {status}"
-        );
+        let w2 = request_worker(&mut sup).expect("request worker 2 (spawner looped)");
+        assert!(w2.pid > 0 && w2.pid != w1.pid, "a fresh, distinct worker");
+        let mut c2 = w2.control;
+        c2.write_all(b"ping").expect("control fd 2 is writable");
+        drop(c2);
     }
 }
