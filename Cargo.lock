@@ -874,7 +874,7 @@ dependencies = [
 
 [[package]]
 name = "door-greeter"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "door-theme",
  "futures",
@@ -887,7 +887,7 @@ dependencies = [
 
 [[package]]
 name = "door-settings"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "door-theme",
  "iced",
@@ -897,7 +897,7 @@ dependencies = [
 
 [[package]]
 name = "door-theme"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "bytemuck",
  "iced",
@@ -908,7 +908,7 @@ dependencies = [
 
 [[package]]
 name = "doord"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "libc",
  "pam-client",
@@ -3064,7 +3064,7 @@ dependencies = [
 
 [[package]]
 name = "protocol"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "serde",
  "serde_json",
