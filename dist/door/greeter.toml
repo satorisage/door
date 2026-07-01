@@ -49,7 +49,9 @@ animate       = true
 # Sky scene: "auto" (day/night by the clock, the default), "seasonal" (scene by the
 # calendar — snow/winter, rain/spring, meteor/summer, fog/autumn), or a fixed scene.
 # Scenes: "aurora", "storm", "rain", "snow", "meteor", "moon", "synthwave", "fog",
-#         "plasma", "fire", "water".
+#         "plasma", "fire", "water". Plus the basics: "day" (force the daytime sky +
+#         light palette), "night" (force the starfield + dark palette), "solid" (a plain
+#         palette gradient — no stars, comet, or motion).
 # sky_mode      = "auto"
 # Comet-spinner controls. glow = head bloom (0 = crisp; a bright bloom blends on a
 # dark card but bands on a light one, so the day variant below defaults to 0).

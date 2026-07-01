@@ -116,13 +116,22 @@ pub enum SkyMode {
     Fire,
     /// Underwater light caustics rippling over a blue-green deep.
     Water,
+    /// Force the daytime sky (sun + clouds) regardless of the clock.
+    Day,
+    /// Force the night sky (stars + nebula + glow) regardless of the clock.
+    Night,
+    /// A plain palette gradient — no stars, comet, or motion. The calm option.
+    Solid,
 }
 
 impl SkyMode {
     /// Every mode, for the settings picker.
-    pub const ALL: [SkyMode; 13] = [
+    pub const ALL: [SkyMode; 16] = [
         SkyMode::Auto,
         SkyMode::Seasonal,
+        SkyMode::Day,
+        SkyMode::Night,
+        SkyMode::Solid,
         SkyMode::Aurora,
         SkyMode::Storm,
         SkyMode::Rain,
@@ -152,6 +161,10 @@ impl SkyMode {
             SkyMode::Plasma => 9.0,
             SkyMode::Fire => 10.0,
             SkyMode::Water => 11.0,
+            // Day/Night reuse the auto renderer (shader_id 0); they differ only in which
+            // palette they pin (see `prefers_day`), so the shader needs no new branch.
+            SkyMode::Day | SkyMode::Night => 0.0,
+            SkyMode::Solid => 12.0,
         }
     }
     /// The lowercase name used in the config and the picker.
@@ -170,6 +183,9 @@ impl SkyMode {
             SkyMode::Plasma => "plasma",
             SkyMode::Fire => "fire",
             SkyMode::Water => "water",
+            SkyMode::Day => "day",
+            SkyMode::Night => "night",
+            SkyMode::Solid => "solid",
         }
     }
     /// Resolve a selector mode to a concrete scene. Only `Seasonal` changes — mapped to
@@ -191,7 +207,12 @@ impl SkyMode {
     /// a dark scene (e.g. daytime + aurora). The light day palette is for the day sky.
     pub fn prefers_day(self) -> Option<bool> {
         match self {
-            SkyMode::Auto | SkyMode::Seasonal => None,
+            // Auto/Seasonal follow the clock; Solid is a plain gradient of whichever
+            // palette the clock selects, so it follows it too.
+            SkyMode::Auto | SkyMode::Seasonal | SkyMode::Solid => None,
+            // Day forces the light palette + daytime sky; Night forces the dark one.
+            SkyMode::Day => Some(true),
+            SkyMode::Night => Some(false),
             _ => Some(false),
         }
     }

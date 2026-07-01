@@ -1531,6 +1531,11 @@ fn night_sky(uv: vec2<f32>, p: vec2<f32>, aspect: f32) -> vec3<f32> {
   return col;
 }
 
+// Solid: just the palette gradient — no stars, comet, glow, or motion. The calmest sky.
+fn solid_sky(uv: vec2<f32>, p: vec2<f32>, aspect: f32) -> vec3<f32> {
+  return mix(u.bg_top.rgb, u.bg_bot.rgb, smoothstep(0.0, 1.0, uv.y));
+}
+
 // The base scene for the current mode — no comet/grain/vignette overlays. Shared by
 // fs_main and the frosted-card backdrop (fs_frost), so the blur matches the sky.
 fn scene_base(uv: vec2<f32>, p: vec2<f32>, aspect: f32) -> vec3<f32> {
@@ -1547,8 +1552,10 @@ fn scene_base(uv: vec2<f32>, p: vec2<f32>, aspect: f32) -> vec3<f32> {
     else if (mode < 8.5) { return fog_sky(uv, p, aspect); }
     else if (mode < 9.5) { return plasma_sky(uv, p, aspect); }
     else if (mode < 10.5) { return fire_sky(uv, p, aspect); }
-    else { return water_sky(uv, p, aspect); }
+    else if (mode < 11.5) { return water_sky(uv, p, aspect); }
+    else { return solid_sky(uv, p, aspect); }
   }
+  // mode 0 = auto/day/night: pick the daytime or night renderer by the day flag.
   if (day > 0.5) { return day_sky(uv, p, aspect); }
   return night_sky(uv, p, aspect);
 }
