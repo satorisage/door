@@ -82,8 +82,56 @@ const SEAT_FREE_KILL_SETTLE: Duration = Duration::from_millis(500);
 /// on `accept()` forever; long enough not to busy-spin.
 const GREETER_WATCH_INTERVAL: Duration = Duration::from_millis(250);
 
-/// How long the daemon waits on a stalled read before dropping the peer.
+/// How long the daemon waits on a stalled *in-flight* frame before dropping the
+/// peer. This bounds a transfer that has already begun (a partial-frame stall, à
+/// la slowloris) — it is deliberately **not** applied to the idle wait between
+/// messages, where a human is legitimately taking their time (see
+/// [`read_greeter_request`]).
 const READ_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// Read one [`Request`] from the greeter, distinguishing an idle wait from a
+/// stalled transfer.
+///
+/// The greeter sits silent between messages for as long as the human on the
+/// other end likes — standing at the login prompt before typing a username, or
+/// mid-login deciding on a password. Those waits must be **unbounded**: a blanket
+/// read timeout across the whole connection would drop the greeter the moment the
+/// user paused (the false positive that used to churn the login screen every
+/// [`READ_TIMEOUT`]). But once a message *starts* arriving it must finish
+/// promptly; a peer that dribbles a partial frame and then stalls is dropped.
+///
+/// The split is implemented by `poll`ing with no deadline until the socket is
+/// readable — which observes an incoming frame (or a clean EOF) *without*
+/// consuming any bytes — then reading the whole frame under [`READ_TIMEOUT`].
+/// [`read_frame`] sees the same bytes `poll` reported, or, on a closed peer, a
+/// zero-length read that surfaces as [`io::ErrorKind::UnexpectedEof`] — which the
+/// callers already treat as "greeter disconnected". No socket read happens during
+/// the idle wait, so the connection's own read timeout is irrelevant there.
+pub(crate) fn read_greeter_request(conn: &UnixStream) -> Result<Request, FrameError> {
+    // Idle phase: block with no deadline until a frame starts arriving.
+    let mut pfd = libc::pollfd {
+        fd: conn.as_raw_fd(),
+        events: libc::POLLIN,
+        revents: 0,
+    };
+    loop {
+        // SAFETY: one valid pollfd, count 1, infinite timeout; poll writes only revents.
+        let rc = unsafe { libc::poll(&mut pfd, 1, -1) };
+        if rc >= 0 {
+            break;
+        }
+        let err = io::Error::last_os_error();
+        if err.kind() == io::ErrorKind::Interrupted {
+            continue; // EINTR wake — re-arm the wait.
+        }
+        return Err(FrameError::Io(err));
+    }
+    // Transfer phase: a message has begun; bound it so a mid-frame stall can't
+    // pin the daemon.
+    conn.set_read_timeout(Some(READ_TIMEOUT))?;
+    let mut reader: &UnixStream = conn;
+    read_frame(&mut reader)
+}
 
 /// Floor on how long a *failed* authentication takes to report. A wrong username
 /// must not fail visibly faster than a wrong password, or the timing itself
@@ -855,6 +903,10 @@ fn handle_connection(
         cred.pid, cred.uid
     );
 
+    // Bound the handshake: a freshly-connected greeter must send its `Hello`
+    // promptly (it is machine-paced, not waiting on a human). Every subsequent
+    // greeter read goes through `read_greeter_request`, which manages its own
+    // idle-vs-transfer deadline and overrides this.
     stream.set_read_timeout(Some(READ_TIMEOUT))?;
     let mut conn = stream;
 
@@ -879,7 +931,7 @@ fn handle_connection(
     let mut login = logins.begin(greeter);
 
     loop {
-        let request: Request = match read_frame(&mut conn) {
+        let request: Request = match read_greeter_request(&conn) {
             Ok(req) => req,
             // A clean disconnect surfaces as EOF on read_exact.
             Err(FrameError::Io(e)) if e.kind() == io::ErrorKind::UnexpectedEof => {

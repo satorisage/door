@@ -29,6 +29,7 @@ use std::process::{Child, Command};
 use protocol::{read_frame, write_frame, AuthPrompt, Request, Response};
 
 use crate::config::SeatTarget;
+use crate::ipc::read_greeter_request;
 use crate::sessions::{DiscoveredSession, SessionKind};
 use crate::spawn::{LaunchError, SessionChild};
 use crate::spawner;
@@ -209,7 +210,11 @@ impl Login for WorkerLogin {
                         let _ = write_frame(&mut self.control, &WorkerCommand::Cancel);
                         return AuthOutcome::Transport;
                     }
-                    match read_frame::<_, Request>(&mut self.greeter) {
+                    // The user is typing their reply now; wait on them without a
+                    // deadline (only a mid-frame stall is bounded — see
+                    // `read_greeter_request`), or a slow typist trips the timeout
+                    // and the login screen churns out from under them.
+                    match read_greeter_request(&self.greeter) {
                         Ok(Request::AuthReply { response }) => {
                             if write_frame(&mut self.control, &WorkerCommand::Reply { response })
                                 .is_err()
