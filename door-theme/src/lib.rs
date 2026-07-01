@@ -177,10 +177,10 @@ impl SkyMode {
     pub fn resolved(self, month: u32) -> SkyMode {
         match self {
             SkyMode::Seasonal => match month {
-                3..=5 => SkyMode::Rain,        // spring
-                6..=8 => SkyMode::Meteor,      // summer (Perseids!)
-                9..=11 => SkyMode::Fog,        // autumn
-                _ => SkyMode::Snow,            // winter (12, 1, 2) + fallback
+                3..=5 => SkyMode::Rain,   // spring
+                6..=8 => SkyMode::Meteor, // summer (Perseids!)
+                9..=11 => SkyMode::Fog,   // autumn
+                _ => SkyMode::Snow,       // winter (12, 1, 2) + fallback
             },
             other => other,
         }
@@ -1394,26 +1394,47 @@ impl Theme {
         merge_f32(&mut self.cursor_parallax, file.cursor_parallax);
         merge_f32(&mut self.glow_pulse, file.glow_pulse);
         merge_f32(&mut self.synthwave_grid_speed, file.synthwave_grid_speed);
-        merge_f32(&mut self.synthwave_grid_density, file.synthwave_grid_density);
-        merge_f32(&mut self.synthwave_grid_perspective, file.synthwave_grid_perspective);
+        merge_f32(
+            &mut self.synthwave_grid_density,
+            file.synthwave_grid_density,
+        );
+        merge_f32(
+            &mut self.synthwave_grid_perspective,
+            file.synthwave_grid_perspective,
+        );
         merge_f32(&mut self.synthwave_grid_glow, file.synthwave_grid_glow);
         merge_f32(&mut self.synthwave_sun_size, file.synthwave_sun_size);
         merge_f32(&mut self.synthwave_sun_stripes, file.synthwave_sun_stripes);
         merge_f32(&mut self.synthwave_sun_bloom, file.synthwave_sun_bloom);
         merge_f32(&mut self.synthwave_horizon, file.synthwave_horizon);
-        self.synthwave_grid_color =
-            color("synthwave_grid_color", file.synthwave_grid_color, self.synthwave_grid_color);
-        self.synthwave_sky_top =
-            color("synthwave_sky_top", file.synthwave_sky_top, self.synthwave_sky_top);
-        self.synthwave_sky_bottom =
-            color("synthwave_sky_bottom", file.synthwave_sky_bottom, self.synthwave_sky_bottom);
+        self.synthwave_grid_color = color(
+            "synthwave_grid_color",
+            file.synthwave_grid_color,
+            self.synthwave_grid_color,
+        );
+        self.synthwave_sky_top = color(
+            "synthwave_sky_top",
+            file.synthwave_sky_top,
+            self.synthwave_sky_top,
+        );
+        self.synthwave_sky_bottom = color(
+            "synthwave_sky_bottom",
+            file.synthwave_sky_bottom,
+            self.synthwave_sky_bottom,
+        );
         merge_f32(&mut self.storm_lightning_rate, file.storm_lightning_rate);
         merge_f32(&mut self.storm_strike_chance, file.storm_strike_chance);
         merge_f32(&mut self.storm_cloud_density, file.storm_cloud_density);
-        self.storm_bolt_color =
-            color("storm_bolt_color", file.storm_bolt_color, self.storm_bolt_color);
-        self.storm_flash_color =
-            color("storm_flash_color", file.storm_flash_color, self.storm_flash_color);
+        self.storm_bolt_color = color(
+            "storm_bolt_color",
+            file.storm_bolt_color,
+            self.storm_bolt_color,
+        );
+        self.storm_flash_color = color(
+            "storm_flash_color",
+            file.storm_flash_color,
+            self.storm_flash_color,
+        );
         merge_f32(&mut self.rain_fall_speed, file.rain_fall_speed);
         merge_f32(&mut self.rain_density, file.rain_density);
         merge_f32(&mut self.rain_slant, file.rain_slant);
@@ -1426,8 +1447,11 @@ impl Theme {
         self.snow_color = color("snow_color", file.snow_color, self.snow_color);
         merge_f32(&mut self.fire_rise_speed, file.fire_rise_speed);
         merge_f32(&mut self.fire_flame_height, file.fire_flame_height);
-        self.fire_flame_color =
-            color("fire_flame_color", file.fire_flame_color, self.fire_flame_color);
+        self.fire_flame_color = color(
+            "fire_flame_color",
+            file.fire_flame_color,
+            self.fire_flame_color,
+        );
         self.fire_tip_color = color("fire_tip_color", file.fire_tip_color, self.fire_tip_color);
         merge_f32(&mut self.aurora_speed, file.aurora_speed);
         merge_f32(&mut self.aurora_drop, file.aurora_drop);
@@ -1443,8 +1467,11 @@ impl Theme {
         merge_f32(&mut self.water_scale, file.water_scale);
         merge_f32(&mut self.water_ripple, file.water_ripple);
         merge_f32(&mut self.water_caustic, file.water_caustic);
-        self.water_caustic_color =
-            color("water_caustic_color", file.water_caustic_color, self.water_caustic_color);
+        self.water_caustic_color = color(
+            "water_caustic_color",
+            file.water_caustic_color,
+            self.water_caustic_color,
+        );
         self.water_deep = color("water_deep", file.water_deep, self.water_deep);
         self.water_shallow = color("water_shallow", file.water_shallow, self.water_shallow);
         merge_f32(&mut self.meteor_speed, file.meteor_speed);
@@ -1452,15 +1479,21 @@ impl Theme {
         merge_f32(&mut self.meteor_trail, file.meteor_trail);
         merge_f32(&mut self.meteor_intensity, file.meteor_intensity);
         self.meteor_color = color("meteor_color", file.meteor_color, self.meteor_color);
-        self.meteor_star_color =
-            color("meteor_star_color", file.meteor_star_color, self.meteor_star_color);
+        self.meteor_star_color = color(
+            "meteor_star_color",
+            file.meteor_star_color,
+            self.meteor_star_color,
+        );
         merge_f32(&mut self.moon_size, file.moon_size);
         merge_f32(&mut self.moon_phase_speed, file.moon_phase_speed);
         merge_f32(&mut self.moon_texture, file.moon_texture);
         merge_f32(&mut self.moon_halo, file.moon_halo);
         self.moon_color = color("moon_color", file.moon_color, self.moon_color);
-        self.moon_halo_color =
-            color("moon_halo_color", file.moon_halo_color, self.moon_halo_color);
+        self.moon_halo_color = color(
+            "moon_halo_color",
+            file.moon_halo_color,
+            self.moon_halo_color,
+        );
         merge_f32(&mut self.fog_drift, file.fog_drift);
         merge_f32(&mut self.fog_scale, file.fog_scale);
         merge_f32(&mut self.fog_thickness, file.fog_thickness);
@@ -1577,8 +1610,14 @@ impl Theme {
         merge_f32(&mut self.cursor_parallax, file.cursor_parallax);
         merge_f32(&mut self.glow_pulse, file.glow_pulse);
         merge_f32(&mut self.synthwave_grid_speed, file.synthwave_grid_speed);
-        merge_f32(&mut self.synthwave_grid_density, file.synthwave_grid_density);
-        merge_f32(&mut self.synthwave_grid_perspective, file.synthwave_grid_perspective);
+        merge_f32(
+            &mut self.synthwave_grid_density,
+            file.synthwave_grid_density,
+        );
+        merge_f32(
+            &mut self.synthwave_grid_perspective,
+            file.synthwave_grid_perspective,
+        );
         merge_f32(&mut self.synthwave_grid_glow, file.synthwave_grid_glow);
         merge_f32(&mut self.synthwave_sun_size, file.synthwave_sun_size);
         merge_f32(&mut self.synthwave_sun_stripes, file.synthwave_sun_stripes);
@@ -1926,73 +1965,169 @@ impl Theme {
         out.push_str(&format!("comet_pause   = {}\n", self.comet_pause));
         out.push_str(&format!("comet_width   = {}\n", self.comet_width));
         out.push_str(&format!("cloud_lit     = {:?}\n", self.cloud_lit.to_hex()));
-        out.push_str(&format!("cloud_shadow  = {:?}\n", self.cloud_shadow.to_hex()));
+        out.push_str(&format!(
+            "cloud_shadow  = {:?}\n",
+            self.cloud_shadow.to_hex()
+        ));
         out.push_str(&format!("cursor_parallax = {}\n", self.cursor_parallax));
         out.push_str(&format!("glow_pulse    = {}\n", self.glow_pulse));
-        out.push_str(&format!("synthwave_grid_speed       = {}\n", self.synthwave_grid_speed));
-        out.push_str(&format!("synthwave_grid_density     = {}\n", self.synthwave_grid_density));
-        out.push_str(&format!("synthwave_grid_perspective = {}\n", self.synthwave_grid_perspective));
-        out.push_str(&format!("synthwave_grid_glow        = {}\n", self.synthwave_grid_glow));
-        out.push_str(&format!("synthwave_sun_size         = {}\n", self.synthwave_sun_size));
-        out.push_str(&format!("synthwave_sun_stripes      = {}\n", self.synthwave_sun_stripes));
-        out.push_str(&format!("synthwave_sun_bloom        = {}\n", self.synthwave_sun_bloom));
-        out.push_str(&format!("synthwave_horizon          = {}\n", self.synthwave_horizon));
-        out.push_str(&format!("synthwave_grid_color  = {:?}\n", self.synthwave_grid_color.to_hex()));
-        out.push_str(&format!("synthwave_sky_top     = {:?}\n", self.synthwave_sky_top.to_hex()));
-        out.push_str(&format!("synthwave_sky_bottom  = {:?}\n", self.synthwave_sky_bottom.to_hex()));
-        out.push_str(&format!("storm_lightning_rate  = {}\n", self.storm_lightning_rate));
-        out.push_str(&format!("storm_strike_chance   = {}\n", self.storm_strike_chance));
-        out.push_str(&format!("storm_cloud_density   = {}\n", self.storm_cloud_density));
-        out.push_str(&format!("storm_bolt_color      = {:?}\n", self.storm_bolt_color.to_hex()));
-        out.push_str(&format!("storm_flash_color     = {:?}\n", self.storm_flash_color.to_hex()));
+        out.push_str(&format!(
+            "synthwave_grid_speed       = {}\n",
+            self.synthwave_grid_speed
+        ));
+        out.push_str(&format!(
+            "synthwave_grid_density     = {}\n",
+            self.synthwave_grid_density
+        ));
+        out.push_str(&format!(
+            "synthwave_grid_perspective = {}\n",
+            self.synthwave_grid_perspective
+        ));
+        out.push_str(&format!(
+            "synthwave_grid_glow        = {}\n",
+            self.synthwave_grid_glow
+        ));
+        out.push_str(&format!(
+            "synthwave_sun_size         = {}\n",
+            self.synthwave_sun_size
+        ));
+        out.push_str(&format!(
+            "synthwave_sun_stripes      = {}\n",
+            self.synthwave_sun_stripes
+        ));
+        out.push_str(&format!(
+            "synthwave_sun_bloom        = {}\n",
+            self.synthwave_sun_bloom
+        ));
+        out.push_str(&format!(
+            "synthwave_horizon          = {}\n",
+            self.synthwave_horizon
+        ));
+        out.push_str(&format!(
+            "synthwave_grid_color  = {:?}\n",
+            self.synthwave_grid_color.to_hex()
+        ));
+        out.push_str(&format!(
+            "synthwave_sky_top     = {:?}\n",
+            self.synthwave_sky_top.to_hex()
+        ));
+        out.push_str(&format!(
+            "synthwave_sky_bottom  = {:?}\n",
+            self.synthwave_sky_bottom.to_hex()
+        ));
+        out.push_str(&format!(
+            "storm_lightning_rate  = {}\n",
+            self.storm_lightning_rate
+        ));
+        out.push_str(&format!(
+            "storm_strike_chance   = {}\n",
+            self.storm_strike_chance
+        ));
+        out.push_str(&format!(
+            "storm_cloud_density   = {}\n",
+            self.storm_cloud_density
+        ));
+        out.push_str(&format!(
+            "storm_bolt_color      = {:?}\n",
+            self.storm_bolt_color.to_hex()
+        ));
+        out.push_str(&format!(
+            "storm_flash_color     = {:?}\n",
+            self.storm_flash_color.to_hex()
+        ));
         out.push_str(&format!("rain_fall_speed   = {}\n", self.rain_fall_speed));
         out.push_str(&format!("rain_density      = {}\n", self.rain_density));
         out.push_str(&format!("rain_slant        = {}\n", self.rain_slant));
         out.push_str(&format!("rain_intensity    = {}\n", self.rain_intensity));
-        out.push_str(&format!("rain_color        = {:?}\n", self.rain_color.to_hex()));
+        out.push_str(&format!(
+            "rain_color        = {:?}\n",
+            self.rain_color.to_hex()
+        ));
         out.push_str(&format!("snow_fall_speed   = {}\n", self.snow_fall_speed));
         out.push_str(&format!("snow_density      = {}\n", self.snow_density));
         out.push_str(&format!("snow_sway         = {}\n", self.snow_sway));
         out.push_str(&format!("snow_flake_size   = {}\n", self.snow_flake_size));
-        out.push_str(&format!("snow_color        = {:?}\n", self.snow_color.to_hex()));
+        out.push_str(&format!(
+            "snow_color        = {:?}\n",
+            self.snow_color.to_hex()
+        ));
         out.push_str(&format!("fire_rise_speed   = {}\n", self.fire_rise_speed));
         out.push_str(&format!("fire_flame_height = {}\n", self.fire_flame_height));
-        out.push_str(&format!("fire_flame_color  = {:?}\n", self.fire_flame_color.to_hex()));
-        out.push_str(&format!("fire_tip_color    = {:?}\n", self.fire_tip_color.to_hex()));
+        out.push_str(&format!(
+            "fire_flame_color  = {:?}\n",
+            self.fire_flame_color.to_hex()
+        ));
+        out.push_str(&format!(
+            "fire_tip_color    = {:?}\n",
+            self.fire_tip_color.to_hex()
+        ));
         out.push_str(&format!("aurora_speed      = {}\n", self.aurora_speed));
         out.push_str(&format!("aurora_drop       = {}\n", self.aurora_drop));
         out.push_str(&format!("aurora_ray_freq   = {}\n", self.aurora_ray_freq));
         out.push_str(&format!("aurora_intensity  = {}\n", self.aurora_intensity));
-        out.push_str(&format!("aurora_green      = {:?}\n", self.aurora_green.to_hex()));
-        out.push_str(&format!("aurora_magenta    = {:?}\n", self.aurora_magenta.to_hex()));
+        out.push_str(&format!(
+            "aurora_green      = {:?}\n",
+            self.aurora_green.to_hex()
+        ));
+        out.push_str(&format!(
+            "aurora_magenta    = {:?}\n",
+            self.aurora_magenta.to_hex()
+        ));
         out.push_str(&format!("plasma_speed      = {}\n", self.plasma_speed));
         out.push_str(&format!("plasma_scale      = {}\n", self.plasma_scale));
         out.push_str(&format!("plasma_saturation = {}\n", self.plasma_saturation));
-        out.push_str(&format!("plasma_tint       = {:?}\n", self.plasma_tint.to_hex()));
+        out.push_str(&format!(
+            "plasma_tint       = {:?}\n",
+            self.plasma_tint.to_hex()
+        ));
         out.push_str(&format!("water_speed       = {}\n", self.water_speed));
         out.push_str(&format!("water_scale       = {}\n", self.water_scale));
         out.push_str(&format!("water_ripple      = {}\n", self.water_ripple));
         out.push_str(&format!("water_caustic     = {}\n", self.water_caustic));
-        out.push_str(&format!("water_caustic_color = {:?}\n", self.water_caustic_color.to_hex()));
-        out.push_str(&format!("water_deep        = {:?}\n", self.water_deep.to_hex()));
-        out.push_str(&format!("water_shallow     = {:?}\n", self.water_shallow.to_hex()));
+        out.push_str(&format!(
+            "water_caustic_color = {:?}\n",
+            self.water_caustic_color.to_hex()
+        ));
+        out.push_str(&format!(
+            "water_deep        = {:?}\n",
+            self.water_deep.to_hex()
+        ));
+        out.push_str(&format!(
+            "water_shallow     = {:?}\n",
+            self.water_shallow.to_hex()
+        ));
         out.push_str(&format!("meteor_speed      = {}\n", self.meteor_speed));
         out.push_str(&format!("meteor_count      = {}\n", self.meteor_count));
         out.push_str(&format!("meteor_trail      = {}\n", self.meteor_trail));
         out.push_str(&format!("meteor_intensity  = {}\n", self.meteor_intensity));
-        out.push_str(&format!("meteor_color      = {:?}\n", self.meteor_color.to_hex()));
-        out.push_str(&format!("meteor_star_color = {:?}\n", self.meteor_star_color.to_hex()));
+        out.push_str(&format!(
+            "meteor_color      = {:?}\n",
+            self.meteor_color.to_hex()
+        ));
+        out.push_str(&format!(
+            "meteor_star_color = {:?}\n",
+            self.meteor_star_color.to_hex()
+        ));
         out.push_str(&format!("moon_size         = {}\n", self.moon_size));
         out.push_str(&format!("moon_phase_speed  = {}\n", self.moon_phase_speed));
         out.push_str(&format!("moon_texture      = {}\n", self.moon_texture));
         out.push_str(&format!("moon_halo         = {}\n", self.moon_halo));
-        out.push_str(&format!("moon_color        = {:?}\n", self.moon_color.to_hex()));
-        out.push_str(&format!("moon_halo_color   = {:?}\n", self.moon_halo_color.to_hex()));
+        out.push_str(&format!(
+            "moon_color        = {:?}\n",
+            self.moon_color.to_hex()
+        ));
+        out.push_str(&format!(
+            "moon_halo_color   = {:?}\n",
+            self.moon_halo_color.to_hex()
+        ));
         out.push_str(&format!("fog_drift         = {}\n", self.fog_drift));
         out.push_str(&format!("fog_scale         = {}\n", self.fog_scale));
         out.push_str(&format!("fog_thickness     = {}\n", self.fog_thickness));
         out.push_str(&format!("fog_opacity       = {}\n", self.fog_opacity));
-        out.push_str(&format!("fog_color         = {:?}\n", self.fog_color.to_hex()));
+        out.push_str(&format!(
+            "fog_color         = {:?}\n",
+            self.fog_color.to_hex()
+        ));
         out.push_str(&format!("card_gradient = {}\n", self.card_gradient));
         out.push_str(&format!("grain         = {}\n", self.grain));
         out.push_str(&format!("vignette      = {}\n", self.vignette));
@@ -2001,7 +2136,10 @@ impl Theme {
         out.push_str(&format!("spinner_size  = {}\n", self.spinner_size));
         out.push_str(&format!("spinner_pulse = {}\n", self.spinner_pulse));
         out.push_str(&format!("spinner_orbit = {}\n", self.spinner_orbit));
-        out.push_str(&format!("spinner_style = {:?}\n", self.spinner_style.name()));
+        out.push_str(&format!(
+            "spinner_style = {:?}\n",
+            self.spinner_style.name()
+        ));
         out.push_str(&format!(
             "card_shadow_blur    = {}\n",
             self.card_shadow_blur
@@ -2172,17 +2310,24 @@ mod tests {
         // Every packaged preset must parse as a day+night pair (auto-covers new ones).
         let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../dist/door/presets");
         let mut count = 0;
-        for entry in std::fs::read_dir(dir).expect("presets dir must exist").flatten() {
+        for entry in std::fs::read_dir(dir)
+            .expect("presets dir must exist")
+            .flatten()
+        {
             let path = entry.path();
             if path.extension().and_then(|e| e.to_str()) != Some("toml") {
                 continue;
             }
             let raw = std::fs::read_to_string(&path).expect("read preset");
-            Theme::parse_pair(&raw)
-                .unwrap_or_else(|e| panic!("preset {:?} must parse: {e}", path.file_name().unwrap()));
+            Theme::parse_pair(&raw).unwrap_or_else(|e| {
+                panic!("preset {:?} must parse: {e}", path.file_name().unwrap())
+            });
             count += 1;
         }
-        assert!(count >= 12, "expected the preset library, found only {count}");
+        assert!(
+            count >= 12,
+            "expected the preset library, found only {count}"
+        );
     }
 
     #[test]

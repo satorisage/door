@@ -929,7 +929,11 @@ impl State {
     /// the read counterpart to [`set`](Self::set), for the visual picker. Non-color
     /// params return empty (the picker only opens on colors).
     fn color_hex(&self, param: Param) -> &str {
-        let pal = if self.editing_day { &self.day } else { &self.night };
+        let pal = if self.editing_day {
+            &self.day
+        } else {
+            &self.night
+        };
         match param {
             Param::Background => &pal.background,
             Param::Card => &pal.card,
@@ -1367,7 +1371,9 @@ fn update(state: &mut State, message: Message) -> Task<Message> {
                             Err(e) => state.status = format!("Export failed: {e}"),
                         }
                     }
-                    (Err(e), _) | (_, Err(e)) => state.status = format!("Fix before exporting: {e}"),
+                    (Err(e), _) | (_, Err(e)) => {
+                        state.status = format!("Fix before exporting: {e}")
+                    }
                 }
             }
         }
@@ -1538,7 +1544,9 @@ fn view(state: &State) -> Element<'_, Message> {
         container(text(fps_label).size(11).color(c(0xc8, 0xcc, 0xd4)))
             .padding([3.0, 8.0])
             .style(|_t: &iced::Theme| container::Style {
-                background: Some(Background::Color(IColor::from_rgba8(0x00, 0x00, 0x00, 0.45))),
+                background: Some(Background::Color(IColor::from_rgba8(
+                    0x00, 0x00, 0x00, 0.45,
+                ))),
                 border: Border {
                     radius: 8.0.into(),
                     width: 1.0,
@@ -1588,7 +1596,9 @@ fn controls(state: &State) -> Element<'_, Message> {
     // Help / Advanced toggles (Advanced reveals expert controls; also via `--expert`).
     let header = row![
         text("door").size(26).color(c(FG.0, FG.1, FG.2)),
-        text("greeter").size(26).color(c(ACCENT.0, ACCENT.1, ACCENT.2)),
+        text("greeter")
+            .size(26)
+            .color(c(ACCENT.0, ACCENT.1, ACCENT.2)),
         Space::new().width(Length::Fill),
         tip(
             toggler(state.help_on)
@@ -2254,15 +2264,42 @@ fn storm_group(state: &State, h: bool) -> Element<'_, Message> {
     group(
         "STORM",
         two_col(vec![
-            helped(slider_row("Lightning rate", state.storm_lightning_rate, 0.1..=2.0, 0.05,
-                format!("{:.2}", state.storm_lightning_rate), Message::StLightningRate),
-                "How often lightning may strike (windows per second).", h),
-            helped(slider_row("Strike chance", state.storm_strike_chance, 0.0..=1.0, 0.02,
-                format!("{:.0}%", state.storm_strike_chance * 100.0), Message::StStrikeChance),
-                "Odds a given window actually flashes.", h),
-            helped(slider_row("Cloud density", state.storm_cloud_density, 0.0..=2.5, 0.05,
-                format!("{:.2}", state.storm_cloud_density), Message::StCloudDensity),
-                "How heavy the churning clouds read.", h),
+            helped(
+                slider_row(
+                    "Lightning rate",
+                    state.storm_lightning_rate,
+                    0.1..=2.0,
+                    0.05,
+                    format!("{:.2}", state.storm_lightning_rate),
+                    Message::StLightningRate,
+                ),
+                "How often lightning may strike (windows per second).",
+                h,
+            ),
+            helped(
+                slider_row(
+                    "Strike chance",
+                    state.storm_strike_chance,
+                    0.0..=1.0,
+                    0.02,
+                    format!("{:.0}%", state.storm_strike_chance * 100.0),
+                    Message::StStrikeChance,
+                ),
+                "Odds a given window actually flashes.",
+                h,
+            ),
+            helped(
+                slider_row(
+                    "Cloud density",
+                    state.storm_cloud_density,
+                    0.0..=2.5,
+                    0.05,
+                    format!("{:.2}", state.storm_cloud_density),
+                    Message::StCloudDensity,
+                ),
+                "How heavy the churning clouds read.",
+                h,
+            ),
             color_cell_with("Bolt", &state.storm_bolt_color, Message::StBoltColor),
             color_cell_with("Flash", &state.storm_flash_color, Message::StFlashColor),
         ]),
@@ -2274,18 +2311,54 @@ fn rain_group(state: &State, h: bool) -> Element<'_, Message> {
     group(
         "RAIN",
         two_col(vec![
-            helped(slider_row("Fall speed", state.rain_fall_speed, 1.0..=12.0, 0.1,
-                format!("{:.1}", state.rain_fall_speed), Message::RainFallSpeed),
-                "How fast the streaks fall.", h),
-            helped(slider_row("Density", state.rain_density, 0.0..=0.30, 0.005,
-                format!("{:.3}", state.rain_density), Message::RainDensity),
-                "How many streaks fill the sky (0 = clear).", h),
-            helped(slider_row("Slant", state.rain_slant, 0.0..=10.0, 0.1,
-                format!("{:.1}", state.rain_slant), Message::RainSlant),
-                "Diagonal lean of the rain (0 = straight down).", h),
-            helped(slider_row("Brightness", state.rain_intensity, 0.0..=1.2, 0.02,
-                format!("{:.2}", state.rain_intensity), Message::RainIntensity),
-                "How brightly the streaks read against the sky.", h),
+            helped(
+                slider_row(
+                    "Fall speed",
+                    state.rain_fall_speed,
+                    1.0..=12.0,
+                    0.1,
+                    format!("{:.1}", state.rain_fall_speed),
+                    Message::RainFallSpeed,
+                ),
+                "How fast the streaks fall.",
+                h,
+            ),
+            helped(
+                slider_row(
+                    "Density",
+                    state.rain_density,
+                    0.0..=0.30,
+                    0.005,
+                    format!("{:.3}", state.rain_density),
+                    Message::RainDensity,
+                ),
+                "How many streaks fill the sky (0 = clear).",
+                h,
+            ),
+            helped(
+                slider_row(
+                    "Slant",
+                    state.rain_slant,
+                    0.0..=10.0,
+                    0.1,
+                    format!("{:.1}", state.rain_slant),
+                    Message::RainSlant,
+                ),
+                "Diagonal lean of the rain (0 = straight down).",
+                h,
+            ),
+            helped(
+                slider_row(
+                    "Brightness",
+                    state.rain_intensity,
+                    0.0..=1.2,
+                    0.02,
+                    format!("{:.2}", state.rain_intensity),
+                    Message::RainIntensity,
+                ),
+                "How brightly the streaks read against the sky.",
+                h,
+            ),
             color_cell_with("Rain", &state.rain_color, Message::RainColor),
         ]),
     )
@@ -2296,18 +2369,54 @@ fn snow_group(state: &State, h: bool) -> Element<'_, Message> {
     group(
         "SNOW",
         two_col(vec![
-            helped(slider_row("Fall speed", state.snow_fall_speed, 0.2..=3.0, 0.05,
-                format!("{:.2}", state.snow_fall_speed), Message::SnowFallSpeed),
-                "How fast the flakes drift down.", h),
-            helped(slider_row("Density", state.snow_density, 0.0..=0.30, 0.005,
-                format!("{:.3}", state.snow_density), Message::SnowDensity),
-                "How many flakes fill the sky (0 = clear).", h),
-            helped(slider_row("Sway", state.snow_sway, 0.0..=2.0, 0.02,
-                format!("{:.2}", state.snow_sway), Message::SnowSway),
-                "How much the flakes wander side to side.", h),
-            helped(slider_row("Flake size", state.snow_flake_size, 8.0..=36.0, 0.5,
-                format!("{:.0}", state.snow_flake_size), Message::SnowFlakeSize),
-                "Higher = smaller, finer flakes.", h),
+            helped(
+                slider_row(
+                    "Fall speed",
+                    state.snow_fall_speed,
+                    0.2..=3.0,
+                    0.05,
+                    format!("{:.2}", state.snow_fall_speed),
+                    Message::SnowFallSpeed,
+                ),
+                "How fast the flakes drift down.",
+                h,
+            ),
+            helped(
+                slider_row(
+                    "Density",
+                    state.snow_density,
+                    0.0..=0.30,
+                    0.005,
+                    format!("{:.3}", state.snow_density),
+                    Message::SnowDensity,
+                ),
+                "How many flakes fill the sky (0 = clear).",
+                h,
+            ),
+            helped(
+                slider_row(
+                    "Sway",
+                    state.snow_sway,
+                    0.0..=2.0,
+                    0.02,
+                    format!("{:.2}", state.snow_sway),
+                    Message::SnowSway,
+                ),
+                "How much the flakes wander side to side.",
+                h,
+            ),
+            helped(
+                slider_row(
+                    "Flake size",
+                    state.snow_flake_size,
+                    8.0..=36.0,
+                    0.5,
+                    format!("{:.0}", state.snow_flake_size),
+                    Message::SnowFlakeSize,
+                ),
+                "Higher = smaller, finer flakes.",
+                h,
+            ),
             color_cell_with("Flake", &state.snow_color, Message::SnowColor),
         ]),
     )
@@ -2318,12 +2427,30 @@ fn fire_group(state: &State, h: bool) -> Element<'_, Message> {
     group(
         "FIRE",
         two_col(vec![
-            helped(slider_row("Rise speed", state.fire_rise_speed, 0.5..=5.0, 0.05,
-                format!("{:.2}", state.fire_rise_speed), Message::FireRiseSpeed),
-                "How fast the flames scroll upward.", h),
-            helped(slider_row("Flame height", state.fire_flame_height, 0.0..=0.5, 0.005,
-                format!("{:.3}", state.fire_flame_height), Message::FireFlameHeight),
-                "Lower = taller flames reaching up the screen.", h),
+            helped(
+                slider_row(
+                    "Rise speed",
+                    state.fire_rise_speed,
+                    0.5..=5.0,
+                    0.05,
+                    format!("{:.2}", state.fire_rise_speed),
+                    Message::FireRiseSpeed,
+                ),
+                "How fast the flames scroll upward.",
+                h,
+            ),
+            helped(
+                slider_row(
+                    "Flame height",
+                    state.fire_flame_height,
+                    0.0..=0.5,
+                    0.005,
+                    format!("{:.3}", state.fire_flame_height),
+                    Message::FireFlameHeight,
+                ),
+                "Lower = taller flames reaching up the screen.",
+                h,
+            ),
             color_cell_with("Flame", &state.fire_flame_color, Message::FireFlameColor),
             color_cell_with("Tip", &state.fire_tip_color, Message::FireTipColor),
         ]),
@@ -2335,18 +2462,54 @@ fn aurora_group(state: &State, h: bool) -> Element<'_, Message> {
     group(
         "AURORA",
         two_col(vec![
-            helped(slider_row("Drift speed", state.aurora_speed, 0.0..=0.6, 0.005,
-                format!("{:.3}", state.aurora_speed), Message::AuroraSpeed),
-                "How fast the curtains wave across the sky.", h),
-            helped(slider_row("Curtain length", state.aurora_drop, 1.5..=6.0, 0.05,
-                format!("{:.2}", state.aurora_drop), Message::AuroraDrop),
-                "Lower = longer curtains hanging down the sky.", h),
-            helped(slider_row("Shimmer", state.aurora_ray_freq, 15.0..=90.0, 1.0,
-                format!("{:.0}", state.aurora_ray_freq), Message::AuroraRayFreq),
-                "Frequency of the vertical ray striations.", h),
-            helped(slider_row("Brightness", state.aurora_intensity, 0.0..=1.2, 0.02,
-                format!("{:.2}", state.aurora_intensity), Message::AuroraIntensity),
-                "Overall glow of the curtains.", h),
+            helped(
+                slider_row(
+                    "Drift speed",
+                    state.aurora_speed,
+                    0.0..=0.6,
+                    0.005,
+                    format!("{:.3}", state.aurora_speed),
+                    Message::AuroraSpeed,
+                ),
+                "How fast the curtains wave across the sky.",
+                h,
+            ),
+            helped(
+                slider_row(
+                    "Curtain length",
+                    state.aurora_drop,
+                    1.5..=6.0,
+                    0.05,
+                    format!("{:.2}", state.aurora_drop),
+                    Message::AuroraDrop,
+                ),
+                "Lower = longer curtains hanging down the sky.",
+                h,
+            ),
+            helped(
+                slider_row(
+                    "Shimmer",
+                    state.aurora_ray_freq,
+                    15.0..=90.0,
+                    1.0,
+                    format!("{:.0}", state.aurora_ray_freq),
+                    Message::AuroraRayFreq,
+                ),
+                "Frequency of the vertical ray striations.",
+                h,
+            ),
+            helped(
+                slider_row(
+                    "Brightness",
+                    state.aurora_intensity,
+                    0.0..=1.2,
+                    0.02,
+                    format!("{:.2}", state.aurora_intensity),
+                    Message::AuroraIntensity,
+                ),
+                "Overall glow of the curtains.",
+                h,
+            ),
             color_cell_with("Green", &state.aurora_green, Message::AuroraGreen),
             color_cell_with("Magenta", &state.aurora_magenta, Message::AuroraMagenta),
         ]),
@@ -2358,15 +2521,42 @@ fn plasma_group(state: &State, h: bool) -> Element<'_, Message> {
     group(
         "PLASMA",
         two_col(vec![
-            helped(slider_row("Flow speed", state.plasma_speed, 0.0..=1.5, 0.01,
-                format!("{:.2}", state.plasma_speed), Message::PlasmaSpeed),
-                "How fast the plasma churns.", h),
-            helped(slider_row("Scale", state.plasma_scale, 3.0..=18.0, 0.1,
-                format!("{:.1}", state.plasma_scale), Message::PlasmaScale),
-                "Higher = finer, busier cells.", h),
-            helped(slider_row("Saturation", state.plasma_saturation, 0.0..=0.5, 0.01,
-                format!("{:.2}", state.plasma_saturation), Message::PlasmaSaturation),
-                "0 = washed grey, 0.5 = full rainbow.", h),
+            helped(
+                slider_row(
+                    "Flow speed",
+                    state.plasma_speed,
+                    0.0..=1.5,
+                    0.01,
+                    format!("{:.2}", state.plasma_speed),
+                    Message::PlasmaSpeed,
+                ),
+                "How fast the plasma churns.",
+                h,
+            ),
+            helped(
+                slider_row(
+                    "Scale",
+                    state.plasma_scale,
+                    3.0..=18.0,
+                    0.1,
+                    format!("{:.1}", state.plasma_scale),
+                    Message::PlasmaScale,
+                ),
+                "Higher = finer, busier cells.",
+                h,
+            ),
+            helped(
+                slider_row(
+                    "Saturation",
+                    state.plasma_saturation,
+                    0.0..=0.5,
+                    0.01,
+                    format!("{:.2}", state.plasma_saturation),
+                    Message::PlasmaSaturation,
+                ),
+                "0 = washed grey, 0.5 = full rainbow.",
+                h,
+            ),
             color_cell_with("Tint", &state.plasma_tint, Message::PlasmaTint),
         ]),
     )
@@ -2377,19 +2567,59 @@ fn water_group(state: &State, h: bool) -> Element<'_, Message> {
     group(
         "WATER",
         two_col(vec![
-            helped(slider_row("Flow speed", state.water_speed, 0.0..=1.5, 0.01,
-                format!("{:.2}", state.water_speed), Message::WaterSpeed),
-                "How fast the surface ripples move.", h),
-            helped(slider_row("Ripple scale", state.water_scale, 2.0..=10.0, 0.1,
-                format!("{:.1}", state.water_scale), Message::WaterScale),
-                "Higher = finer, tighter ripples.", h),
-            helped(slider_row("Distortion", state.water_ripple, 0.0..=1.2, 0.02,
-                format!("{:.2}", state.water_ripple), Message::WaterRipple),
-                "How much the ripples warp the caustic web.", h),
-            helped(slider_row("Caustic glow", state.water_caustic, 0.0..=1.6, 0.02,
-                format!("{:.2}", state.water_caustic), Message::WaterCaustic),
-                "Brightness of the bright caustic network.", h),
-            color_cell_with("Caustic", &state.water_caustic_color, Message::WaterCausticColor),
+            helped(
+                slider_row(
+                    "Flow speed",
+                    state.water_speed,
+                    0.0..=1.5,
+                    0.01,
+                    format!("{:.2}", state.water_speed),
+                    Message::WaterSpeed,
+                ),
+                "How fast the surface ripples move.",
+                h,
+            ),
+            helped(
+                slider_row(
+                    "Ripple scale",
+                    state.water_scale,
+                    2.0..=10.0,
+                    0.1,
+                    format!("{:.1}", state.water_scale),
+                    Message::WaterScale,
+                ),
+                "Higher = finer, tighter ripples.",
+                h,
+            ),
+            helped(
+                slider_row(
+                    "Distortion",
+                    state.water_ripple,
+                    0.0..=1.2,
+                    0.02,
+                    format!("{:.2}", state.water_ripple),
+                    Message::WaterRipple,
+                ),
+                "How much the ripples warp the caustic web.",
+                h,
+            ),
+            helped(
+                slider_row(
+                    "Caustic glow",
+                    state.water_caustic,
+                    0.0..=1.6,
+                    0.02,
+                    format!("{:.2}", state.water_caustic),
+                    Message::WaterCaustic,
+                ),
+                "Brightness of the bright caustic network.",
+                h,
+            ),
+            color_cell_with(
+                "Caustic",
+                &state.water_caustic_color,
+                Message::WaterCausticColor,
+            ),
             color_cell_with("Deep", &state.water_deep, Message::WaterDeep),
             color_cell_with("Shallow", &state.water_shallow, Message::WaterShallow),
         ]),
@@ -2401,18 +2631,54 @@ fn meteor_group(state: &State, h: bool) -> Element<'_, Message> {
     group(
         "METEOR",
         two_col(vec![
-            helped(slider_row("Speed", state.meteor_speed, 0.05..=0.6, 0.005,
-                format!("{:.3}", state.meteor_speed), Message::MeteorSpeed),
-                "How fast the meteors streak across.", h),
-            helped(slider_row("Count", state.meteor_count, 1.0..=30.0, 1.0,
-                format!("{:.0}", state.meteor_count), Message::MeteorCount),
-                "How many shooting stars at once.", h),
-            helped(slider_row("Trail decay", state.meteor_trail, 12.0..=45.0, 0.5,
-                format!("{:.0}", state.meteor_trail), Message::MeteorTrail),
-                "Higher = shorter, crisper trails.", h),
-            helped(slider_row("Brightness", state.meteor_intensity, 0.0..=2.0, 0.02,
-                format!("{:.2}", state.meteor_intensity), Message::MeteorIntensity),
-                "Overall meteor glow.", h),
+            helped(
+                slider_row(
+                    "Speed",
+                    state.meteor_speed,
+                    0.05..=0.6,
+                    0.005,
+                    format!("{:.3}", state.meteor_speed),
+                    Message::MeteorSpeed,
+                ),
+                "How fast the meteors streak across.",
+                h,
+            ),
+            helped(
+                slider_row(
+                    "Count",
+                    state.meteor_count,
+                    1.0..=30.0,
+                    1.0,
+                    format!("{:.0}", state.meteor_count),
+                    Message::MeteorCount,
+                ),
+                "How many shooting stars at once.",
+                h,
+            ),
+            helped(
+                slider_row(
+                    "Trail decay",
+                    state.meteor_trail,
+                    12.0..=45.0,
+                    0.5,
+                    format!("{:.0}", state.meteor_trail),
+                    Message::MeteorTrail,
+                ),
+                "Higher = shorter, crisper trails.",
+                h,
+            ),
+            helped(
+                slider_row(
+                    "Brightness",
+                    state.meteor_intensity,
+                    0.0..=2.0,
+                    0.02,
+                    format!("{:.2}", state.meteor_intensity),
+                    Message::MeteorIntensity,
+                ),
+                "Overall meteor glow.",
+                h,
+            ),
             color_cell_with("Meteor", &state.meteor_color, Message::MeteorColor),
             color_cell_with("Stars", &state.meteor_star_color, Message::MeteorStarColor),
         ]),
@@ -2424,18 +2690,54 @@ fn moon_group(state: &State, h: bool) -> Element<'_, Message> {
     group(
         "MOON",
         two_col(vec![
-            helped(slider_row("Size", state.moon_size, 0.06..=0.35, 0.005,
-                format!("{:.3}", state.moon_size), Message::MoonSize),
-                "Radius of the moon disc.", h),
-            helped(slider_row("Phase speed", state.moon_phase_speed, 0.0..=0.3, 0.005,
-                format!("{:.3}", state.moon_phase_speed), Message::MoonPhaseSpeed),
-                "How fast the phase (terminator) drifts. 0 = frozen.", h),
-            helped(slider_row("Texture", state.moon_texture, 0.0..=0.5, 0.01,
-                format!("{:.2}", state.moon_texture), Message::MoonTexture),
-                "Surface mottling — the darker 'maria'.", h),
-            helped(slider_row("Halo", state.moon_halo, 0.0..=0.8, 0.01,
-                format!("{:.2}", state.moon_halo), Message::MoonHalo),
-                "Strength of the soft glow around the moon.", h),
+            helped(
+                slider_row(
+                    "Size",
+                    state.moon_size,
+                    0.06..=0.35,
+                    0.005,
+                    format!("{:.3}", state.moon_size),
+                    Message::MoonSize,
+                ),
+                "Radius of the moon disc.",
+                h,
+            ),
+            helped(
+                slider_row(
+                    "Phase speed",
+                    state.moon_phase_speed,
+                    0.0..=0.3,
+                    0.005,
+                    format!("{:.3}", state.moon_phase_speed),
+                    Message::MoonPhaseSpeed,
+                ),
+                "How fast the phase (terminator) drifts. 0 = frozen.",
+                h,
+            ),
+            helped(
+                slider_row(
+                    "Texture",
+                    state.moon_texture,
+                    0.0..=0.5,
+                    0.01,
+                    format!("{:.2}", state.moon_texture),
+                    Message::MoonTexture,
+                ),
+                "Surface mottling — the darker 'maria'.",
+                h,
+            ),
+            helped(
+                slider_row(
+                    "Halo",
+                    state.moon_halo,
+                    0.0..=0.8,
+                    0.01,
+                    format!("{:.2}", state.moon_halo),
+                    Message::MoonHalo,
+                ),
+                "Strength of the soft glow around the moon.",
+                h,
+            ),
             color_cell_with("Moon", &state.moon_color, Message::MoonColor),
             color_cell_with("Halo", &state.moon_halo_color, Message::MoonHaloColor),
         ]),
@@ -2447,18 +2749,54 @@ fn fog_group(state: &State, h: bool) -> Element<'_, Message> {
     group(
         "FOG",
         two_col(vec![
-            helped(slider_row("Drift speed", state.fog_drift, 0.0..=0.12, 0.002,
-                format!("{:.3}", state.fog_drift), Message::FogDrift),
-                "How fast the fog banks drift.", h),
-            helped(slider_row("Scale", state.fog_scale, 0.5..=3.5, 0.05,
-                format!("{:.2}", state.fog_scale), Message::FogScale),
-                "Higher = finer, wispier banks.", h),
-            helped(slider_row("Thickness", state.fog_thickness, 0.0..=0.9, 0.01,
-                format!("{:.2}", state.fog_thickness), Message::FogThickness),
-                "Density of the fog banks.", h),
-            helped(slider_row("Opacity", state.fog_opacity, 0.0..=1.0, 0.02,
-                format!("{:.2}", state.fog_opacity), Message::FogOpacity),
-                "How much the fog veils the sky behind it.", h),
+            helped(
+                slider_row(
+                    "Drift speed",
+                    state.fog_drift,
+                    0.0..=0.12,
+                    0.002,
+                    format!("{:.3}", state.fog_drift),
+                    Message::FogDrift,
+                ),
+                "How fast the fog banks drift.",
+                h,
+            ),
+            helped(
+                slider_row(
+                    "Scale",
+                    state.fog_scale,
+                    0.5..=3.5,
+                    0.05,
+                    format!("{:.2}", state.fog_scale),
+                    Message::FogScale,
+                ),
+                "Higher = finer, wispier banks.",
+                h,
+            ),
+            helped(
+                slider_row(
+                    "Thickness",
+                    state.fog_thickness,
+                    0.0..=0.9,
+                    0.01,
+                    format!("{:.2}", state.fog_thickness),
+                    Message::FogThickness,
+                ),
+                "Density of the fog banks.",
+                h,
+            ),
+            helped(
+                slider_row(
+                    "Opacity",
+                    state.fog_opacity,
+                    0.0..=1.0,
+                    0.02,
+                    format!("{:.2}", state.fog_opacity),
+                    Message::FogOpacity,
+                ),
+                "How much the fog veils the sky behind it.",
+                h,
+            ),
             color_cell_with("Fog", &state.fog_color, Message::FogColor),
         ]),
     )
@@ -2467,40 +2805,118 @@ fn fog_group(state: &State, h: bool) -> Element<'_, Message> {
 /// The synthwave scene's authoring controls (M8 pilot) — the exact dials behind its
 /// grid, sun, and sky. Two columns; only rendered when `sky_mode = synthwave`.
 fn synthwave_group(state: &State, h: bool) -> Element<'_, Message> {
-    let s = |label: &'static str, v: f32, range: std::ops::RangeInclusive<f32>, step: f32,
-             disp: String, on: fn(f32) -> Message| {
-        slider_row(label, v, range, step, disp, on)
-    };
+    let s = |label: &'static str,
+             v: f32,
+             range: std::ops::RangeInclusive<f32>,
+             step: f32,
+             disp: String,
+             on: fn(f32) -> Message| { slider_row(label, v, range, step, disp, on) };
     group(
         "SYNTHWAVE",
         two_col(vec![
-            helped(s("Grid speed", state.synthwave_grid_speed, 0.0..=3.0, 0.02,
-                format!("{:.2}", state.synthwave_grid_speed), Message::SwGridSpeed),
-                "How fast the grid scrolls toward you.", h),
-            helped(s("Grid density", state.synthwave_grid_density, 0.20..=1.00, 0.01,
-                format!("{:.2}", state.synthwave_grid_density), Message::SwGridDensity),
-                "Spacing of the grid lines (higher = more).", h),
-            helped(s("Perspective", state.synthwave_grid_perspective, 0.30..=1.00, 0.01,
-                format!("{:.2}", state.synthwave_grid_perspective), Message::SwGridPerspective),
-                "How wide the grid spreads toward the front.", h),
-            helped(s("Grid glow", state.synthwave_grid_glow, 0.0..=1.40, 0.02,
-                format!("{:.2}", state.synthwave_grid_glow), Message::SwGridGlow),
-                "Brightness of the neon grid.", h),
-            helped(s("Sun size", state.synthwave_sun_size, 0.10..=0.38, 0.004,
-                format!("{:.3}", state.synthwave_sun_size), Message::SwSunSize),
-                "Radius of the sun on the horizon.", h),
-            helped(s("Sun stripes", state.synthwave_sun_stripes, 0.0..=160.0, 2.0,
-                format!("{:.0}", state.synthwave_sun_stripes), Message::SwSunStripes),
-                "Frequency of the sun's dark bands (0 = solid).", h),
-            helped(s("Sun bloom", state.synthwave_sun_bloom, 0.0..=0.70, 0.01,
-                format!("{:.2}", state.synthwave_sun_bloom), Message::SwSunBloom),
-                "Soft glow around the sun.", h),
-            helped(s("Horizon", state.synthwave_horizon, 0.35..=0.75, 0.005,
-                format!("{:.2}", state.synthwave_horizon), Message::SwHorizon),
-                "Where the ground meets the sky.", h),
+            helped(
+                s(
+                    "Grid speed",
+                    state.synthwave_grid_speed,
+                    0.0..=3.0,
+                    0.02,
+                    format!("{:.2}", state.synthwave_grid_speed),
+                    Message::SwGridSpeed,
+                ),
+                "How fast the grid scrolls toward you.",
+                h,
+            ),
+            helped(
+                s(
+                    "Grid density",
+                    state.synthwave_grid_density,
+                    0.20..=1.00,
+                    0.01,
+                    format!("{:.2}", state.synthwave_grid_density),
+                    Message::SwGridDensity,
+                ),
+                "Spacing of the grid lines (higher = more).",
+                h,
+            ),
+            helped(
+                s(
+                    "Perspective",
+                    state.synthwave_grid_perspective,
+                    0.30..=1.00,
+                    0.01,
+                    format!("{:.2}", state.synthwave_grid_perspective),
+                    Message::SwGridPerspective,
+                ),
+                "How wide the grid spreads toward the front.",
+                h,
+            ),
+            helped(
+                s(
+                    "Grid glow",
+                    state.synthwave_grid_glow,
+                    0.0..=1.40,
+                    0.02,
+                    format!("{:.2}", state.synthwave_grid_glow),
+                    Message::SwGridGlow,
+                ),
+                "Brightness of the neon grid.",
+                h,
+            ),
+            helped(
+                s(
+                    "Sun size",
+                    state.synthwave_sun_size,
+                    0.10..=0.38,
+                    0.004,
+                    format!("{:.3}", state.synthwave_sun_size),
+                    Message::SwSunSize,
+                ),
+                "Radius of the sun on the horizon.",
+                h,
+            ),
+            helped(
+                s(
+                    "Sun stripes",
+                    state.synthwave_sun_stripes,
+                    0.0..=160.0,
+                    2.0,
+                    format!("{:.0}", state.synthwave_sun_stripes),
+                    Message::SwSunStripes,
+                ),
+                "Frequency of the sun's dark bands (0 = solid).",
+                h,
+            ),
+            helped(
+                s(
+                    "Sun bloom",
+                    state.synthwave_sun_bloom,
+                    0.0..=0.70,
+                    0.01,
+                    format!("{:.2}", state.synthwave_sun_bloom),
+                    Message::SwSunBloom,
+                ),
+                "Soft glow around the sun.",
+                h,
+            ),
+            helped(
+                s(
+                    "Horizon",
+                    state.synthwave_horizon,
+                    0.35..=0.75,
+                    0.005,
+                    format!("{:.2}", state.synthwave_horizon),
+                    Message::SwHorizon,
+                ),
+                "Where the ground meets the sky.",
+                h,
+            ),
             color_cell_with("Grid", &state.synthwave_grid_color, Message::SwGridColor),
             color_cell_with("Sky top", &state.synthwave_sky_top, Message::SwSkyTop),
-            color_cell_with("Sky base", &state.synthwave_sky_bottom, Message::SwSkyBottom),
+            color_cell_with(
+                "Sky base",
+                &state.synthwave_sky_bottom,
+                Message::SwSkyBottom,
+            ),
         ]),
     )
 }
@@ -2656,22 +3072,22 @@ fn card_tab<'a>(state: &'a State, h: bool) -> Element<'a, Message> {
                 .align_y(Alignment::Center)
                 .into(),
                 "Where the login card sits on screen.",
-                h
+                h,
             ),
             helped(
                 plain_row(
                     "Card rounding",
                     &state.corner_radius,
                     "16",
-                    Param::CornerRadius
+                    Param::CornerRadius,
                 ),
                 "Corner radius of the login card (px).",
-                h
+                h,
             ),
             helped(
                 plain_row("Card width", &state.card_width, "300", Param::CardWidth),
                 "Width of the login card (px).",
-                h
+                h,
             ),
             helped(
                 slider_row(
@@ -2680,10 +3096,10 @@ fn card_tab<'a>(state: &'a State, h: bool) -> Element<'a, Message> {
                     0.0..=30.0,
                     1.0,
                     format!("{:.0}px", state.field_radius),
-                    Message::FieldRadius
+                    Message::FieldRadius,
                 ),
                 "Corner radius of inputs and buttons (px).",
-                h
+                h,
             ),
             helped(
                 slider_row(
@@ -2692,10 +3108,10 @@ fn card_tab<'a>(state: &'a State, h: bool) -> Element<'a, Message> {
                     0.0..=80.0,
                     1.0,
                     format!("{:.0}px", state.card_shadow_blur),
-                    Message::CardShadowBlur
+                    Message::CardShadowBlur,
                 ),
                 "Softness of the card's drop shadow.",
-                h
+                h,
             ),
             helped(
                 slider_row(
@@ -2704,10 +3120,10 @@ fn card_tab<'a>(state: &'a State, h: bool) -> Element<'a, Message> {
                     0.0..=1.0,
                     0.01,
                     format!("{}%", (state.card_shadow_opacity * 100.0).round() as u32),
-                    Message::CardShadowOpacity
+                    Message::CardShadowOpacity,
                 ),
                 "Darkness of the card's drop shadow.",
-                h
+                h,
             ),
             helped(
                 slider_row(
@@ -2716,10 +3132,10 @@ fn card_tab<'a>(state: &'a State, h: bool) -> Element<'a, Message> {
                     0.0..=4.0,
                     0.1,
                     format!("{:.1}×", state.accent_breathing),
-                    Message::AccentBreathing
+                    Message::AccentBreathing,
                 ),
                 "Speed of the card's glowing accent edge (0 = steady).",
-                h
+                h,
             ),
             helped(
                 slider_row(
@@ -2728,15 +3144,15 @@ fn card_tab<'a>(state: &'a State, h: bool) -> Element<'a, Message> {
                     0.0..=1.0,
                     0.01,
                     format!("{}%", (state.card_gradient * 100.0).round() as u32),
-                    Message::CardGradient
+                    Message::CardGradient,
                 ),
                 "Vertical gradient on the card (0 = flat).",
-                h
+                h,
             ),
             helped(
                 toggle_row("Backdrop blur", state.card_blur, Message::CardBlur),
                 "Frost the sky behind the card (best with a translucent card).",
-                h
+                h,
             ),
         ]),
     );
@@ -2750,12 +3166,12 @@ fn behavior_tab<'a>(state: &'a State, h: bool) -> Element<'a, Message> {
             helped(
                 plain_row("Font", &state.font, "(stock font)", Param::Font),
                 "Installed font family; blank = stock.",
-                h
+                h,
             ),
             helped(
                 toggle_row("Clock + date", state.show_clock, Message::ToggleClock),
                 "Show the time and date on the card.",
-                h
+                h,
             ),
             helped(
                 row![
@@ -2773,17 +3189,17 @@ fn behavior_tab<'a>(state: &'a State, h: bool) -> Element<'a, Message> {
                 .align_y(Alignment::Center)
                 .into(),
                 "Digital readout or a drawn analog clock face.",
-                h
+                h,
             ),
             helped(
                 toggle_row("24-hour clock", state.clock_24h, Message::Clock24h),
                 "Use 24-hour time instead of AM/PM.",
-                h
+                h,
             ),
             helped(
                 toggle_row("Show seconds", state.clock_seconds, Message::ClockSeconds),
                 "Show seconds on the clock (HH:MM:SS).",
-                h
+                h,
             ),
             helped(
                 row![
@@ -2801,7 +3217,7 @@ fn behavior_tab<'a>(state: &'a State, h: bool) -> Element<'a, Message> {
                 .align_y(Alignment::Center)
                 .into(),
                 "Custom strftime format; blank = built-in. Ignored for analog.",
-                h
+                h,
             ),
             helped(
                 slider_row(
@@ -2810,10 +3226,10 @@ fn behavior_tab<'a>(state: &'a State, h: bool) -> Element<'a, Message> {
                     24.0..=120.0,
                     1.0,
                     format!("{:.0}px", state.clock_size),
-                    Message::ClockSize
+                    Message::ClockSize,
                 ),
                 "Clock font size.",
-                h
+                h,
             ),
             helped(
                 slider_row(
@@ -2822,10 +3238,10 @@ fn behavior_tab<'a>(state: &'a State, h: bool) -> Element<'a, Message> {
                     0.7..=1.8,
                     0.05,
                     format!("{:.2}×", state.font_scale),
-                    Message::FontScale
+                    Message::FontScale,
                 ),
                 "Accessibility: scale all card text (1 = default).",
-                h
+                h,
             ),
             helped(
                 row![
@@ -2843,21 +3259,21 @@ fn behavior_tab<'a>(state: &'a State, h: bool) -> Element<'a, Message> {
                 .align_y(Alignment::Center)
                 .into(),
                 "Card text weight (needs the font family to ship that weight).",
-                h
+                h,
             ),
             helped(
                 toggle_row("Animate sky", state.animate, Message::ToggleAnimate),
                 "Run the stars + comet animation.",
-                h
+                h,
             ),
             helped(
                 toggle_row(
                     "Reduced motion",
                     state.reduced_motion,
-                    Message::ToggleReducedMotion
+                    Message::ToggleReducedMotion,
                 ),
                 "Accessibility: still all motion (animation, breathing, parallax, fade).",
-                h
+                h,
             ),
             helped(
                 row![
@@ -2876,7 +3292,7 @@ fn behavior_tab<'a>(state: &'a State, h: bool) -> Element<'a, Message> {
                 .into(),
                 "Global render budget: lite (½ detail, 30fps, no blur) → high (full, \
                  default) → bonkers (uncapped). Trades richness for power/thermals.",
-                h
+                h,
             ),
             helped(
                 slider_row(
@@ -2885,10 +3301,10 @@ fn behavior_tab<'a>(state: &'a State, h: bool) -> Element<'a, Message> {
                     0.0..=2000.0,
                     10.0,
                     format!("{:.0}ms", state.fade_ms),
-                    Message::FadeMs
+                    Message::FadeMs,
                 ),
                 "Fade-in time when the greeter opens.",
-                h
+                h,
             ),
             helped(
                 row![
@@ -2909,7 +3325,7 @@ fn behavior_tab<'a>(state: &'a State, h: bool) -> Element<'a, Message> {
                 .align_y(Alignment::Center)
                 .into(),
                 "Local times when the day theme is used.",
-                h
+                h,
             ),
         ]),
     );
@@ -2979,11 +3395,36 @@ fn preset_gallery(state: &State) -> Element<'_, Message> {
 fn preset_thumb(p: &Preset, selected: bool) -> Element<'_, Message> {
     const W: f32 = 104.0;
     let sw = p.swatch.unwrap_or(PresetSwatch {
-        background: Color { r: 0x1a, g: 0x1b, b: 0x26, a: 0xff },
-        card: Color { r: 0x24, g: 0x28, b: 0x3b, a: 0xff },
-        field: Color { r: 0x29, g: 0x2e, b: 0x42, a: 0xff },
-        accent: Color { r: 0x7a, g: 0xa2, b: 0xf7, a: 0xff },
-        foreground: Color { r: 0xc0, g: 0xca, b: 0xf5, a: 0xff },
+        background: Color {
+            r: 0x1a,
+            g: 0x1b,
+            b: 0x26,
+            a: 0xff,
+        },
+        card: Color {
+            r: 0x24,
+            g: 0x28,
+            b: 0x3b,
+            a: 0xff,
+        },
+        field: Color {
+            r: 0x29,
+            g: 0x2e,
+            b: 0x42,
+            a: 0xff,
+        },
+        accent: Color {
+            r: 0x7a,
+            g: 0xa2,
+            b: 0xf7,
+            a: 0xff,
+        },
+        foreground: Color {
+            r: 0xc0,
+            g: 0xca,
+            b: 0xf5,
+            a: 0xff,
+        },
     });
     let bar = |col: Color, w: f32, h: f32| {
         let fill = col.iced();
@@ -2992,7 +3433,10 @@ fn preset_thumb(p: &Preset, selected: bool) -> Element<'_, Message> {
             .height(Length::Fixed(h))
             .style(move |_t| container::Style {
                 background: Some(Background::Color(fill)),
-                border: Border { radius: 2.0.into(), ..Default::default() },
+                border: Border {
+                    radius: 2.0.into(),
+                    ..Default::default()
+                },
                 ..Default::default()
             })
     };
@@ -3011,7 +3455,10 @@ fn preset_thumb(p: &Preset, selected: bool) -> Element<'_, Message> {
     .padding(7)
     .style(move |_t| container::Style {
         background: Some(Background::Color(card_col)),
-        border: Border { radius: 6.0.into(), ..Default::default() },
+        border: Border {
+            radius: 6.0.into(),
+            ..Default::default()
+        },
         ..Default::default()
     });
 
@@ -3184,12 +3631,9 @@ fn two_col<'a>(items: Vec<Element<'a, Message>>) -> Element<'a, Message> {
             right = right.push(it);
         }
     }
-    row![
-        left.width(Length::Fill),
-        right.width(Length::Fill)
-    ]
-    .spacing(16)
-    .into()
+    row![left.width(Length::Fill), right.width(Length::Fill)]
+        .spacing(16)
+        .into()
 }
 
 /// Wrap a widget with a hover tooltip — a small dark chip below it.
@@ -3198,7 +3642,9 @@ fn tip<'a>(content: impl Into<Element<'a, Message>>, label: &'a str) -> Element<
         .gap(6)
         .padding(8)
         .style(|_t| container::Style {
-            background: Some(Background::Color(IColor::from_rgba8(0x12, 0x14, 0x1c, 0.98))),
+            background: Some(Background::Color(IColor::from_rgba8(
+                0x12, 0x14, 0x1c, 0.98,
+            ))),
             border: Border {
                 radius: 8.0.into(),
                 width: 1.0,
@@ -3336,7 +3782,9 @@ fn color_cell<'a>(label: &'a str, value: &'a str, param: Param) -> Element<'a, M
 /// Hold a control to roughly half the row, so a lone color cell matches the two-up
 /// grid instead of stretching the full panel width.
 fn half_width(el: Element<'_, Message>) -> Element<'_, Message> {
-    row![el, Space::new().width(Length::Fill)].spacing(10).into()
+    row![el, Space::new().width(Length::Fill)]
+        .spacing(10)
+        .into()
 }
 
 /// The display name of a color [`Param`], for the picker header.
@@ -3430,7 +3878,10 @@ impl canvas::Program<Message> for SwatchChip {
             }
         }
         // The color on top (alpha respected), then a hairline border.
-        f.fill(&Path::rectangle(Point::new(0.0, 0.0), bounds.size()), self.color);
+        f.fill(
+            &Path::rectangle(Point::new(0.0, 0.0), bounds.size()),
+            self.color,
+        );
         f.stroke(
             &Path::rectangle(
                 Point::new(0.5, 0.5),
@@ -3643,7 +4094,10 @@ impl canvas::Program<Message> for HsvPicker {
         // Hue cursor: a horizontal bar at the current hue.
         let hy = self.h / 360.0 * SV_SIZE;
         frame.stroke(
-            &Path::rectangle(Point::new(hx - 2.0, hy - 2.0), iced::Size::new(HUE_W + 4.0, 4.0)),
+            &Path::rectangle(
+                Point::new(hx - 2.0, hy - 2.0),
+                iced::Size::new(HUE_W + 4.0, 4.0),
+            ),
             Stroke::default().with_width(2.0).with_color(white),
         );
 
@@ -3686,9 +4140,7 @@ fn picker_overlay(state: &State, param: Param) -> Element<'_, Message> {
     let panel = container(
         column![
             row![
-                text(param_name(param))
-                    .size(14)
-                    .color(c(FG.0, FG.1, FG.2)),
+                text(param_name(param)).size(14).color(c(FG.0, FG.1, FG.2)),
                 Space::new().width(Length::Fill),
                 ghost_button("Done", Message::ClosePicker),
             ]
@@ -3717,7 +4169,9 @@ fn picker_overlay(state: &State, param: Param) -> Element<'_, Message> {
         });
     iced::widget::stack![
         backdrop,
-        container(panel).center_x(Length::Fill).center_y(Length::Fill),
+        container(panel)
+            .center_x(Length::Fill)
+            .center_y(Length::Fill),
     ]
     .into()
 }
@@ -3920,7 +4374,11 @@ fn preview_card(t: &Theme, anim: f32) -> Element<'static, Message> {
                 .height(Length::Fixed(56.0))
                 .into(),
         ),
-        Some(path) => Some(image(image::Handle::from_path(path)).height(Length::Fixed(56.0)).into()),
+        Some(path) => Some(
+            image(image::Handle::from_path(path))
+                .height(Length::Fixed(56.0))
+                .into(),
+        ),
         None if t.spinner_style.is_hidden() => None,
         None => Some(
             shader(SpinnerShader::from_theme(t, anim, 1.0))
@@ -4045,8 +4503,10 @@ mod tests {
     #[test]
     fn export_import_round_trips() {
         let night = Theme::default();
-        let mut day = Theme::default();
-        day.accent = door_theme::Color::parse("#ffcc00").unwrap();
+        let day = Theme {
+            accent: door_theme::Color::parse("#ffcc00").unwrap(),
+            ..Theme::default()
+        };
         let body = Theme::render_pair(&night, &day, "07:00", "19:00");
         let path = std::env::temp_dir().join("door-settings-io-test.toml");
         std::fs::write(&path, &body).unwrap();
@@ -4111,8 +4571,12 @@ mod tests {
                 let mut s = State::new();
                 s.apply_pair(&night, &day, window);
                 s.rebuild_preview();
-                let _ = s.build(false).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
-                let _ = s.build(true).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+                let _ = s
+                    .build(false)
+                    .unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+                let _ = s
+                    .build(true)
+                    .unwrap_or_else(|e| panic!("{}: {e}", path.display()));
             }
         }
     }

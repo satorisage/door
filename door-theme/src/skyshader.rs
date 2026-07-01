@@ -281,7 +281,12 @@ impl SkyShader {
             cloud_shadow: t.cloud_shadow.iced().into_linear(),
             params8: [0.0, 0.0, t.cursor_parallax, t.glow_pulse], // xy set per-frame from the cursor; w = glow pulse
             // w = fbm octave count (the global GPU budget): the dominant per-pixel cost.
-            params9: [t.grain, t.vignette, t.corner_radius, t.gpu_level.fbm_octaves()],
+            params9: [
+                t.grain,
+                t.vignette,
+                t.corner_radius,
+                t.gpu_level.fbm_octaves(),
+            ],
             frost: [0.0, 0.0, 1.0, 1.0], // set per frame in the frost primitive
             // Scene-param pool, packed above per the active sky_mode.
             scene_a,

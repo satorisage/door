@@ -649,7 +649,9 @@ fn view(state: &State) -> Element<'_, Message> {
         };
         column![
             time_widget,
-            text(state.date.clone()).size(13.0 * t.font_scale).color(muted),
+            text(state.date.clone())
+                .size(13.0 * t.font_scale)
+                .color(muted),
         ]
         .spacing(2)
         .align_x(Alignment::Center)
@@ -666,7 +668,11 @@ fn view(state: &State) -> Element<'_, Message> {
                 .height(Length::Fixed(56.0))
                 .into(),
         ),
-        Some(path) => Some(image(image::Handle::from_path(path)).height(Length::Fixed(56.0)).into()),
+        Some(path) => Some(
+            image(image::Handle::from_path(path))
+                .height(Length::Fixed(56.0))
+                .into(),
+        ),
         None if t.spinner_style.is_hidden() => None,
         None => Some(
             shader(SpinnerShader::from_theme(t, state.anim, f))
@@ -714,9 +720,9 @@ fn view(state: &State) -> Element<'_, Message> {
             .center()
             .size(15.0 * t.font_scale),
     )
-        .width(Length::Fill)
-        .padding(11)
-        .style(button_style(t, f));
+    .width(Length::Fill)
+    .padding(11)
+    .style(button_style(t, f));
     if !busy {
         login = login.on_press(Message::LoginPressed);
     }

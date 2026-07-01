@@ -61,7 +61,8 @@ impl<Message> canvas::Program<Message> for AnalogClock {
         let r = bounds.width.min(bounds.height) * 0.5 - 2.0;
         // Hand/tick weights scale with the face so a large-text face stays balanced.
         let k = r / 64.0;
-        let at = |angle: f32, len: f32| Point::new(c.x + len * angle.sin(), c.y - len * angle.cos());
+        let at =
+            |angle: f32, len: f32| Point::new(c.x + len * angle.sin(), c.y - len * angle.cos());
 
         // Faint disc so the hands read over a busy sky, then the rim.
         frame.fill(&Path::circle(c, r), self.hand.scale_alpha(0.05));
