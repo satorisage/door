@@ -34,5 +34,47 @@ Environment=DOORD_VTNR=1
 Restart=on-failure
 RestartSec=2
 
+# ── Sandboxing, Tier 1 (M5). ────────────────────────────────────────────────
+#
+# THE CONSTRAINT that shapes everything here: doord forks the per-login worker,
+# which execve()s the user's *session/compositor* — all in doord's own process
+# lineage and mount namespace (no unshare). seccomp filters and Landlock rules
+# are inherited across fork and preserved across execve, so ANY restriction here
+# is also imposed on the user's desktop. That makes the high-value directives
+# UNSAFE until the session is spawned by a separate, pre-forked helper outside
+# doord's sandbox (a planned refactor: a supervisor that sandboxes itself and
+# hands session-spawn to an un-sandboxed helper). Concretely, DO NOT add:
+#   RestrictAddressFamilies=  — would strip the user's session of AF_INET (no net)
+#   SystemCallFilter=         — Tier 3; would kill session syscalls
+#   SystemCallArchitectures=  — would kill 32-bit session apps (Steam/wine)
+#   MemoryDenyWriteExecute=   — would break session JIT (browsers, java, Electron)
+#   RestrictRealtime=         — would break session pro-audio (pipewire/jack RT)
+#   RestrictNamespaces=       — would break flatpak / sandboxed-browser userns
+#   ProtectHome= / ProtectSystem=strict / PrivateTmp= — leak via the shared mount
+#                               namespace: hide $HOME, make /usr read-only, etc.
+#   ProtectProc= / ProcSubset= — would blind free_seat's /proc scan (and the session)
+# Each of the above only becomes safe once Tier 2 moves session-spawn out of
+# doord's sandboxed lineage. Until then, only directives that neither doord NOR a
+# normal desktop ever exercise are set below.
+#
+# Belt-and-suspenders NO_NEW_PRIVS (doord also sets PR_SET_NO_NEW_PRIVS in code).
+NoNewPrivileges=yes
+# doord never sets the system clock, loads kernel modules, reads the kernel ring
+# buffer, or changes the hostname — and neither does a user's desktop session
+# (those go through separate root services: timedated, hostnamed, journald). So
+# these are safe to deny even though the session inherits them.
+ProtectClock=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectHostname=yes
+# Drop only capabilities that a login daemon provably never needs (and that a
+# post-privdrop unprivileged session never has anyway), keeping every capability
+# doord *does* use — privdrop (SETUID/SETGID), free_seat (KILL, SYS_PTRACE for
+# the cross-uid /proc scan), the VT ioctls (SYS_TTY_CONFIG), DRM/seat (SYS_ADMIN),
+# socket ownership (CHOWN/FOWNER/DAC_*), and PAM (AUDIT_*). Using the "~" drop
+# form (not an allow-list) so an unenumerated cap doord relies on is never
+# stripped — a too-tight allow-list would silently break logins.
+CapabilityBoundingSet=~CAP_SYS_MODULE CAP_SYS_TIME CAP_SYS_BOOT CAP_WAKE_ALARM CAP_MAC_ADMIN CAP_MAC_OVERRIDE CAP_LEASE CAP_SYS_PACCT CAP_BLOCK_SUSPEND CAP_NET_BIND_SERVICE
+
 [Install]
 WantedBy=graphical.target
