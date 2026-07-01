@@ -20,6 +20,9 @@ use iced::{mouse, Color, Rectangle};
 #[derive(Debug, Clone, Copy)]
 pub struct SkyShader {
     uniforms: Uniforms,
+    /// Native-resolution fraction the sky renders at (GPU level). `1.0` = straight to the
+    /// surface; `< 1.0` = render to a smaller offscreen texture, then upscale.
+    scale: f32,
 }
 
 /// Uniform block — must match `struct U` in the WGSL below (std140 alignment: a
@@ -374,7 +377,10 @@ impl SkyShader {
             scene_c2,
             scene_c3,
         };
-        Self { uniforms }
+        Self {
+            uniforms,
+            scale: t.gpu_level.render_scale(),
+        }
     }
 }
 
@@ -390,14 +396,18 @@ impl<Message> shader::Program<Message> for SkyShader {
             u.params8[0] = pos.x / bounds.width.max(1.0) - 0.5;
             u.params8[1] = pos.y / bounds.height.max(1.0) - 0.5;
         }
-        SkyPrimitive { u }
+        SkyPrimitive {
+            u,
+            scale: self.scale,
+        }
     }
 }
 
-/// One frame's worth of GPU work — just the uniforms; all the art is in the shader.
+/// One frame's worth of GPU work — the uniforms plus the render-scale (GPU level).
 #[derive(Debug)]
 pub struct SkyPrimitive {
     u: Uniforms,
+    scale: f32,
 }
 
 impl Primitive for SkyPrimitive {
@@ -406,12 +416,20 @@ impl Primitive for SkyPrimitive {
     fn prepare(
         &self,
         pipeline: &mut SkyPipeline,
-        _device: &wgpu::Device,
+        device: &wgpu::Device,
         queue: &wgpu::Queue,
         _bounds: &Rectangle,
-        _viewport: &shader::Viewport,
+        viewport: &shader::Viewport,
     ) {
         queue.write_buffer(&pipeline.uniforms, 0, bytemuck::bytes_of(&self.u));
+        // Render-scale (GPU level): when below native, (re)size the offscreen texture the
+        // sky will render into. At native we skip it and draw straight to the surface.
+        if self.scale < 0.999 {
+            let phys = viewport.physical_size();
+            let w = (((phys.width as f32) * self.scale).ceil() as u32).max(1);
+            let h = (((phys.height as f32) * self.scale).ceil() as u32).max(1);
+            pipeline.ensure_offscreen(device, w, h);
+        }
     }
 
     fn render(
@@ -421,48 +439,178 @@ impl Primitive for SkyPrimitive {
         target: &wgpu::TextureView,
         clip_bounds: &Rectangle<u32>,
     ) {
-        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: Some("door sky"),
-            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view: target,
-                depth_slice: None,
-                resolve_target: None,
-                // Load (don't clear) — the sky is the bottom layer; it paints opaque.
-                ops: wgpu::Operations {
-                    load: wgpu::LoadOp::Load,
-                    store: wgpu::StoreOp::Store,
-                },
-            })],
-            depth_stencil_attachment: None,
-            timestamp_writes: None,
-            occlusion_query_set: None,
-        });
-        pass.set_scissor_rect(
-            clip_bounds.x,
-            clip_bounds.y,
-            clip_bounds.width,
-            clip_bounds.height,
-        );
-        pass.set_viewport(
-            clip_bounds.x as f32,
-            clip_bounds.y as f32,
-            clip_bounds.width as f32,
-            clip_bounds.height as f32,
-            0.0,
-            1.0,
-        );
-        pass.set_pipeline(&pipeline.pipeline);
-        pass.set_bind_group(0, Some(&pipeline.bind_group), &[]);
-        pass.draw(0..3, 0..1);
+        // Native resolution (high/bonkers): the sky draws straight to the surface — no
+        // offscreen, no upscale. This is the original single-pass path.
+        if self.scale >= 0.999 || pipeline.offscreen.is_none() {
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("door sky"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: target,
+                    depth_slice: None,
+                    resolve_target: None,
+                    // Load (don't clear) — the sky is the bottom layer; it paints opaque.
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Load,
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+            });
+            pass.set_scissor_rect(
+                clip_bounds.x,
+                clip_bounds.y,
+                clip_bounds.width,
+                clip_bounds.height,
+            );
+            pass.set_viewport(
+                clip_bounds.x as f32,
+                clip_bounds.y as f32,
+                clip_bounds.width as f32,
+                clip_bounds.height as f32,
+                0.0,
+                1.0,
+            );
+            pass.set_pipeline(&pipeline.pipeline);
+            pass.set_bind_group(0, Some(&pipeline.bind_group), &[]);
+            pass.draw(0..3, 0..1);
+            return;
+        }
+
+        // Reduced resolution (lite/moderate): two passes — render the sky into the small
+        // offscreen texture, then bilinearly upscale it into the surface. The heavy
+        // per-pixel sky shader runs at scale², a real fragment-work saving.
+        let off = pipeline.offscreen.as_ref().unwrap();
+        {
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("door sky (offscreen)"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &off.view,
+                    depth_slice: None,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+            });
+            pass.set_pipeline(&pipeline.pipeline);
+            pass.set_bind_group(0, Some(&pipeline.bind_group), &[]);
+            pass.draw(0..3, 0..1);
+        }
+        {
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("door sky (upscale)"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: target,
+                    depth_slice: None,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Load,
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+            });
+            pass.set_scissor_rect(
+                clip_bounds.x,
+                clip_bounds.y,
+                clip_bounds.width,
+                clip_bounds.height,
+            );
+            pass.set_viewport(
+                clip_bounds.x as f32,
+                clip_bounds.y as f32,
+                clip_bounds.width as f32,
+                clip_bounds.height as f32,
+                0.0,
+                1.0,
+            );
+            pass.set_pipeline(&pipeline.blit_pipeline);
+            pass.set_bind_group(0, Some(&off.blit_bind_group), &[]);
+            pass.draw(0..3, 0..1);
+        }
     }
 }
 
-/// The shared GPU pipeline for every `SkyPrimitive` (built once, lazily).
+/// A lazily-(re)sized offscreen render target for the reduced-resolution sky pass,
+/// plus the bind group that samples it during the upscale blit.
+#[derive(Debug)]
+struct Offscreen {
+    _texture: wgpu::Texture,
+    view: wgpu::TextureView,
+    blit_bind_group: wgpu::BindGroup,
+    w: u32,
+    h: u32,
+}
+
+/// The shared GPU pipeline for every `SkyPrimitive` (built once, lazily). Carries both
+/// the sky pipeline and a small blit pipeline used to upscale the offscreen sky when the
+/// GPU level renders below native resolution.
 #[derive(Debug)]
 pub struct SkyPipeline {
     pipeline: wgpu::RenderPipeline,
     uniforms: wgpu::Buffer,
     bind_group: wgpu::BindGroup,
+    format: wgpu::TextureFormat,
+    sampler: wgpu::Sampler,
+    blit_bgl: wgpu::BindGroupLayout,
+    blit_pipeline: wgpu::RenderPipeline,
+    offscreen: Option<Offscreen>,
+}
+
+impl SkyPipeline {
+    /// (Re)create the offscreen texture + its blit bind group when the target size
+    /// changes. A no-op when the current offscreen already matches `w`×`h`.
+    fn ensure_offscreen(&mut self, device: &wgpu::Device, w: u32, h: u32) {
+        if let Some(o) = &self.offscreen {
+            if o.w == w && o.h == h {
+                return;
+            }
+        }
+        let texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("door sky offscreen"),
+            size: wgpu::Extent3d {
+                width: w,
+                height: h,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: self.format,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        });
+        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let blit_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("door sky blit bind group"),
+            layout: &self.blit_bgl,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::Sampler(&self.sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::TextureView(&view),
+                },
+            ],
+        });
+        self.offscreen = Some(Offscreen {
+            _texture: texture,
+            view,
+            blit_bind_group,
+            w,
+            h,
+        });
+    }
 }
 
 impl shader::Pipeline for SkyPipeline {
@@ -528,13 +676,112 @@ impl shader::Pipeline for SkyPipeline {
             multiview: None,
             cache: None,
         });
+
+        // Blit pipeline: a full-screen triangle that bilinearly samples the offscreen sky
+        // and writes it to the surface. Only used when the GPU level renders below native.
+        let blit_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("door sky blit shader"),
+            source: wgpu::ShaderSource::Wgsl(BLIT_WGSL.into()),
+        });
+        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("door sky blit sampler"),
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            mipmap_filter: wgpu::FilterMode::Nearest,
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            ..Default::default()
+        });
+        let blit_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("door sky blit bgl"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+            ],
+        });
+        let blit_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("door sky blit layout"),
+            bind_group_layouts: &[&blit_bgl],
+            push_constant_ranges: &[],
+        });
+        let blit_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("door sky blit pipeline"),
+            layout: Some(&blit_layout),
+            vertex: wgpu::VertexState {
+                module: &blit_shader,
+                entry_point: Some("vs_main"),
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+                buffers: &[],
+            },
+            primitive: wgpu::PrimitiveState::default(),
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState::default(),
+            fragment: Some(wgpu::FragmentState {
+                module: &blit_shader,
+                entry_point: Some("fs_main"),
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format,
+                    blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+            }),
+            multiview: None,
+            cache: None,
+        });
+
         Self {
             pipeline,
             uniforms,
             bind_group,
+            format,
+            sampler,
+            blit_bgl,
+            blit_pipeline,
+            offscreen: None,
         }
     }
 }
+
+/// Upscale blit: a full-screen triangle that samples the offscreen sky texture.
+const BLIT_WGSL: &str = r#"
+struct VsOut {
+  @builtin(position) pos: vec4<f32>,
+  @location(0) uv: vec2<f32>,
+};
+
+@vertex
+fn vs_main(@builtin(vertex_index) idx: u32) -> VsOut {
+  var out: VsOut;
+  let x = f32((idx << 1u) & 2u);
+  let y = f32(idx & 2u);
+  out.uv = vec2<f32>(x, y);
+  out.pos = vec4<f32>(x * 2.0 - 1.0, 1.0 - y * 2.0, 0.0, 1.0);
+  return out;
+}
+
+@group(0) @binding(0) var samp: sampler;
+@group(0) @binding(1) var tex: texture_2d<f32>;
+
+@fragment
+fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
+  return textureSample(tex, samp, in.uv);
+}
+"#;
 
 // ───────────────────────────── frosted card backdrop ─────────────────────────
 //
@@ -1975,7 +2222,7 @@ fn fs_frost(in: VsOut) -> @location(0) vec4<f32> {
 
 #[cfg(test)]
 mod wgsl_tests {
-    use super::{SPIN_WGSL, WGSL};
+    use super::{BLIT_WGSL, SPIN_WGSL, WGSL};
 
     /// Parse + validate both shaders through naga (the same front-end wgpu uses), so a
     /// WGSL typo is a failed test, not a runtime pipeline panic on the login screen.
@@ -1999,5 +2246,10 @@ mod wgsl_tests {
     #[test]
     fn spinner_shader_is_valid_wgsl() {
         check("spinner", SPIN_WGSL);
+    }
+
+    #[test]
+    fn blit_shader_is_valid_wgsl() {
+        check("blit", BLIT_WGSL);
     }
 }

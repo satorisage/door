@@ -342,6 +342,17 @@ impl GpuLevel {
     pub fn allows_blur(self) -> bool {
         matches!(self, GpuLevel::High | GpuLevel::Bonkers)
     }
+    /// Fraction of native resolution the sky is rendered at, then upscaled. `< 1.0`
+    /// renders the (expensive) sky fragment shader into a smaller offscreen texture and
+    /// bilinearly upscales it — ~4× less fragment work at 0.5×. `1.0` = native (no
+    /// offscreen pass; the sky draws straight to the surface).
+    pub fn render_scale(self) -> f32 {
+        match self {
+            GpuLevel::Lite => 0.5,
+            GpuLevel::Moderate => 0.75,
+            GpuLevel::High | GpuLevel::Bonkers => 1.0,
+        }
+    }
 }
 
 impl std::fmt::Display for GpuLevel {
