@@ -53,7 +53,8 @@ animate       = true
 #         light palette), "night" (force the starfield + dark palette), "solid" (a plain
 #         palette gradient — no stars, comet, or motion). Plus the earthy landscapes:
 #         "mountains" (parallax ridgelines), "forest" (pines + mist + fireflies),
-#         "ocean" (a sea horizon with a moonlit glitter path).
+#         "ocean" (a sea horizon with a moonlit glitter path). And "sunset" (golden-hour
+#         dusk), "galaxy" (a Milky Way over a starfield), "matrix" (falling code rain).
 # sky_mode      = "auto"
 # Comet-spinner controls. glow = head bloom (0 = crisp; a bright bloom blends on a
 # dark card but bands on a light one, so the day variant below defaults to 0).
@@ -209,6 +210,32 @@ spinner_trail = 1.0         # trail length 0.15–1.0 (shorter = crisper on a li
 # ocean_sky         = "#1a2a44"  # sky colour
 # ocean_sea         = "#0a1a2e"  # sea colour
 # ocean_glint_color = "#cfe0ff"  # glitter colour
+#
+# Sunset scene (only used when sky_mode = "sunset"):
+# sunset_sun_y      = 0.62       # sun height (0 top … 1 bottom)
+# sunset_sun_size   = 0.12       # sun disc radius
+# sunset_glow       = 1.0        # warm halo strength
+# sunset_bands      = 1.0        # lit horizontal cloud-band amount
+# sunset_sky        = "#3a2d5c"  # upper-sky colour
+# sunset_horizon    = "#ff7a3d"  # warm horizon colour
+# sunset_sun        = "#ffdd88"  # sun colour
+#
+# Galaxy scene (only used when sky_mode = "galaxy"):
+# galaxy_density    = 1.0        # star density
+# galaxy_nebula     = 1.0        # Milky-Way band brightness
+# galaxy_twinkle    = 1.0        # star twinkle speed
+# galaxy_tilt       = 0.5        # band tilt (radians)
+# galaxy_core       = "#b06a9c"  # nebula core colour
+# galaxy_outer      = "#2a3a6c"  # nebula outer colour
+# galaxy_star       = "#cfe0ff"  # star colour
+#
+# Matrix scene (only used when sky_mode = "matrix"):
+# matrix_density    = 26         # column count
+# matrix_speed      = 1.0        # fall speed
+# matrix_glow       = 1.0        # glyph brightness
+# matrix_flicker    = 1.0        # glyph change rate
+# matrix_head       = "#d6ffe0"  # leading-glyph colour
+# matrix_trail      = "#22cc44"  # trailing-glyph colour
 # card_gradient  = 0.45       # vertical sheen on the card (0 = flat)
 # grain          = 0.0        # film grain over the sky (0 = off)
 # vignette       = 0.2        # darken the screen edges (0 = off)

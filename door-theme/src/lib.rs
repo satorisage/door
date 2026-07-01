@@ -128,11 +128,17 @@ pub enum SkyMode {
     Forest,
     /// A sea horizon with a moonlit/sunlit glitter path (≠ underwater `water`).
     Ocean,
+    /// Golden-hour dusk: a warm gradient with a low sun and lit cloud bands.
+    Sunset,
+    /// A Milky Way band of nebula over a dense, twinkling starfield.
+    Galaxy,
+    /// Falling green code rain (the Matrix effect).
+    Matrix,
 }
 
 impl SkyMode {
     /// Every mode, for the settings picker.
-    pub const ALL: [SkyMode; 19] = [
+    pub const ALL: [SkyMode; 22] = [
         SkyMode::Auto,
         SkyMode::Seasonal,
         SkyMode::Day,
@@ -152,6 +158,9 @@ impl SkyMode {
         SkyMode::Mountains,
         SkyMode::Forest,
         SkyMode::Ocean,
+        SkyMode::Sunset,
+        SkyMode::Galaxy,
+        SkyMode::Matrix,
     ];
     /// The shader selector value (0 = auto → the day/night renderer).
     pub fn shader_id(self) -> f32 {
@@ -177,6 +186,9 @@ impl SkyMode {
             SkyMode::Mountains => 13.0,
             SkyMode::Forest => 14.0,
             SkyMode::Ocean => 15.0,
+            SkyMode::Sunset => 16.0,
+            SkyMode::Galaxy => 17.0,
+            SkyMode::Matrix => 18.0,
         }
     }
     /// The lowercase name used in the config and the picker.
@@ -201,6 +213,9 @@ impl SkyMode {
             SkyMode::Mountains => "mountains",
             SkyMode::Forest => "forest",
             SkyMode::Ocean => "ocean",
+            SkyMode::Sunset => "sunset",
+            SkyMode::Galaxy => "galaxy",
+            SkyMode::Matrix => "matrix",
         }
     }
     /// Resolve a selector mode to a concrete scene. Only `Seasonal` changes — mapped to
@@ -794,6 +809,52 @@ pub struct Theme {
     pub ocean_sea: Color,
     /// Ocean glint colour (the sun/moon glitter).
     pub ocean_glint_color: Color,
+
+    // ── Sunset scene controls (M8) ──
+    /// Sunset sun height (0 top … 1 bottom).
+    pub sunset_sun_y: f32,
+    /// Sunset sun disc radius.
+    pub sunset_sun_size: f32,
+    /// Sunset sun glow strength.
+    pub sunset_glow: f32,
+    /// Sunset lit-cloud-band amount.
+    pub sunset_bands: f32,
+    /// Sunset upper-sky colour.
+    pub sunset_sky: Color,
+    /// Sunset horizon colour (warm).
+    pub sunset_horizon: Color,
+    /// Sunset sun colour.
+    pub sunset_sun: Color,
+
+    // ── Galaxy scene controls (M8) ──
+    /// Galaxy star density.
+    pub galaxy_density: f32,
+    /// Galaxy nebula-band brightness.
+    pub galaxy_nebula: f32,
+    /// Galaxy star twinkle speed.
+    pub galaxy_twinkle: f32,
+    /// Galaxy Milky-Way band tilt (radians).
+    pub galaxy_tilt: f32,
+    /// Galaxy nebula core colour.
+    pub galaxy_core: Color,
+    /// Galaxy nebula outer colour.
+    pub galaxy_outer: Color,
+    /// Galaxy star colour.
+    pub galaxy_star: Color,
+
+    // ── Matrix scene controls (M8) ──
+    /// Matrix column density.
+    pub matrix_density: f32,
+    /// Matrix fall speed.
+    pub matrix_speed: f32,
+    /// Matrix glyph brightness.
+    pub matrix_glow: f32,
+    /// Matrix glyph flicker rate.
+    pub matrix_flicker: f32,
+    /// Matrix leading-glyph colour.
+    pub matrix_head: Color,
+    /// Matrix trailing-glyph colour.
+    pub matrix_trail: Color,
     /// Card vertical-gradient strength (0 = flat fill; ~1 = a lit top sheen). Shared.
     pub card_gradient: f32,
     /// Film-grain strength over the whole sky (0 = off). Shared.
@@ -1000,6 +1061,26 @@ impl Default for Theme {
             ocean_sky: Color::rgb(0x1a, 0x2a, 0x44),
             ocean_sea: Color::rgb(0x0a, 0x1a, 0x2e),
             ocean_glint_color: Color::rgb(0xcf, 0xe0, 0xff),
+            sunset_sun_y: 0.62,
+            sunset_sun_size: 0.12,
+            sunset_glow: 1.0,
+            sunset_bands: 1.0,
+            sunset_sky: Color::rgb(0x3a, 0x2d, 0x5c),
+            sunset_horizon: Color::rgb(0xff, 0x7a, 0x3d),
+            sunset_sun: Color::rgb(0xff, 0xdd, 0x88),
+            galaxy_density: 1.0,
+            galaxy_nebula: 1.0,
+            galaxy_twinkle: 1.0,
+            galaxy_tilt: 0.5,
+            galaxy_core: Color::rgb(0xb0, 0x6a, 0x9c),
+            galaxy_outer: Color::rgb(0x2a, 0x3a, 0x6c),
+            galaxy_star: Color::rgb(0xcf, 0xe0, 0xff),
+            matrix_density: 26.0,
+            matrix_speed: 1.0,
+            matrix_glow: 1.0,
+            matrix_flicker: 1.0,
+            matrix_head: Color::rgb(0xd6, 0xff, 0xe0),
+            matrix_trail: Color::rgb(0x22, 0xcc, 0x44),
             card_gradient: 0.45,
             grain: 0.0,
             vignette: 0.2,
@@ -1181,6 +1262,26 @@ impl Theme {
             ocean_sky: Color::rgb(0x1a, 0x2a, 0x44),
             ocean_sea: Color::rgb(0x0a, 0x1a, 0x2e),
             ocean_glint_color: Color::rgb(0xcf, 0xe0, 0xff),
+            sunset_sun_y: 0.62,
+            sunset_sun_size: 0.12,
+            sunset_glow: 1.0,
+            sunset_bands: 1.0,
+            sunset_sky: Color::rgb(0x3a, 0x2d, 0x5c),
+            sunset_horizon: Color::rgb(0xff, 0x7a, 0x3d),
+            sunset_sun: Color::rgb(0xff, 0xdd, 0x88),
+            galaxy_density: 1.0,
+            galaxy_nebula: 1.0,
+            galaxy_twinkle: 1.0,
+            galaxy_tilt: 0.5,
+            galaxy_core: Color::rgb(0xb0, 0x6a, 0x9c),
+            galaxy_outer: Color::rgb(0x2a, 0x3a, 0x6c),
+            galaxy_star: Color::rgb(0xcf, 0xe0, 0xff),
+            matrix_density: 26.0,
+            matrix_speed: 1.0,
+            matrix_glow: 1.0,
+            matrix_flicker: 1.0,
+            matrix_head: Color::rgb(0xd6, 0xff, 0xe0),
+            matrix_trail: Color::rgb(0x22, 0xcc, 0x44),
             card_gradient: 0.45,
             grain: 0.0,
             vignette: 0.2,
@@ -1348,6 +1449,26 @@ struct ThemeFile {
     ocean_sky: Option<String>,
     ocean_sea: Option<String>,
     ocean_glint_color: Option<String>,
+    sunset_sun_y: Option<f32>,
+    sunset_sun_size: Option<f32>,
+    sunset_glow: Option<f32>,
+    sunset_bands: Option<f32>,
+    sunset_sky: Option<String>,
+    sunset_horizon: Option<String>,
+    sunset_sun: Option<String>,
+    galaxy_density: Option<f32>,
+    galaxy_nebula: Option<f32>,
+    galaxy_twinkle: Option<f32>,
+    galaxy_tilt: Option<f32>,
+    galaxy_core: Option<String>,
+    galaxy_outer: Option<String>,
+    galaxy_star: Option<String>,
+    matrix_density: Option<f32>,
+    matrix_speed: Option<f32>,
+    matrix_glow: Option<f32>,
+    matrix_flicker: Option<f32>,
+    matrix_head: Option<String>,
+    matrix_trail: Option<String>,
     card_gradient: Option<f32>,
     grain: Option<f32>,
     vignette: Option<f32>,
@@ -1671,6 +1792,26 @@ impl Theme {
             file.ocean_glint_color,
             self.ocean_glint_color,
         );
+        merge_f32(&mut self.sunset_sun_y, file.sunset_sun_y);
+        merge_f32(&mut self.sunset_sun_size, file.sunset_sun_size);
+        merge_f32(&mut self.sunset_glow, file.sunset_glow);
+        merge_f32(&mut self.sunset_bands, file.sunset_bands);
+        self.sunset_sky = color("sunset_sky", file.sunset_sky, self.sunset_sky);
+        self.sunset_horizon = color("sunset_horizon", file.sunset_horizon, self.sunset_horizon);
+        self.sunset_sun = color("sunset_sun", file.sunset_sun, self.sunset_sun);
+        merge_f32(&mut self.galaxy_density, file.galaxy_density);
+        merge_f32(&mut self.galaxy_nebula, file.galaxy_nebula);
+        merge_f32(&mut self.galaxy_twinkle, file.galaxy_twinkle);
+        merge_f32(&mut self.galaxy_tilt, file.galaxy_tilt);
+        self.galaxy_core = color("galaxy_core", file.galaxy_core, self.galaxy_core);
+        self.galaxy_outer = color("galaxy_outer", file.galaxy_outer, self.galaxy_outer);
+        self.galaxy_star = color("galaxy_star", file.galaxy_star, self.galaxy_star);
+        merge_f32(&mut self.matrix_density, file.matrix_density);
+        merge_f32(&mut self.matrix_speed, file.matrix_speed);
+        merge_f32(&mut self.matrix_glow, file.matrix_glow);
+        merge_f32(&mut self.matrix_flicker, file.matrix_flicker);
+        self.matrix_head = color("matrix_head", file.matrix_head, self.matrix_head);
+        self.matrix_trail = color("matrix_trail", file.matrix_trail, self.matrix_trail);
         merge_f32(&mut self.card_gradient, file.card_gradient);
         merge_f32(&mut self.grain, file.grain);
         merge_f32(&mut self.vignette, file.vignette);
@@ -1843,6 +1984,18 @@ impl Theme {
         merge_f32(&mut self.ocean_wave_speed, file.ocean_wave_speed);
         merge_f32(&mut self.ocean_glint, file.ocean_glint);
         merge_f32(&mut self.ocean_wave_scale, file.ocean_wave_scale);
+        merge_f32(&mut self.sunset_sun_y, file.sunset_sun_y);
+        merge_f32(&mut self.sunset_sun_size, file.sunset_sun_size);
+        merge_f32(&mut self.sunset_glow, file.sunset_glow);
+        merge_f32(&mut self.sunset_bands, file.sunset_bands);
+        merge_f32(&mut self.galaxy_density, file.galaxy_density);
+        merge_f32(&mut self.galaxy_nebula, file.galaxy_nebula);
+        merge_f32(&mut self.galaxy_twinkle, file.galaxy_twinkle);
+        merge_f32(&mut self.galaxy_tilt, file.galaxy_tilt);
+        merge_f32(&mut self.matrix_density, file.matrix_density);
+        merge_f32(&mut self.matrix_speed, file.matrix_speed);
+        merge_f32(&mut self.matrix_glow, file.matrix_glow);
+        merge_f32(&mut self.matrix_flicker, file.matrix_flicker);
         for (slot, s) in [
             (&mut self.synthwave_grid_color, &file.synthwave_grid_color),
             (&mut self.synthwave_sky_top, &file.synthwave_sky_top),
@@ -1873,6 +2026,14 @@ impl Theme {
             (&mut self.ocean_sky, &file.ocean_sky),
             (&mut self.ocean_sea, &file.ocean_sea),
             (&mut self.ocean_glint_color, &file.ocean_glint_color),
+            (&mut self.sunset_sky, &file.sunset_sky),
+            (&mut self.sunset_horizon, &file.sunset_horizon),
+            (&mut self.sunset_sun, &file.sunset_sun),
+            (&mut self.galaxy_core, &file.galaxy_core),
+            (&mut self.galaxy_outer, &file.galaxy_outer),
+            (&mut self.galaxy_star, &file.galaxy_star),
+            (&mut self.matrix_head, &file.matrix_head),
+            (&mut self.matrix_trail, &file.matrix_trail),
         ] {
             if let Some(s) = s {
                 if let Some(col) = Color::parse(s) {
@@ -2368,6 +2529,50 @@ impl Theme {
         out.push_str(&format!(
             "ocean_glint_color = {:?}\n",
             self.ocean_glint_color.to_hex()
+        ));
+        out.push_str(&format!("sunset_sun_y      = {}\n", self.sunset_sun_y));
+        out.push_str(&format!("sunset_sun_size   = {}\n", self.sunset_sun_size));
+        out.push_str(&format!("sunset_glow       = {}\n", self.sunset_glow));
+        out.push_str(&format!("sunset_bands      = {}\n", self.sunset_bands));
+        out.push_str(&format!(
+            "sunset_sky        = {:?}\n",
+            self.sunset_sky.to_hex()
+        ));
+        out.push_str(&format!(
+            "sunset_horizon    = {:?}\n",
+            self.sunset_horizon.to_hex()
+        ));
+        out.push_str(&format!(
+            "sunset_sun        = {:?}\n",
+            self.sunset_sun.to_hex()
+        ));
+        out.push_str(&format!("galaxy_density    = {}\n", self.galaxy_density));
+        out.push_str(&format!("galaxy_nebula     = {}\n", self.galaxy_nebula));
+        out.push_str(&format!("galaxy_twinkle    = {}\n", self.galaxy_twinkle));
+        out.push_str(&format!("galaxy_tilt       = {}\n", self.galaxy_tilt));
+        out.push_str(&format!(
+            "galaxy_core       = {:?}\n",
+            self.galaxy_core.to_hex()
+        ));
+        out.push_str(&format!(
+            "galaxy_outer      = {:?}\n",
+            self.galaxy_outer.to_hex()
+        ));
+        out.push_str(&format!(
+            "galaxy_star       = {:?}\n",
+            self.galaxy_star.to_hex()
+        ));
+        out.push_str(&format!("matrix_density    = {}\n", self.matrix_density));
+        out.push_str(&format!("matrix_speed      = {}\n", self.matrix_speed));
+        out.push_str(&format!("matrix_glow       = {}\n", self.matrix_glow));
+        out.push_str(&format!("matrix_flicker    = {}\n", self.matrix_flicker));
+        out.push_str(&format!(
+            "matrix_head       = {:?}\n",
+            self.matrix_head.to_hex()
+        ));
+        out.push_str(&format!(
+            "matrix_trail      = {:?}\n",
+            self.matrix_trail.to_hex()
         ));
         out.push_str(&format!("card_gradient = {}\n", self.card_gradient));
         out.push_str(&format!("grain         = {}\n", self.grain));

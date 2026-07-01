@@ -271,6 +271,26 @@ enum Message {
     OceanSky(String),
     OceanSea(String),
     OceanGlintColor(String),
+    SunsetSunY(f32),
+    SunsetSunSize(f32),
+    SunsetGlow(f32),
+    SunsetBands(f32),
+    SunsetSky(String),
+    SunsetHorizon(String),
+    SunsetSun(String),
+    GalaxyDensity(f32),
+    GalaxyNebula(f32),
+    GalaxyTwinkle(f32),
+    GalaxyTilt(f32),
+    GalaxyCore(String),
+    GalaxyOuter(String),
+    GalaxyStar(String),
+    MatrixDensity(f32),
+    MatrixSpeed(f32),
+    MatrixGlow(f32),
+    MatrixFlicker(f32),
+    MatrixHead(String),
+    MatrixTrail(String),
     CardGradient(f32),
     Grain(f32),
     Vignette(f32),
@@ -448,6 +468,26 @@ struct State {
     ocean_sky: String,
     ocean_sea: String,
     ocean_glint_color: String,
+    sunset_sun_y: f32,
+    sunset_sun_size: f32,
+    sunset_glow: f32,
+    sunset_bands: f32,
+    sunset_sky: String,
+    sunset_horizon: String,
+    sunset_sun: String,
+    galaxy_density: f32,
+    galaxy_nebula: f32,
+    galaxy_twinkle: f32,
+    galaxy_tilt: f32,
+    galaxy_core: String,
+    galaxy_outer: String,
+    galaxy_star: String,
+    matrix_density: f32,
+    matrix_speed: f32,
+    matrix_glow: f32,
+    matrix_flicker: f32,
+    matrix_head: String,
+    matrix_trail: String,
     spinner_style: SpinnerStyle,
     card_gradient: f32,
     grain: f32,
@@ -758,6 +798,26 @@ impl State {
             ocean_sky: night.ocean_sky.to_hex(),
             ocean_sea: night.ocean_sea.to_hex(),
             ocean_glint_color: night.ocean_glint_color.to_hex(),
+            sunset_sun_y: night.sunset_sun_y,
+            sunset_sun_size: night.sunset_sun_size,
+            sunset_glow: night.sunset_glow,
+            sunset_bands: night.sunset_bands,
+            sunset_sky: night.sunset_sky.to_hex(),
+            sunset_horizon: night.sunset_horizon.to_hex(),
+            sunset_sun: night.sunset_sun.to_hex(),
+            galaxy_density: night.galaxy_density,
+            galaxy_nebula: night.galaxy_nebula,
+            galaxy_twinkle: night.galaxy_twinkle,
+            galaxy_tilt: night.galaxy_tilt,
+            galaxy_core: night.galaxy_core.to_hex(),
+            galaxy_outer: night.galaxy_outer.to_hex(),
+            galaxy_star: night.galaxy_star.to_hex(),
+            matrix_density: night.matrix_density,
+            matrix_speed: night.matrix_speed,
+            matrix_glow: night.matrix_glow,
+            matrix_flicker: night.matrix_flicker,
+            matrix_head: night.matrix_head.to_hex(),
+            matrix_trail: night.matrix_trail.to_hex(),
             spinner_style: night.spinner_style,
             card_gradient: night.card_gradient,
             grain: night.grain,
@@ -931,6 +991,26 @@ impl State {
         self.ocean_sky = night.ocean_sky.to_hex();
         self.ocean_sea = night.ocean_sea.to_hex();
         self.ocean_glint_color = night.ocean_glint_color.to_hex();
+        self.sunset_sun_y = night.sunset_sun_y;
+        self.sunset_sun_size = night.sunset_sun_size;
+        self.sunset_glow = night.sunset_glow;
+        self.sunset_bands = night.sunset_bands;
+        self.sunset_sky = night.sunset_sky.to_hex();
+        self.sunset_horizon = night.sunset_horizon.to_hex();
+        self.sunset_sun = night.sunset_sun.to_hex();
+        self.galaxy_density = night.galaxy_density;
+        self.galaxy_nebula = night.galaxy_nebula;
+        self.galaxy_twinkle = night.galaxy_twinkle;
+        self.galaxy_tilt = night.galaxy_tilt;
+        self.galaxy_core = night.galaxy_core.to_hex();
+        self.galaxy_outer = night.galaxy_outer.to_hex();
+        self.galaxy_star = night.galaxy_star.to_hex();
+        self.matrix_density = night.matrix_density;
+        self.matrix_speed = night.matrix_speed;
+        self.matrix_glow = night.matrix_glow;
+        self.matrix_flicker = night.matrix_flicker;
+        self.matrix_head = night.matrix_head.to_hex();
+        self.matrix_trail = night.matrix_trail.to_hex();
         self.spinner_style = night.spinner_style;
         self.card_gradient = night.card_gradient;
         self.grain = night.grain;
@@ -1192,6 +1272,26 @@ impl State {
             ocean_sky: color("Ocean sky", &self.ocean_sky)?,
             ocean_sea: color("Ocean sea", &self.ocean_sea)?,
             ocean_glint_color: color("Ocean glint", &self.ocean_glint_color)?,
+            sunset_sun_y: self.sunset_sun_y,
+            sunset_sun_size: self.sunset_sun_size,
+            sunset_glow: self.sunset_glow,
+            sunset_bands: self.sunset_bands,
+            sunset_sky: color("Sunset sky", &self.sunset_sky)?,
+            sunset_horizon: color("Sunset horizon", &self.sunset_horizon)?,
+            sunset_sun: color("Sunset sun", &self.sunset_sun)?,
+            galaxy_density: self.galaxy_density,
+            galaxy_nebula: self.galaxy_nebula,
+            galaxy_twinkle: self.galaxy_twinkle,
+            galaxy_tilt: self.galaxy_tilt,
+            galaxy_core: color("Galaxy core", &self.galaxy_core)?,
+            galaxy_outer: color("Galaxy outer", &self.galaxy_outer)?,
+            galaxy_star: color("Galaxy star", &self.galaxy_star)?,
+            matrix_density: self.matrix_density,
+            matrix_speed: self.matrix_speed,
+            matrix_glow: self.matrix_glow,
+            matrix_flicker: self.matrix_flicker,
+            matrix_head: color("Matrix head", &self.matrix_head)?,
+            matrix_trail: color("Matrix trail", &self.matrix_trail)?,
             spinner_style: self.spinner_style,
             card_gradient: self.card_gradient,
             grain: self.grain,
@@ -1408,6 +1508,26 @@ fn update(state: &mut State, message: Message) -> Task<Message> {
         Message::OceanSky(s) => state.ocean_sky = s,
         Message::OceanSea(s) => state.ocean_sea = s,
         Message::OceanGlintColor(s) => state.ocean_glint_color = s,
+        Message::SunsetSunY(v) => state.sunset_sun_y = v.clamp(0.3, 0.9),
+        Message::SunsetSunSize(v) => state.sunset_sun_size = v.clamp(0.03, 0.3),
+        Message::SunsetGlow(v) => state.sunset_glow = v.clamp(0.0, 2.5),
+        Message::SunsetBands(v) => state.sunset_bands = v.clamp(0.0, 2.0),
+        Message::SunsetSky(s) => state.sunset_sky = s,
+        Message::SunsetHorizon(s) => state.sunset_horizon = s,
+        Message::SunsetSun(s) => state.sunset_sun = s,
+        Message::GalaxyDensity(v) => state.galaxy_density = v.clamp(0.3, 2.5),
+        Message::GalaxyNebula(v) => state.galaxy_nebula = v.clamp(0.0, 2.5),
+        Message::GalaxyTwinkle(v) => state.galaxy_twinkle = v.clamp(0.0, 3.0),
+        Message::GalaxyTilt(v) => state.galaxy_tilt = v.clamp(-1.5, 1.5),
+        Message::GalaxyCore(s) => state.galaxy_core = s,
+        Message::GalaxyOuter(s) => state.galaxy_outer = s,
+        Message::GalaxyStar(s) => state.galaxy_star = s,
+        Message::MatrixDensity(v) => state.matrix_density = v.clamp(8.0, 60.0),
+        Message::MatrixSpeed(v) => state.matrix_speed = v.clamp(0.1, 4.0),
+        Message::MatrixGlow(v) => state.matrix_glow = v.clamp(0.0, 2.5),
+        Message::MatrixFlicker(v) => state.matrix_flicker = v.clamp(0.0, 4.0),
+        Message::MatrixHead(s) => state.matrix_head = s,
+        Message::MatrixTrail(s) => state.matrix_trail = s,
         Message::CardGradient(v) => state.card_gradient = v.clamp(0.0, 1.0),
         Message::Grain(v) => state.grain = v.clamp(0.0, 0.3),
         Message::Vignette(v) => state.vignette = v.clamp(0.0, 1.0),
@@ -2391,6 +2511,15 @@ fn sky_tab<'a>(state: &'a State, pal: &'a Palette, h: bool) -> Element<'a, Messa
     if matches!(state.sky_mode, SkyMode::Ocean) {
         col = col.push(ocean_group(state, h));
     }
+    if matches!(state.sky_mode, SkyMode::Sunset) {
+        col = col.push(sunset_group(state, h));
+    }
+    if matches!(state.sky_mode, SkyMode::Galaxy) {
+        col = col.push(galaxy_group(state, h));
+    }
+    if matches!(state.sky_mode, SkyMode::Matrix) {
+        col = col.push(matrix_group(state, h));
+    }
     col.into()
 }
 
@@ -3113,6 +3242,185 @@ fn ocean_group(state: &State, h: bool) -> Element<'_, Message> {
             color_cell_with("Sky", &state.ocean_sky, Message::OceanSky),
             color_cell_with("Sea", &state.ocean_sea, Message::OceanSea),
             color_cell_with("Glint", &state.ocean_glint_color, Message::OceanGlintColor),
+        ]),
+    )
+}
+
+/// The sunset scene's authoring controls (M8) — sun placement, glow, bands, colours.
+fn sunset_group(state: &State, h: bool) -> Element<'_, Message> {
+    group(
+        "SUNSET",
+        two_col(vec![
+            helped(
+                slider_row(
+                    "Sun height",
+                    state.sunset_sun_y,
+                    0.35..=0.85,
+                    0.005,
+                    format!("{:.3}", state.sunset_sun_y),
+                    Message::SunsetSunY,
+                ),
+                "Where the sun sits (0 top … 1 bottom).",
+                h,
+            ),
+            helped(
+                slider_row(
+                    "Sun size",
+                    state.sunset_sun_size,
+                    0.04..=0.28,
+                    0.005,
+                    format!("{:.3}", state.sunset_sun_size),
+                    Message::SunsetSunSize,
+                ),
+                "Radius of the sun disc.",
+                h,
+            ),
+            helped(
+                slider_row(
+                    "Glow",
+                    state.sunset_glow,
+                    0.0..=2.0,
+                    0.02,
+                    format!("{:.2}", state.sunset_glow),
+                    Message::SunsetGlow,
+                ),
+                "Strength of the warm halo around the sun.",
+                h,
+            ),
+            helped(
+                slider_row(
+                    "Cloud bands",
+                    state.sunset_bands,
+                    0.0..=1.8,
+                    0.02,
+                    format!("{:.2}", state.sunset_bands),
+                    Message::SunsetBands,
+                ),
+                "How pronounced the lit horizontal cloud bands are.",
+                h,
+            ),
+            color_cell_with("Sky", &state.sunset_sky, Message::SunsetSky),
+            color_cell_with("Horizon", &state.sunset_horizon, Message::SunsetHorizon),
+            color_cell_with("Sun", &state.sunset_sun, Message::SunsetSun),
+        ]),
+    )
+}
+
+/// The galaxy scene's authoring controls (M8) — stars, nebula, tilt, colours.
+fn galaxy_group(state: &State, h: bool) -> Element<'_, Message> {
+    group(
+        "GALAXY",
+        two_col(vec![
+            helped(
+                slider_row(
+                    "Star density",
+                    state.galaxy_density,
+                    0.4..=2.5,
+                    0.05,
+                    format!("{:.2}", state.galaxy_density),
+                    Message::GalaxyDensity,
+                ),
+                "How many stars fill the sky.",
+                h,
+            ),
+            helped(
+                slider_row(
+                    "Nebula",
+                    state.galaxy_nebula,
+                    0.0..=2.5,
+                    0.05,
+                    format!("{:.2}", state.galaxy_nebula),
+                    Message::GalaxyNebula,
+                ),
+                "Brightness of the Milky-Way band.",
+                h,
+            ),
+            helped(
+                slider_row(
+                    "Twinkle",
+                    state.galaxy_twinkle,
+                    0.0..=3.0,
+                    0.05,
+                    format!("{:.2}", state.galaxy_twinkle),
+                    Message::GalaxyTwinkle,
+                ),
+                "Star twinkle speed.",
+                h,
+            ),
+            helped(
+                slider_row(
+                    "Band tilt",
+                    state.galaxy_tilt,
+                    -1.5..=1.5,
+                    0.02,
+                    format!("{:.2}", state.galaxy_tilt),
+                    Message::GalaxyTilt,
+                ),
+                "Angle of the Milky-Way band (radians).",
+                h,
+            ),
+            color_cell_with("Core", &state.galaxy_core, Message::GalaxyCore),
+            color_cell_with("Outer", &state.galaxy_outer, Message::GalaxyOuter),
+            color_cell_with("Star", &state.galaxy_star, Message::GalaxyStar),
+        ]),
+    )
+}
+
+/// The matrix scene's authoring controls (M8) — columns, speed, flicker, colours.
+fn matrix_group(state: &State, h: bool) -> Element<'_, Message> {
+    group(
+        "MATRIX",
+        two_col(vec![
+            helped(
+                slider_row(
+                    "Density",
+                    state.matrix_density,
+                    10.0..=50.0,
+                    1.0,
+                    format!("{:.0}", state.matrix_density),
+                    Message::MatrixDensity,
+                ),
+                "How many columns of code rain.",
+                h,
+            ),
+            helped(
+                slider_row(
+                    "Speed",
+                    state.matrix_speed,
+                    0.1..=3.0,
+                    0.05,
+                    format!("{:.2}", state.matrix_speed),
+                    Message::MatrixSpeed,
+                ),
+                "How fast the glyphs fall.",
+                h,
+            ),
+            helped(
+                slider_row(
+                    "Glow",
+                    state.matrix_glow,
+                    0.0..=2.0,
+                    0.02,
+                    format!("{:.2}", state.matrix_glow),
+                    Message::MatrixGlow,
+                ),
+                "Brightness of the glyphs.",
+                h,
+            ),
+            helped(
+                slider_row(
+                    "Flicker",
+                    state.matrix_flicker,
+                    0.0..=3.0,
+                    0.05,
+                    format!("{:.2}", state.matrix_flicker),
+                    Message::MatrixFlicker,
+                ),
+                "How fast individual glyphs change.",
+                h,
+            ),
+            color_cell_with("Head", &state.matrix_head, Message::MatrixHead),
+            color_cell_with("Trail", &state.matrix_trail, Message::MatrixTrail),
         ]),
     )
 }

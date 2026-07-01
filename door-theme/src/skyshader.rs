@@ -257,6 +257,42 @@ impl SkyShader {
                 nom(t.ocean_sea),
                 nom(t.ocean_glint_color),
             ),
+            crate::SkyMode::Sunset => (
+                [
+                    t.sunset_sun_y,
+                    t.sunset_sun_size,
+                    t.sunset_glow,
+                    t.sunset_bands,
+                ],
+                z,
+                nom(t.sunset_sky),
+                nom(t.sunset_horizon),
+                nom(t.sunset_sun),
+            ),
+            crate::SkyMode::Galaxy => (
+                [
+                    t.galaxy_density,
+                    t.galaxy_nebula,
+                    t.galaxy_twinkle,
+                    t.galaxy_tilt,
+                ],
+                z,
+                nom(t.galaxy_core),
+                nom(t.galaxy_outer),
+                nom(t.galaxy_star),
+            ),
+            crate::SkyMode::Matrix => (
+                [
+                    t.matrix_density,
+                    t.matrix_speed,
+                    t.matrix_glow,
+                    t.matrix_flicker,
+                ],
+                z,
+                nom(t.matrix_head),
+                nom(t.matrix_trail),
+                z,
+            ),
             _ => (z, z, z, z, z),
         };
         let day = t.is_day;
@@ -1670,6 +1706,91 @@ fn ocean_sky(uv: vec2<f32>, p: vec2<f32>, aspect: f32) -> vec3<f32> {
   return c;
 }
 
+// Sunset: a warm golden-hour gradient with a low sun disc, a soft halo, and lit cloud
+// bands drifting across. scene_a = [sun_y, sun_size, glow, bands]; c1 = sky top,
+// c2 = warm horizon, c3 = sun colour.
+fn sunset_sky(uv: vec2<f32>, p: vec2<f32>, aspect: f32) -> vec3<f32> {
+  let top = u.scene_c1.rgb;
+  let horizon = u.scene_c2.rgb;
+  let sunc = u.scene_c3.rgb;
+  let sunY = u.scene_a.x;
+  let sunR = u.scene_a.y;
+  let glow = u.scene_a.z;
+  let bands = u.scene_a.w;
+  var col = mix(top, horizon, smoothstep(0.0, 1.0, pow(uv.y, 0.8)));
+  let cx = (uv.x - 0.5) * aspect;
+  let d = length(vec2(cx, uv.y - sunY));
+  // Halo, then the disc.
+  col = col + sunc * exp(-d * d * (16.0 / max(glow, 0.05))) * glow * 0.5;
+  col = mix(col, sunc + vec3(0.15), smoothstep(sunR, sunR - 0.004, d));
+  // Warm horizontal cloud bands, denser and brighter toward the horizon.
+  let b = sin(uv.y * 42.0 + fbm(vec2(uv.x * 2.0 + u.time * 0.02, uv.y * 3.0)) * 5.0);
+  let band = smoothstep(0.55, 1.0, b) * smoothstep(0.15, 0.7, uv.y) * bands;
+  col = mix(col, mix(col, sunc, 0.6), band * 0.4);
+  return col;
+}
+
+// Galaxy: a tilted Milky-Way band of fbm nebula with dark dust lanes, over a dense
+// starfield that thickens inside the band. scene_a = [density, nebula, twinkle, tilt];
+// c1 = nebula core, c2 = nebula outer, c3 = star colour.
+fn galaxy_sky(uv: vec2<f32>, p: vec2<f32>, aspect: f32) -> vec3<f32> {
+  var col = mix(vec3(0.02, 0.02, 0.05), vec3(0.0, 0.0, 0.02), smoothstep(0.0, 1.0, uv.y));
+  let tilt = u.scene_a.w;
+  let ct = cos(tilt);
+  let st = sin(tilt);
+  let q = vec2(p.x * ct - p.y * st, p.x * st + p.y * ct);
+  let bandMask = exp(-q.y * q.y * 14.0);
+  let neb = fbm(q * 3.0 + vec2(u.time * 0.01, 0.0)) * fbm(q * 6.0 + 2.0);
+  let nebcol = mix(u.scene_c2.rgb, u.scene_c1.rgb, neb);
+  col = col + nebcol * bandMask * neb * u.scene_a.y * 1.8;
+  // Dark dust lanes threading the band.
+  col = col * (1.0 - bandMask * smoothstep(0.4, 0.7, fbm(q * 8.0 + 5.0)) * 0.4);
+  // Stars — denser inside the band.
+  let gp = uv * vec2(aspect, 1.0) * (60.0 * u.scene_a.x);
+  let cell = floor(gp);
+  let hh = hash21(cell);
+  let thresh = 0.90 - bandMask * 0.06;
+  if (hh > thresh) {
+    let cp = fract(gp) - vec2(0.5, 0.5);
+    let tw = 0.6 + 0.4 * sin(u.time * u.scene_a.z * 3.0 + hh * 30.0);
+    col = col + u.scene_c3.rgb * exp(-dot(cp, cp) * 120.0) * ((hh - thresh) / (1.0 - thresh)) * tw * (1.0 + bandMask);
+  }
+  return col;
+}
+
+// Matrix: falling green code rain. Each column has a head that falls (and wraps) over
+// time; cells above the head form a fading trail, each gated by a per-cell glyph that
+// flickers. scene_a = [density, speed, glow, flicker]; c1 = head, c2 = trail.
+fn matrix_sky(uv: vec2<f32>, p: vec2<f32>, aspect: f32) -> vec3<f32> {
+  let dens = u.scene_a.x;
+  let speed = u.scene_a.y;
+  let glow = u.scene_a.z;
+  let flick = u.scene_a.w;
+  var col = vec3(0.0, 0.015, 0.0);
+  let colX = uv.x * aspect * dens;
+  let colId = floor(colX);
+  let cx = fract(colX);
+  let seed = hash21(vec2(colId, 7.0));
+  let rowScale = dens * 1.7;
+  let rowY = uv.y * rowScale;
+  let cell = floor(rowY);
+  let cy = fract(rowY);
+  let span = rowScale + 12.0;
+  let head = fract(u.time * speed * 0.08 * (0.6 + seed) + seed) * span;
+  let dfromhead = head - rowY;                       // >0 = trail above the head
+  let trail = exp(-max(dfromhead, 0.0) * 0.45) * step(0.0, dfromhead);
+  // Per-cell glyph presence, re-rolled in time steps for the flicker.
+  let g = hash21(vec2(colId, cell) + floor(vec2(0.0, u.time * flick * 4.0)));
+  let glyph = step(0.35, g);
+  let mask = smoothstep(0.0, 0.12, cx) * smoothstep(1.0, 0.88, cx)
+           * smoothstep(0.0, 0.12, cy) * smoothstep(1.0, 0.88, cy);
+  col = col + u.scene_c2.rgb * trail * glyph * mask * glow;
+  // The bright leading glyph.
+  let atHead = smoothstep(1.2, 0.0, abs(dfromhead));
+  col = col + u.scene_c1.rgb * atHead * glyph * mask * glow;
+  return col;
+}
+
 // The base scene for the current mode — no comet/grain/vignette overlays. Shared by
 // fs_main and the frosted-card backdrop (fs_frost), so the blur matches the sky.
 fn scene_base(uv: vec2<f32>, p: vec2<f32>, aspect: f32) -> vec3<f32> {
@@ -1690,7 +1811,10 @@ fn scene_base(uv: vec2<f32>, p: vec2<f32>, aspect: f32) -> vec3<f32> {
     else if (mode < 12.5) { return solid_sky(uv, p, aspect); }
     else if (mode < 13.5) { return mountains_sky(uv, p, aspect); }
     else if (mode < 14.5) { return forest_sky(uv, p, aspect); }
-    else { return ocean_sky(uv, p, aspect); }
+    else if (mode < 15.5) { return ocean_sky(uv, p, aspect); }
+    else if (mode < 16.5) { return sunset_sky(uv, p, aspect); }
+    else if (mode < 17.5) { return galaxy_sky(uv, p, aspect); }
+    else { return matrix_sky(uv, p, aspect); }
   }
   // mode 0 = auto/day/night: pick the daytime or night renderer by the day flag.
   if (day > 0.5) { return day_sky(uv, p, aspect); }
