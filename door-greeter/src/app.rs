@@ -275,6 +275,11 @@ struct State {
     cmd_tx: Option<mpsc::Sender<Command>>,
     /// The resolved look (a clone of the process-wide [`theme`]).
     theme: Theme,
+    /// The theme's wallpaper/logo paths *after* the pre-auth trust + size vetting
+    /// ([`vet_theme_assets`]) — `None` where the configured asset was refused. Vetted
+    /// once when the theme is set, so `view` never re-stats the filesystem per frame.
+    wallpaper: Option<std::path::PathBuf>,
+    logo: Option<std::path::PathBuf>,
     /// Current local time, `HH:MM`, refreshed by [`Message::Tick`].
     clock: String,
     /// Current local date, e.g. `Friday, June 27`.
@@ -301,6 +306,7 @@ impl State {
             theme.clock_seconds,
             theme.clock_format.as_deref(),
         );
+        let (wallpaper, logo) = vet_theme_assets(&theme);
         State {
             phase: Phase::Connecting,
             sessions: Vec::new(),
@@ -311,6 +317,8 @@ impl State {
             status_error: false,
             cmd_tx: None,
             theme,
+            wallpaper,
+            logo,
             clock,
             date: now_date(),
             fade: 0.0,
@@ -429,6 +437,11 @@ fn update(state: &mut State, message: Message) -> Task<Message> {
             // TOML parse, and the PartialEq guard avoids needless repaint churn.
             let fresh = Theme::load_at(now_minutes(), now_month());
             if fresh != state.theme {
+                // Re-vet assets only when the theme actually changed (a config edit or a
+                // day/night flip) — not every tick.
+                let (wallpaper, logo) = vet_theme_assets(&fresh);
+                state.wallpaper = wallpaper;
+                state.logo = logo;
                 state.theme = fresh;
             }
             state.clock = now_hm(
@@ -463,6 +476,103 @@ fn is_svg(path: &std::path::Path) -> bool {
     path.extension()
         .and_then(|e| e.to_str())
         .is_some_and(|e| e.eq_ignore_ascii_case("svg"))
+}
+
+/// The only directories the pre-auth greeter loads wallpaper/logo assets from —
+/// the same root-owned trees door's own config is read from. A local unprivileged
+/// user cannot write here, so an asset resolved into one of these is trustworthy;
+/// a path anywhere else (a world-writable `/tmp`, a user's home) could be swapped
+/// out from under the login screen before authentication, so it is refused.
+const ASSET_ROOTS: [&str; 2] = ["/usr/share/door", "/etc/door"];
+
+/// Decompression-bomb guard for raster assets: a decoded frame larger than this in
+/// either dimension, or above the pixel budget, is refused rather than handed to the
+/// image decoder (which would allocate for the full frame). 8K is ~33 MP, so this
+/// clears any real display wallpaper while rejecting a hostile 100k×100k PNG.
+const MAX_ASSET_DIM: u32 = 8192;
+const MAX_ASSET_PIXELS: u64 = 40_000_000;
+
+/// Vet a configured asset before the greeter loads it, pre-auth. Returns the
+/// canonical path if it is trusted, or `None` (with a logged explanation) if it is
+/// refused — the caller then renders without it (a solid background / no logo).
+///
+/// Two gates: the path must resolve *inside* [`ASSET_ROOTS`] (canonicalized first,
+/// so a symlink pointing out of the trusted tree is caught), and a raster asset must
+/// decode within the size cap. A `DOORD_GREETER_CONFIG` dev/test config is an
+/// explicit trusted-operator signal and may load assets from anywhere — but the size
+/// cap still applies.
+fn vet_asset(path: &std::path::Path, kind: &str) -> Option<std::path::PathBuf> {
+    let real = match std::fs::canonicalize(path) {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!(
+                "door: refusing {kind} {}: cannot resolve the path ({e}); loading without it.",
+                path.display()
+            );
+            return None;
+        }
+    };
+
+    let dev = std::env::var_os(door_theme::ENV_CONFIG).is_some();
+    if !dev && !ASSET_ROOTS.iter().any(|root| real.starts_with(root)) {
+        eprintln!(
+            "door: refusing {kind} {}: pre-auth assets may only be loaded from {}. \
+             A path outside those root-owned directories could be replaced by a local \
+             user before login, so it is not loaded — the greeter falls back to none.",
+            real.display(),
+            ASSET_ROOTS.join(" or "),
+        );
+        return None;
+    }
+
+    // SVG has no meaningful raster dimensions; the trusted-path gate above is its
+    // defense (and it is the higher-risk parser, so it is only ever loaded from root).
+    // Probe only the header — `into_dimensions` reads the size without decoding the
+    // full frame, so the bomb never gets allocated.
+    if !is_svg(&real) {
+        // `::image` = the `image` crate (the bare `image` in this module is the iced
+        // widget, which is imported and shadows it).
+        let dims = ::image::ImageReader::open(&real)
+            .map_err(|e| e.to_string())
+            .and_then(|r| r.with_guessed_format().map_err(|e| e.to_string()))
+            .and_then(|r| r.into_dimensions().map_err(|e| e.to_string()));
+        match dims {
+            Ok((w, h))
+                if w > MAX_ASSET_DIM
+                    || h > MAX_ASSET_DIM
+                    || (w as u64 * h as u64) > MAX_ASSET_PIXELS =>
+            {
+                eprintln!(
+                    "door: refusing {kind} {}: {w}×{h} exceeds the {MAX_ASSET_DIM}px / {} MP \
+                     asset cap (a decompression-bomb guard); loading without it.",
+                    real.display(),
+                    MAX_ASSET_PIXELS / 1_000_000,
+                );
+                return None;
+            }
+            Ok(_) => {}
+            Err(e) => {
+                eprintln!(
+                    "door: refusing {kind} {}: not a decodable image ({e}); loading without it.",
+                    real.display()
+                );
+                return None;
+            }
+        }
+    }
+
+    Some(real)
+}
+
+/// Vet a theme's wallpaper + logo once (when it is loaded or hot-reloaded), so the
+/// per-frame `view` never re-stats or re-probes. Returns the trusted paths to render.
+fn vet_theme_assets(theme: &Theme) -> (Option<std::path::PathBuf>, Option<std::path::PathBuf>) {
+    let wallpaper = theme
+        .wallpaper
+        .as_ref()
+        .and_then(|p| vet_asset(p, "wallpaper"));
+    let logo = theme.logo.as_ref().and_then(|p| vet_asset(p, "logo"));
+    (wallpaper, logo)
 }
 
 /// Whether Caps Lock is on, from the keyboard's `capslock` LED under
@@ -662,7 +772,7 @@ fn view(state: &State) -> Element<'_, Message> {
 
     // Emblem: a user-set image (SVG crisp, else raster) overrides; otherwise the
     // animated spinner — unless the style is `none`, which shows no emblem at all.
-    let emblem: Option<Element<Message>> = match &t.logo {
+    let emblem: Option<Element<Message>> = match &state.logo {
         Some(path) if is_svg(path) => Some(
             svg(svg::Handle::from_path(path.clone()))
                 .height(Length::Fixed(56.0))
@@ -835,9 +945,9 @@ fn view(state: &State) -> Element<'_, Message> {
         overlay.into()
     };
 
-    // Wallpaper behind everything, if configured (a missing file just leaves the
-    // solid window background from `app_style`).
-    match &t.wallpaper {
+    // Wallpaper behind everything, if configured and it passed the pre-auth asset
+    // vetting (a missing/refused file just leaves the solid window background).
+    match &state.wallpaper {
         Some(path) => {
             let background = image(image::Handle::from_path(path))
                 .width(Length::Fill)
@@ -1133,5 +1243,35 @@ fn run_conversation(
                 return;
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod asset_vetting_tests {
+    use super::vet_asset;
+    use std::path::Path;
+
+    /// A perfectly valid image that happens to live outside the trusted roots
+    /// (`/tmp`) must be refused pre-auth — a local user could have written it.
+    #[test]
+    fn refuses_a_valid_image_outside_the_trusted_roots() {
+        // SAFETY: single-threaded test; no other test touches this var. Ensure we are
+        // in production mode (no dev-config bypass) so the allowlist is enforced.
+        unsafe { std::env::remove_var(door_theme::ENV_CONFIG) };
+        let p = std::env::temp_dir().join(format!("door-vet-{}.png", std::process::id()));
+        ::image::RgbaImage::new(2, 2)
+            .save(&p)
+            .expect("write test png");
+        assert!(
+            vet_asset(&p, "wallpaper").is_none(),
+            "a valid image under /tmp must be refused by the trusted-roots allowlist"
+        );
+        let _ = std::fs::remove_file(&p);
+    }
+
+    /// A path that does not resolve is refused (canonicalize fails) — never loaded.
+    #[test]
+    fn refuses_a_nonexistent_asset() {
+        assert!(vet_asset(Path::new("/door/nope/missing.png"), "logo").is_none());
     }
 }

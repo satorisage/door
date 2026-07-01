@@ -880,6 +880,7 @@ dependencies = [
  "futures",
  "iced",
  "iced_futures",
+ "image",
  "libc",
  "protocol",
 ]
