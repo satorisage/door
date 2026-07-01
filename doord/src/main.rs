@@ -22,12 +22,19 @@
 //! hardware is the remaining verification.
 
 mod config;
+mod fdpass;
 mod hardening;
+// M5 sandbox groundwork: the pre-forked spawner + its supervisor-side
+// helpers. Built and tested against a stand-in worker; not yet wired onto the
+// production login path (that flip needs hardware validation of a real session
+// spawn), so its public surface is unused in a non-test build for now.
 mod ipc;
 mod pam;
 mod privdrop;
 mod sessions;
 mod spawn;
+#[allow(dead_code)]
+mod spawner;
 mod user;
 mod worker;
 
