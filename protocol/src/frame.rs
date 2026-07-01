@@ -17,6 +17,7 @@
 use std::io::{self, Read, Write};
 
 use serde::{de::DeserializeOwned, Serialize};
+use zeroize::Zeroizing;
 
 /// Hard cap on a single serialized message. Login traffic is tiny (a username,
 /// a password, a short session list); 64 KiB is comfortably above any honest
@@ -67,7 +68,10 @@ impl From<io::Error> for FrameError {
 /// Returns [`FrameError::TooLarge`] rather than emitting a frame that the peer
 /// would reject, so an over-cap message fails fast on the sending side too.
 pub fn write_frame<W: Write, T: Serialize>(w: &mut W, msg: &T) -> Result<(), FrameError> {
-    let body = serde_json::to_vec(msg).map_err(|_| FrameError::Malformed)?;
+    // The serialized body may contain a plaintext secret (an `AuthReply`). Wrap it in
+    // `Zeroizing` so the wire buffer is wiped on drop — the `Secret`'s own zeroize is
+    // useless if its cleartext lingers in this un-zeroed staging copy.
+    let body = Zeroizing::new(serde_json::to_vec(msg).map_err(|_| FrameError::Malformed)?);
     if body.len() > MAX_FRAME_BYTES {
         return Err(FrameError::TooLarge {
             declared: body.len(),
@@ -91,7 +95,11 @@ pub fn read_frame<R: Read, T: DeserializeOwned>(r: &mut R) -> Result<T, FrameErr
     if declared > MAX_FRAME_BYTES {
         return Err(FrameError::TooLarge { declared });
     }
-    let mut body = vec![0u8; declared];
+    // A decoded body may hold a plaintext secret. `Zeroizing` wipes the wire buffer on
+    // every exit path — success, a mid-body read error, or a decode failure — so the
+    // cleartext never lingers in freed heap after this call (defense in depth behind the
+    // `Secret` type's own zeroize).
+    let mut body = Zeroizing::new(vec![0u8; declared]);
     r.read_exact(&mut body)?;
     serde_json::from_slice(&body).map_err(|_| FrameError::Malformed)
 }
