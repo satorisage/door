@@ -233,17 +233,17 @@ impl SkyShader {
                 nom(t.mtn_ridge),
                 nom(t.mtn_haze_color),
             ),
-            crate::SkyMode::Forest => (
+            crate::SkyMode::Pyramids => (
                 [
-                    t.forest_density,
-                    t.forest_mist,
-                    t.forest_fireflies,
-                    t.forest_drift,
+                    t.pyramids_density,
+                    t.pyramids_mist,
+                    t.pyramids_fireflies,
+                    t.pyramids_drift,
                 ],
                 z,
-                nom(t.forest_sky),
-                nom(t.forest_tree),
-                nom(t.forest_glow),
+                nom(t.pyramids_sky),
+                nom(t.pyramids_tree),
+                nom(t.pyramids_glow),
             ),
             crate::SkyMode::Ocean => (
                 [
@@ -292,6 +292,18 @@ impl SkyShader {
                 nom(t.matrix_head),
                 nom(t.matrix_trail),
                 z,
+            ),
+            crate::SkyMode::Forest => (
+                [
+                    t.forest_density,
+                    t.forest_haze,
+                    t.forest_fireflies,
+                    t.forest_drift,
+                ],
+                z,
+                nom(t.forest_sky),
+                nom(t.forest_tree),
+                nom(t.forest_glow),
             ),
             _ => (z, z, z, z, z),
         };
@@ -1632,18 +1644,19 @@ fn mountains_sky(uv: vec2<f32>, p: vec2<f32>, aspect: f32) -> vec3<f32> {
   return col;
 }
 
-// Forest: a spiky pine treeline with a drifting mist band and warm twinkling fireflies.
-// scene_a = [density, mist, fireflies, drift]; c1 = sky, c2 = tree, c3 = firefly glow.
-fn forest_sky(uv: vec2<f32>, p: vec2<f32>, aspect: f32) -> vec3<f32> {
+// Pyramids: two layers of sharp angular silhouettes over a dusk sky, with a drifting
+// mist band and warm twinkling glints (the "forest" that read as pyramids — kept).
+// scene_a = [density, mist, glints, drift]; c1 = sky, c2 = silhouette, c3 = glint glow.
+fn pyramids_sky(uv: vec2<f32>, p: vec2<f32>, aspect: f32) -> vec3<f32> {
   let sky = u.scene_c1.rgb;
   var col = mix(sky, sky * 0.45, smoothstep(0.0, 0.85, uv.y));
   let drift = u.scene_a.w;
-  // Mist band hovering around the treeline.
+  // Mist band hovering around the base of the silhouettes.
   let mist = u.scene_a.y;
   let mb = exp(-pow((uv.y - 0.58) * 3.2, 2.0));
   let mn = 0.5 + 0.5 * fbm(vec2(uv.x * 2.5 + u.time * drift * 0.04, 0.7));
   col = mix(col, sky + vec3(0.06, 0.07, 0.08), mb * mist * mn * 0.7);
-  // Treeline: two spiky silhouette layers (back higher, front darker/lower).
+  // Two layers of angular silhouettes (back higher, front darker/lower).
   let tree = u.scene_c2.rgb;
   let dens = u.scene_a.x;
   for (var i = 0; i < 2; i = i + 1) {
@@ -1791,6 +1804,57 @@ fn matrix_sky(uv: vec2<f32>, p: vec2<f32>, aspect: f32) -> vec3<f32> {
   return col;
 }
 
+// Forest: three receding rows of tall, dense pine trees fading into mist, with drifting
+// fireflies — the real conifer forest (the pyramid look lives on as `pyramids`).
+// scene_a = [density, haze, fireflies, drift]; c1 = sky, c2 = pine, c3 = firefly glow.
+fn forest_sky(uv: vec2<f32>, p: vec2<f32>, aspect: f32) -> vec3<f32> {
+  let sky = u.scene_c1.rgb;
+  let treec = u.scene_c2.rgb;
+  let glow = u.scene_c3.rgb;
+  let dens = u.scene_a.x;
+  let haze = u.scene_a.y;
+  let ff = u.scene_a.z;
+  let drift = u.scene_a.w;
+  var col = mix(sky, sky * 0.5, smoothstep(0.0, 1.0, uv.y));
+  // Low mist band drifting through the trunks.
+  let mb = exp(-pow((uv.y - 0.62) * 3.0, 2.0));
+  let mn = 0.5 + 0.5 * fbm(vec2(uv.x * 2.2 + u.time * drift * 0.03, 0.4));
+  col = mix(col, sky + vec3(0.05, 0.08, 0.06), mb * haze * mn * 0.6);
+  // Three receding rows of tall, thin pines (back rows hazier + higher).
+  for (var i = 0; i < 3; i = i + 1) {
+    let fl = f32(i);
+    let dz = fl * 0.5;                          // 0 = far, 1 = near
+    let freq = dens * (1.3 + dz * 0.4);          // high freq = many narrow conifers
+    let cxs = uv.x * aspect * freq + fl * 4.3;
+    let id = floor(cxs);
+    let dx = fract(cxs) - 0.5;
+    let hh = hash21(vec2(id, fl + 1.0));
+    let baseY = 0.42 + dz * 0.30;
+    let th = (0.22 + 0.14 * hh) * (0.65 + dz * 0.5);   // tall & narrow → pine, not pyramid
+    let apexY = baseY - th;
+    // Slight fir "tiers": notch the sloped edge so it reads as branches, not a smooth cone.
+    let tier = 0.012 * abs(sin(uv.y * 46.0));
+    let edge = apexY + abs(dx) * 2.0 * th - tier;
+    let m = step(edge, uv.y);
+    let lc = mix(mix(sky, treec, 0.45), treec, dz);   // far rows lift toward the misty sky
+    col = mix(col, lc, m);
+  }
+  // Fireflies drifting among and above the trees.
+  var fg = 0.0;
+  for (var k = 0; k < 16; k = k + 1) {
+    let fk = f32(k);
+    let bx = hash21(vec2(fk, 1.0));
+    let by = hash21(vec2(fk, 2.0));
+    let fx = fract(bx + u.time * drift * 0.012 * (0.5 + bx));
+    let fy = 0.34 + by * 0.30 + 0.025 * sin(u.time * (0.7 + bx) + fk);
+    var rel = uv - vec2(fx, fy);
+    rel.x = rel.x * aspect;
+    let tw = 0.4 + 0.6 * sin(u.time * 2.2 + fk * 1.9);
+    fg = fg + exp(-dot(rel, rel) * 5000.0) * max(tw, 0.0);
+  }
+  return col + glow * fg * ff;
+}
+
 // The base scene for the current mode — no comet/grain/vignette overlays. Shared by
 // fs_main and the frosted-card backdrop (fs_frost), so the blur matches the sky.
 fn scene_base(uv: vec2<f32>, p: vec2<f32>, aspect: f32) -> vec3<f32> {
@@ -1810,11 +1874,12 @@ fn scene_base(uv: vec2<f32>, p: vec2<f32>, aspect: f32) -> vec3<f32> {
     else if (mode < 11.5) { return water_sky(uv, p, aspect); }
     else if (mode < 12.5) { return solid_sky(uv, p, aspect); }
     else if (mode < 13.5) { return mountains_sky(uv, p, aspect); }
-    else if (mode < 14.5) { return forest_sky(uv, p, aspect); }
+    else if (mode < 14.5) { return pyramids_sky(uv, p, aspect); }
     else if (mode < 15.5) { return ocean_sky(uv, p, aspect); }
     else if (mode < 16.5) { return sunset_sky(uv, p, aspect); }
     else if (mode < 17.5) { return galaxy_sky(uv, p, aspect); }
-    else { return matrix_sky(uv, p, aspect); }
+    else if (mode < 18.5) { return matrix_sky(uv, p, aspect); }
+    else { return forest_sky(uv, p, aspect); }
   }
   // mode 0 = auto/day/night: pick the daytime or night renderer by the day flag.
   if (day > 0.5) { return day_sky(uv, p, aspect); }

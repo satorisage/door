@@ -257,13 +257,13 @@ enum Message {
     MtnSky(String),
     MtnRidge(String),
     MtnHazeColor(String),
-    ForestDensity(f32),
-    ForestMist(f32),
-    ForestFireflies(f32),
-    ForestDrift(f32),
-    ForestSky(String),
-    ForestTree(String),
-    ForestGlow(String),
+    PyramidsDensity(f32),
+    PyramidsMist(f32),
+    PyramidsFireflies(f32),
+    PyramidsDrift(f32),
+    PyramidsSky(String),
+    PyramidsTree(String),
+    PyramidsGlow(String),
     OceanHorizon(f32),
     OceanWaveSpeed(f32),
     OceanGlint(f32),
@@ -291,6 +291,13 @@ enum Message {
     MatrixFlicker(f32),
     MatrixHead(String),
     MatrixTrail(String),
+    ForestDensity(f32),
+    ForestHaze(f32),
+    ForestFireflies(f32),
+    ForestDrift(f32),
+    ForestSky(String),
+    ForestTree(String),
+    ForestGlow(String),
     CardGradient(f32),
     Grain(f32),
     Vignette(f32),
@@ -454,13 +461,13 @@ struct State {
     mtn_sky: String,
     mtn_ridge: String,
     mtn_haze_color: String,
-    forest_density: f32,
-    forest_mist: f32,
-    forest_fireflies: f32,
-    forest_drift: f32,
-    forest_sky: String,
-    forest_tree: String,
-    forest_glow: String,
+    pyramids_density: f32,
+    pyramids_mist: f32,
+    pyramids_fireflies: f32,
+    pyramids_drift: f32,
+    pyramids_sky: String,
+    pyramids_tree: String,
+    pyramids_glow: String,
     ocean_horizon: f32,
     ocean_wave_speed: f32,
     ocean_glint: f32,
@@ -488,6 +495,13 @@ struct State {
     matrix_flicker: f32,
     matrix_head: String,
     matrix_trail: String,
+    forest_density: f32,
+    forest_haze: f32,
+    forest_fireflies: f32,
+    forest_drift: f32,
+    forest_sky: String,
+    forest_tree: String,
+    forest_glow: String,
     spinner_style: SpinnerStyle,
     card_gradient: f32,
     grain: f32,
@@ -784,13 +798,13 @@ impl State {
             mtn_sky: night.mtn_sky.to_hex(),
             mtn_ridge: night.mtn_ridge.to_hex(),
             mtn_haze_color: night.mtn_haze_color.to_hex(),
-            forest_density: night.forest_density,
-            forest_mist: night.forest_mist,
-            forest_fireflies: night.forest_fireflies,
-            forest_drift: night.forest_drift,
-            forest_sky: night.forest_sky.to_hex(),
-            forest_tree: night.forest_tree.to_hex(),
-            forest_glow: night.forest_glow.to_hex(),
+            pyramids_density: night.pyramids_density,
+            pyramids_mist: night.pyramids_mist,
+            pyramids_fireflies: night.pyramids_fireflies,
+            pyramids_drift: night.pyramids_drift,
+            pyramids_sky: night.pyramids_sky.to_hex(),
+            pyramids_tree: night.pyramids_tree.to_hex(),
+            pyramids_glow: night.pyramids_glow.to_hex(),
             ocean_horizon: night.ocean_horizon,
             ocean_wave_speed: night.ocean_wave_speed,
             ocean_glint: night.ocean_glint,
@@ -818,6 +832,13 @@ impl State {
             matrix_flicker: night.matrix_flicker,
             matrix_head: night.matrix_head.to_hex(),
             matrix_trail: night.matrix_trail.to_hex(),
+            forest_density: night.forest_density,
+            forest_haze: night.forest_haze,
+            forest_fireflies: night.forest_fireflies,
+            forest_drift: night.forest_drift,
+            forest_sky: night.forest_sky.to_hex(),
+            forest_tree: night.forest_tree.to_hex(),
+            forest_glow: night.forest_glow.to_hex(),
             spinner_style: night.spinner_style,
             card_gradient: night.card_gradient,
             grain: night.grain,
@@ -977,13 +998,13 @@ impl State {
         self.mtn_sky = night.mtn_sky.to_hex();
         self.mtn_ridge = night.mtn_ridge.to_hex();
         self.mtn_haze_color = night.mtn_haze_color.to_hex();
-        self.forest_density = night.forest_density;
-        self.forest_mist = night.forest_mist;
-        self.forest_fireflies = night.forest_fireflies;
-        self.forest_drift = night.forest_drift;
-        self.forest_sky = night.forest_sky.to_hex();
-        self.forest_tree = night.forest_tree.to_hex();
-        self.forest_glow = night.forest_glow.to_hex();
+        self.pyramids_density = night.pyramids_density;
+        self.pyramids_mist = night.pyramids_mist;
+        self.pyramids_fireflies = night.pyramids_fireflies;
+        self.pyramids_drift = night.pyramids_drift;
+        self.pyramids_sky = night.pyramids_sky.to_hex();
+        self.pyramids_tree = night.pyramids_tree.to_hex();
+        self.pyramids_glow = night.pyramids_glow.to_hex();
         self.ocean_horizon = night.ocean_horizon;
         self.ocean_wave_speed = night.ocean_wave_speed;
         self.ocean_glint = night.ocean_glint;
@@ -1011,6 +1032,13 @@ impl State {
         self.matrix_flicker = night.matrix_flicker;
         self.matrix_head = night.matrix_head.to_hex();
         self.matrix_trail = night.matrix_trail.to_hex();
+        self.forest_density = night.forest_density;
+        self.forest_haze = night.forest_haze;
+        self.forest_fireflies = night.forest_fireflies;
+        self.forest_drift = night.forest_drift;
+        self.forest_sky = night.forest_sky.to_hex();
+        self.forest_tree = night.forest_tree.to_hex();
+        self.forest_glow = night.forest_glow.to_hex();
         self.spinner_style = night.spinner_style;
         self.card_gradient = night.card_gradient;
         self.grain = night.grain;
@@ -1258,13 +1286,13 @@ impl State {
             mtn_sky: color("Mountain sky", &self.mtn_sky)?,
             mtn_ridge: color("Mountain ridge", &self.mtn_ridge)?,
             mtn_haze_color: color("Mountain haze", &self.mtn_haze_color)?,
-            forest_density: self.forest_density,
-            forest_mist: self.forest_mist,
-            forest_fireflies: self.forest_fireflies,
-            forest_drift: self.forest_drift,
-            forest_sky: color("Forest sky", &self.forest_sky)?,
-            forest_tree: color("Forest tree", &self.forest_tree)?,
-            forest_glow: color("Forest glow", &self.forest_glow)?,
+            pyramids_density: self.pyramids_density,
+            pyramids_mist: self.pyramids_mist,
+            pyramids_fireflies: self.pyramids_fireflies,
+            pyramids_drift: self.pyramids_drift,
+            pyramids_sky: color("Pyramids sky", &self.pyramids_sky)?,
+            pyramids_tree: color("Pyramids tree", &self.pyramids_tree)?,
+            pyramids_glow: color("Pyramids glow", &self.pyramids_glow)?,
             ocean_horizon: self.ocean_horizon,
             ocean_wave_speed: self.ocean_wave_speed,
             ocean_glint: self.ocean_glint,
@@ -1292,6 +1320,13 @@ impl State {
             matrix_flicker: self.matrix_flicker,
             matrix_head: color("Matrix head", &self.matrix_head)?,
             matrix_trail: color("Matrix trail", &self.matrix_trail)?,
+            forest_density: self.forest_density,
+            forest_haze: self.forest_haze,
+            forest_fireflies: self.forest_fireflies,
+            forest_drift: self.forest_drift,
+            forest_sky: color("Forest sky", &self.forest_sky)?,
+            forest_tree: color("Forest pine", &self.forest_tree)?,
+            forest_glow: color("Forest firefly", &self.forest_glow)?,
             spinner_style: self.spinner_style,
             card_gradient: self.card_gradient,
             grain: self.grain,
@@ -1494,13 +1529,13 @@ fn update(state: &mut State, message: Message) -> Task<Message> {
         Message::MtnSky(s) => state.mtn_sky = s,
         Message::MtnRidge(s) => state.mtn_ridge = s,
         Message::MtnHazeColor(s) => state.mtn_haze_color = s,
-        Message::ForestDensity(v) => state.forest_density = v.clamp(2.0, 16.0),
-        Message::ForestMist(v) => state.forest_mist = v.clamp(0.0, 1.5),
-        Message::ForestFireflies(v) => state.forest_fireflies = v.clamp(0.0, 3.0),
-        Message::ForestDrift(v) => state.forest_drift = v.clamp(0.0, 5.0),
-        Message::ForestSky(s) => state.forest_sky = s,
-        Message::ForestTree(s) => state.forest_tree = s,
-        Message::ForestGlow(s) => state.forest_glow = s,
+        Message::PyramidsDensity(v) => state.pyramids_density = v.clamp(2.0, 16.0),
+        Message::PyramidsMist(v) => state.pyramids_mist = v.clamp(0.0, 1.5),
+        Message::PyramidsFireflies(v) => state.pyramids_fireflies = v.clamp(0.0, 3.0),
+        Message::PyramidsDrift(v) => state.pyramids_drift = v.clamp(0.0, 5.0),
+        Message::PyramidsSky(s) => state.pyramids_sky = s,
+        Message::PyramidsTree(s) => state.pyramids_tree = s,
+        Message::PyramidsGlow(s) => state.pyramids_glow = s,
         Message::OceanHorizon(v) => state.ocean_horizon = v.clamp(0.2, 0.8),
         Message::OceanWaveSpeed(v) => state.ocean_wave_speed = v.clamp(0.0, 3.0),
         Message::OceanGlint(v) => state.ocean_glint = v.clamp(0.0, 2.5),
@@ -1528,6 +1563,13 @@ fn update(state: &mut State, message: Message) -> Task<Message> {
         Message::MatrixFlicker(v) => state.matrix_flicker = v.clamp(0.0, 4.0),
         Message::MatrixHead(s) => state.matrix_head = s,
         Message::MatrixTrail(s) => state.matrix_trail = s,
+        Message::ForestDensity(v) => state.forest_density = v.clamp(4.0, 20.0),
+        Message::ForestHaze(v) => state.forest_haze = v.clamp(0.0, 1.5),
+        Message::ForestFireflies(v) => state.forest_fireflies = v.clamp(0.0, 2.5),
+        Message::ForestDrift(v) => state.forest_drift = v.clamp(0.0, 3.0),
+        Message::ForestSky(s) => state.forest_sky = s,
+        Message::ForestTree(s) => state.forest_tree = s,
+        Message::ForestGlow(s) => state.forest_glow = s,
         Message::CardGradient(v) => state.card_gradient = v.clamp(0.0, 1.0),
         Message::Grain(v) => state.grain = v.clamp(0.0, 0.3),
         Message::Vignette(v) => state.vignette = v.clamp(0.0, 1.0),
@@ -2505,8 +2547,8 @@ fn sky_tab<'a>(state: &'a State, pal: &'a Palette, h: bool) -> Element<'a, Messa
     if matches!(state.sky_mode, SkyMode::Mountains) {
         col = col.push(mountains_group(state, h));
     }
-    if matches!(state.sky_mode, SkyMode::Forest) {
-        col = col.push(forest_group(state, h));
+    if matches!(state.sky_mode, SkyMode::Pyramids) {
+        col = col.push(pyramids_group(state, h));
     }
     if matches!(state.sky_mode, SkyMode::Ocean) {
         col = col.push(ocean_group(state, h));
@@ -2519,6 +2561,9 @@ fn sky_tab<'a>(state: &'a State, pal: &'a Palette, h: bool) -> Element<'a, Messa
     }
     if matches!(state.sky_mode, SkyMode::Matrix) {
         col = col.push(matrix_group(state, h));
+    }
+    if matches!(state.sky_mode, SkyMode::Forest) {
+        col = col.push(forest_group(state, h));
     }
     col.into()
 }
@@ -3126,62 +3171,62 @@ fn mountains_group(state: &State, h: bool) -> Element<'_, Message> {
     )
 }
 
-/// The forest scene's authoring controls (M8) — trees, mist, fireflies, colours.
-fn forest_group(state: &State, h: bool) -> Element<'_, Message> {
+/// The pyramids scene's authoring controls (M8) — trees, mist, fireflies, colours.
+fn pyramids_group(state: &State, h: bool) -> Element<'_, Message> {
     group(
-        "FOREST",
+        "PYRAMIDS",
         two_col(vec![
             helped(
                 slider_row(
-                    "Tree density",
-                    state.forest_density,
+                    "Density",
+                    state.pyramids_density,
                     2.0..=14.0,
                     0.5,
-                    format!("{:.1}", state.forest_density),
-                    Message::ForestDensity,
+                    format!("{:.1}", state.pyramids_density),
+                    Message::PyramidsDensity,
                 ),
-                "How many pines fill the treeline.",
+                "How many angular silhouettes fill the skyline.",
                 h,
             ),
             helped(
                 slider_row(
                     "Mist",
-                    state.forest_mist,
+                    state.pyramids_mist,
                     0.0..=1.2,
                     0.02,
-                    format!("{:.2}", state.forest_mist),
-                    Message::ForestMist,
+                    format!("{:.2}", state.pyramids_mist),
+                    Message::PyramidsMist,
                 ),
-                "Thickness of the mist band at the treeline.",
+                "Thickness of the mist band at the base.",
                 h,
             ),
             helped(
                 slider_row(
-                    "Fireflies",
-                    state.forest_fireflies,
+                    "Glints",
+                    state.pyramids_fireflies,
                     0.0..=2.5,
                     0.05,
-                    format!("{:.2}", state.forest_fireflies),
-                    Message::ForestFireflies,
+                    format!("{:.2}", state.pyramids_fireflies),
+                    Message::PyramidsFireflies,
                 ),
-                "Brightness of the drifting fireflies (0 = none).",
+                "Brightness of the drifting glints (0 = none).",
                 h,
             ),
             helped(
                 slider_row(
                     "Drift",
-                    state.forest_drift,
+                    state.pyramids_drift,
                     0.0..=3.0,
                     0.05,
-                    format!("{:.2}", state.forest_drift),
-                    Message::ForestDrift,
+                    format!("{:.2}", state.pyramids_drift),
+                    Message::PyramidsDrift,
                 ),
                 "Drift speed of the mist and fireflies.",
                 h,
             ),
-            color_cell_with("Sky", &state.forest_sky, Message::ForestSky),
-            color_cell_with("Tree", &state.forest_tree, Message::ForestTree),
-            color_cell_with("Firefly", &state.forest_glow, Message::ForestGlow),
+            color_cell_with("Sky", &state.pyramids_sky, Message::PyramidsSky),
+            color_cell_with("Shape", &state.pyramids_tree, Message::PyramidsTree),
+            color_cell_with("Glint", &state.pyramids_glow, Message::PyramidsGlow),
         ]),
     )
 }
@@ -3421,6 +3466,66 @@ fn matrix_group(state: &State, h: bool) -> Element<'_, Message> {
             ),
             color_cell_with("Head", &state.matrix_head, Message::MatrixHead),
             color_cell_with("Trail", &state.matrix_trail, Message::MatrixTrail),
+        ]),
+    )
+}
+
+/// The forest scene's authoring controls (M8) — pines, haze, fireflies, colours.
+fn forest_group(state: &State, h: bool) -> Element<'_, Message> {
+    group(
+        "FOREST",
+        two_col(vec![
+            helped(
+                slider_row(
+                    "Tree density",
+                    state.forest_density,
+                    4.0..=20.0,
+                    0.5,
+                    format!("{:.1}", state.forest_density),
+                    Message::ForestDensity,
+                ),
+                "How many pines fill each row.",
+                h,
+            ),
+            helped(
+                slider_row(
+                    "Haze",
+                    state.forest_haze,
+                    0.0..=1.5,
+                    0.02,
+                    format!("{:.2}", state.forest_haze),
+                    Message::ForestHaze,
+                ),
+                "Mist between the receding rows (depth).",
+                h,
+            ),
+            helped(
+                slider_row(
+                    "Fireflies",
+                    state.forest_fireflies,
+                    0.0..=2.5,
+                    0.05,
+                    format!("{:.2}", state.forest_fireflies),
+                    Message::ForestFireflies,
+                ),
+                "Brightness of the drifting fireflies (0 = none).",
+                h,
+            ),
+            helped(
+                slider_row(
+                    "Drift",
+                    state.forest_drift,
+                    0.0..=3.0,
+                    0.05,
+                    format!("{:.2}", state.forest_drift),
+                    Message::ForestDrift,
+                ),
+                "Drift speed of the mist and fireflies.",
+                h,
+            ),
+            color_cell_with("Sky", &state.forest_sky, Message::ForestSky),
+            color_cell_with("Pine", &state.forest_tree, Message::ForestTree),
+            color_cell_with("Firefly", &state.forest_glow, Message::ForestGlow),
         ]),
     )
 }

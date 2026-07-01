@@ -52,7 +52,8 @@ animate       = true
 #         "plasma", "fire", "water". Plus the basics: "day" (force the daytime sky +
 #         light palette), "night" (force the starfield + dark palette), "solid" (a plain
 #         palette gradient — no stars, comet, or motion). Plus the earthy landscapes:
-#         "mountains" (parallax ridgelines), "forest" (pines + mist + fireflies),
+#         "mountains" (parallax ridgelines), "pyramids" (angular silhouettes + mist +
+#         glints), "forest" (layered pine trees + mist + fireflies),
 #         "ocean" (a sea horizon with a moonlit glitter path). And "sunset" (golden-hour
 #         dusk), "galaxy" (a Milky Way over a starfield), "matrix" (falling code rain).
 # sky_mode      = "auto"
@@ -193,13 +194,22 @@ spinner_trail = 1.0         # trail length 0.15–1.0 (shorter = crisper on a li
 # mtn_ridge         = "#10141f"  # nearest-ridge colour
 # mtn_haze_color    = "#4a5a78"  # far-ridge / horizon haze colour
 #
+# Pyramids scene (only used when sky_mode = "pyramids"):
+# pyramids_density    = 6.0        # how many angular silhouettes fill the skyline
+# pyramids_mist       = 0.6        # mist-band thickness at the base
+# pyramids_fireflies  = 1.0        # glint brightness (0 = none)
+# pyramids_drift      = 1.0        # drift speed of mist + glints
+# pyramids_sky        = "#132132"  # sky colour
+# pyramids_tree       = "#0a0f0c"  # silhouette colour
+# pyramids_glow       = "#ffd27a"  # glint glow colour
+#
 # Forest scene (only used when sky_mode = "forest"):
-# forest_density    = 6.0        # how many pines fill the treeline
-# forest_mist       = 0.6        # mist-band thickness at the treeline
+# forest_density    = 10.0       # how many pines fill each row
+# forest_haze       = 0.8        # mist between the receding rows (depth)
 # forest_fireflies  = 1.0        # firefly brightness (0 = none)
 # forest_drift      = 1.0        # drift speed of mist + fireflies
-# forest_sky        = "#132132"  # sky colour
-# forest_tree       = "#0a0f0c"  # tree-silhouette colour
+# forest_sky        = "#16241c"  # sky colour
+# forest_tree       = "#0b170d"  # pine colour
 # forest_glow       = "#ffd27a"  # firefly glow colour
 #
 # Ocean scene (only used when sky_mode = "ocean"):
