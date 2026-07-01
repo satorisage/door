@@ -420,24 +420,6 @@ off-by-default DECISION naming its threat model before it can graduate.
 
 ## Loose
 
-- **Expert settings launcher + install-local hardening** (2026-07-01, ships at
-  v0.1.3). Two items from an AUR upgrade bug report (`door 0.1.2` failed with
-  `pacman` *conflicting files* on `/usr/share/door/presets/*.toml`):
-  - **root cause** — `scripts/install-local.sh` writes the working tree's full
-    preset set into the *same* `/usr/share/door/` paths the package owns, so a
-    dev install over a packaged one seeds files `pacman` doesn't track; the next
-    `pacman -U` then collides. Not a door bug (door-settings saves user presets
-    to `~/.config/door/presets`, never `/usr/share`).
-  - **fix** — install-local.sh now warns when it shadows a `pacman`-managed door
-    (with the `--overwrite '/usr/share/door/*'` return path) and reseeds the
-    system preset dir from a clean slate (`rm -rf` then reinstall) so a
-    renamed/removed preset can't leave a stale unowned file behind.
-  - **feature** — new `dist/door/door-settings-expert.desktop` (`Exec=door-settings
-    --expert`): a second Settings menu entry that opens with the Tier-3 controls
-    revealed, alongside the plain entry. Installed from both PKGBUILD and
-    install-local.sh; `desktop-file-validate` clean. `pkgver → 0.1.3` (new source
-    file — can't ship on a bare `pkgrel` bump, same reason as v0.1.2).
-
 - ~~Greeter dropout glitch~~ — **fixed 2026-07-01.** A blanket 30s `READ_TIMEOUT`
   on the greeter socket dropped the connection whenever a human paused at the
   prompt (username not yet typed, or mid-password), churning the login screen
@@ -453,6 +435,27 @@ off-by-default DECISION naming its threat model before it can graduate.
   2026-06-26: Iced + iced_layershell (D-0006).**
 
 ## Shipped
+
+- **v0.1.3 → AUR** (2026-07-01): tagged `v0.1.3` (commit `441cbb6`), live on the
+  AUR (pkgver 0.1.3, pkgrel 1). Two items, both traced to an AUR upgrade bug
+  report — `door 0.1.2` failed with `pacman` *conflicting files* on
+  `/usr/share/door/presets/*.toml`:
+  - **install-local hardening** (`84ae429`) — the collision root cause was
+    `scripts/install-local.sh` writing the working tree's full preset set into the
+    *same* `/usr/share/door/` paths the package owns, seeding files `pacman`
+    doesn't track (not a door bug — door-settings saves user presets to
+    `~/.config/door/presets`, never `/usr/share`). install-local.sh now warns when
+    it shadows a `pacman`-managed door (offering the `--overwrite '/usr/share/door/*'`
+    return path) and reseeds the system preset dir from a clean slate (`rm -rf`
+    then reinstall) so a renamed/removed preset can't leave a stale unowned file.
+  - **Expert settings launcher** (`84ae429`) — new
+    `dist/door/door-settings-expert.desktop` (`Exec=door-settings --expert`): a
+    second Settings menu entry that opens with the Tier-3 controls revealed,
+    alongside the plain one; installed from both PKGBUILD and install-local.sh.
+  - release note: `pkgver`/`Cargo.toml` version must move together — the first
+    release attempt 404'd because only `PKGBUILD` was bumped while `release.sh`
+    tags off `Cargo.toml`'s `[workspace.package] version` (fixed in `441cbb6`);
+    the AUR push then needed a retry after a transient SSH drop.
 
 - **v0.1.2 → AUR** (2026-07-01): tagged `v0.1.2`, live on the AUR (pkgver 0.1.2,
   pkgrel 1, commit `cefb329`), published via `scripts/release.sh`. Single fix:
