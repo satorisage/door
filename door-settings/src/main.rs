@@ -250,6 +250,27 @@ enum Message {
     FogThickness(f32),
     FogOpacity(f32),
     FogColor(String),
+    MtnLayers(f32),
+    MtnPeak(f32),
+    MtnDrift(f32),
+    MtnHaze(f32),
+    MtnSky(String),
+    MtnRidge(String),
+    MtnHazeColor(String),
+    ForestDensity(f32),
+    ForestMist(f32),
+    ForestFireflies(f32),
+    ForestDrift(f32),
+    ForestSky(String),
+    ForestTree(String),
+    ForestGlow(String),
+    OceanHorizon(f32),
+    OceanWaveSpeed(f32),
+    OceanGlint(f32),
+    OceanWaveScale(f32),
+    OceanSky(String),
+    OceanSea(String),
+    OceanGlintColor(String),
     CardGradient(f32),
     Grain(f32),
     Vignette(f32),
@@ -406,6 +427,27 @@ struct State {
     fog_thickness: f32,
     fog_opacity: f32,
     fog_color: String,
+    mtn_layers: f32,
+    mtn_peak: f32,
+    mtn_drift: f32,
+    mtn_haze: f32,
+    mtn_sky: String,
+    mtn_ridge: String,
+    mtn_haze_color: String,
+    forest_density: f32,
+    forest_mist: f32,
+    forest_fireflies: f32,
+    forest_drift: f32,
+    forest_sky: String,
+    forest_tree: String,
+    forest_glow: String,
+    ocean_horizon: f32,
+    ocean_wave_speed: f32,
+    ocean_glint: f32,
+    ocean_wave_scale: f32,
+    ocean_sky: String,
+    ocean_sea: String,
+    ocean_glint_color: String,
     spinner_style: SpinnerStyle,
     card_gradient: f32,
     grain: f32,
@@ -695,6 +737,27 @@ impl State {
             fog_thickness: night.fog_thickness,
             fog_opacity: night.fog_opacity,
             fog_color: night.fog_color.to_hex(),
+            mtn_layers: night.mtn_layers,
+            mtn_peak: night.mtn_peak,
+            mtn_drift: night.mtn_drift,
+            mtn_haze: night.mtn_haze,
+            mtn_sky: night.mtn_sky.to_hex(),
+            mtn_ridge: night.mtn_ridge.to_hex(),
+            mtn_haze_color: night.mtn_haze_color.to_hex(),
+            forest_density: night.forest_density,
+            forest_mist: night.forest_mist,
+            forest_fireflies: night.forest_fireflies,
+            forest_drift: night.forest_drift,
+            forest_sky: night.forest_sky.to_hex(),
+            forest_tree: night.forest_tree.to_hex(),
+            forest_glow: night.forest_glow.to_hex(),
+            ocean_horizon: night.ocean_horizon,
+            ocean_wave_speed: night.ocean_wave_speed,
+            ocean_glint: night.ocean_glint,
+            ocean_wave_scale: night.ocean_wave_scale,
+            ocean_sky: night.ocean_sky.to_hex(),
+            ocean_sea: night.ocean_sea.to_hex(),
+            ocean_glint_color: night.ocean_glint_color.to_hex(),
             spinner_style: night.spinner_style,
             card_gradient: night.card_gradient,
             grain: night.grain,
@@ -847,6 +910,27 @@ impl State {
         self.fog_thickness = night.fog_thickness;
         self.fog_opacity = night.fog_opacity;
         self.fog_color = night.fog_color.to_hex();
+        self.mtn_layers = night.mtn_layers;
+        self.mtn_peak = night.mtn_peak;
+        self.mtn_drift = night.mtn_drift;
+        self.mtn_haze = night.mtn_haze;
+        self.mtn_sky = night.mtn_sky.to_hex();
+        self.mtn_ridge = night.mtn_ridge.to_hex();
+        self.mtn_haze_color = night.mtn_haze_color.to_hex();
+        self.forest_density = night.forest_density;
+        self.forest_mist = night.forest_mist;
+        self.forest_fireflies = night.forest_fireflies;
+        self.forest_drift = night.forest_drift;
+        self.forest_sky = night.forest_sky.to_hex();
+        self.forest_tree = night.forest_tree.to_hex();
+        self.forest_glow = night.forest_glow.to_hex();
+        self.ocean_horizon = night.ocean_horizon;
+        self.ocean_wave_speed = night.ocean_wave_speed;
+        self.ocean_glint = night.ocean_glint;
+        self.ocean_wave_scale = night.ocean_wave_scale;
+        self.ocean_sky = night.ocean_sky.to_hex();
+        self.ocean_sea = night.ocean_sea.to_hex();
+        self.ocean_glint_color = night.ocean_glint_color.to_hex();
         self.spinner_style = night.spinner_style;
         self.card_gradient = night.card_gradient;
         self.grain = night.grain;
@@ -1087,6 +1171,27 @@ impl State {
             fog_thickness: self.fog_thickness,
             fog_opacity: self.fog_opacity,
             fog_color: color("Fog colour", &self.fog_color)?,
+            mtn_layers: self.mtn_layers,
+            mtn_peak: self.mtn_peak,
+            mtn_drift: self.mtn_drift,
+            mtn_haze: self.mtn_haze,
+            mtn_sky: color("Mountain sky", &self.mtn_sky)?,
+            mtn_ridge: color("Mountain ridge", &self.mtn_ridge)?,
+            mtn_haze_color: color("Mountain haze", &self.mtn_haze_color)?,
+            forest_density: self.forest_density,
+            forest_mist: self.forest_mist,
+            forest_fireflies: self.forest_fireflies,
+            forest_drift: self.forest_drift,
+            forest_sky: color("Forest sky", &self.forest_sky)?,
+            forest_tree: color("Forest tree", &self.forest_tree)?,
+            forest_glow: color("Forest glow", &self.forest_glow)?,
+            ocean_horizon: self.ocean_horizon,
+            ocean_wave_speed: self.ocean_wave_speed,
+            ocean_glint: self.ocean_glint,
+            ocean_wave_scale: self.ocean_wave_scale,
+            ocean_sky: color("Ocean sky", &self.ocean_sky)?,
+            ocean_sea: color("Ocean sea", &self.ocean_sea)?,
+            ocean_glint_color: color("Ocean glint", &self.ocean_glint_color)?,
             spinner_style: self.spinner_style,
             card_gradient: self.card_gradient,
             grain: self.grain,
@@ -1282,6 +1387,27 @@ fn update(state: &mut State, message: Message) -> Task<Message> {
         Message::FogThickness(v) => state.fog_thickness = v.clamp(0.0, 1.0),
         Message::FogOpacity(v) => state.fog_opacity = v.clamp(0.0, 1.0),
         Message::FogColor(s) => state.fog_color = s,
+        Message::MtnLayers(v) => state.mtn_layers = v.clamp(1.0, 6.0),
+        Message::MtnPeak(v) => state.mtn_peak = v.clamp(0.02, 0.4),
+        Message::MtnDrift(v) => state.mtn_drift = v.clamp(0.0, 5.0),
+        Message::MtnHaze(v) => state.mtn_haze = v.clamp(0.0, 1.0),
+        Message::MtnSky(s) => state.mtn_sky = s,
+        Message::MtnRidge(s) => state.mtn_ridge = s,
+        Message::MtnHazeColor(s) => state.mtn_haze_color = s,
+        Message::ForestDensity(v) => state.forest_density = v.clamp(2.0, 16.0),
+        Message::ForestMist(v) => state.forest_mist = v.clamp(0.0, 1.5),
+        Message::ForestFireflies(v) => state.forest_fireflies = v.clamp(0.0, 3.0),
+        Message::ForestDrift(v) => state.forest_drift = v.clamp(0.0, 5.0),
+        Message::ForestSky(s) => state.forest_sky = s,
+        Message::ForestTree(s) => state.forest_tree = s,
+        Message::ForestGlow(s) => state.forest_glow = s,
+        Message::OceanHorizon(v) => state.ocean_horizon = v.clamp(0.2, 0.8),
+        Message::OceanWaveSpeed(v) => state.ocean_wave_speed = v.clamp(0.0, 3.0),
+        Message::OceanGlint(v) => state.ocean_glint = v.clamp(0.0, 2.5),
+        Message::OceanWaveScale(v) => state.ocean_wave_scale = v.clamp(0.3, 3.0),
+        Message::OceanSky(s) => state.ocean_sky = s,
+        Message::OceanSea(s) => state.ocean_sea = s,
+        Message::OceanGlintColor(s) => state.ocean_glint_color = s,
         Message::CardGradient(v) => state.card_gradient = v.clamp(0.0, 1.0),
         Message::Grain(v) => state.grain = v.clamp(0.0, 0.3),
         Message::Vignette(v) => state.vignette = v.clamp(0.0, 1.0),
@@ -2256,6 +2382,15 @@ fn sky_tab<'a>(state: &'a State, pal: &'a Palette, h: bool) -> Element<'a, Messa
     if matches!(state.sky_mode, SkyMode::Fog) {
         col = col.push(fog_group(state, h));
     }
+    if matches!(state.sky_mode, SkyMode::Mountains) {
+        col = col.push(mountains_group(state, h));
+    }
+    if matches!(state.sky_mode, SkyMode::Forest) {
+        col = col.push(forest_group(state, h));
+    }
+    if matches!(state.sky_mode, SkyMode::Ocean) {
+        col = col.push(ocean_group(state, h));
+    }
     col.into()
 }
 
@@ -2798,6 +2933,186 @@ fn fog_group(state: &State, h: bool) -> Element<'_, Message> {
                 h,
             ),
             color_cell_with("Fog", &state.fog_color, Message::FogColor),
+        ]),
+    )
+}
+
+/// The mountains scene's authoring controls (M8) — layers, peak, drift, haze, colours.
+fn mountains_group(state: &State, h: bool) -> Element<'_, Message> {
+    group(
+        "MOUNTAINS",
+        two_col(vec![
+            helped(
+                slider_row(
+                    "Ridges",
+                    state.mtn_layers,
+                    1.0..=6.0,
+                    1.0,
+                    format!("{:.0}", state.mtn_layers),
+                    Message::MtnLayers,
+                ),
+                "How many receding ridge layers.",
+                h,
+            ),
+            helped(
+                slider_row(
+                    "Peak height",
+                    state.mtn_peak,
+                    0.03..=0.35,
+                    0.005,
+                    format!("{:.3}", state.mtn_peak),
+                    Message::MtnPeak,
+                ),
+                "How tall/jagged the ridges rise.",
+                h,
+            ),
+            helped(
+                slider_row(
+                    "Drift",
+                    state.mtn_drift,
+                    0.0..=3.0,
+                    0.05,
+                    format!("{:.2}", state.mtn_drift),
+                    Message::MtnDrift,
+                ),
+                "Slow parallax drift of the ridges.",
+                h,
+            ),
+            helped(
+                slider_row(
+                    "Haze",
+                    state.mtn_haze,
+                    0.0..=1.0,
+                    0.02,
+                    format!("{:.2}", state.mtn_haze),
+                    Message::MtnHaze,
+                ),
+                "Atmospheric fade of the far ridges.",
+                h,
+            ),
+            color_cell_with("Sky", &state.mtn_sky, Message::MtnSky),
+            color_cell_with("Ridge", &state.mtn_ridge, Message::MtnRidge),
+            color_cell_with("Haze", &state.mtn_haze_color, Message::MtnHazeColor),
+        ]),
+    )
+}
+
+/// The forest scene's authoring controls (M8) — trees, mist, fireflies, colours.
+fn forest_group(state: &State, h: bool) -> Element<'_, Message> {
+    group(
+        "FOREST",
+        two_col(vec![
+            helped(
+                slider_row(
+                    "Tree density",
+                    state.forest_density,
+                    2.0..=14.0,
+                    0.5,
+                    format!("{:.1}", state.forest_density),
+                    Message::ForestDensity,
+                ),
+                "How many pines fill the treeline.",
+                h,
+            ),
+            helped(
+                slider_row(
+                    "Mist",
+                    state.forest_mist,
+                    0.0..=1.2,
+                    0.02,
+                    format!("{:.2}", state.forest_mist),
+                    Message::ForestMist,
+                ),
+                "Thickness of the mist band at the treeline.",
+                h,
+            ),
+            helped(
+                slider_row(
+                    "Fireflies",
+                    state.forest_fireflies,
+                    0.0..=2.5,
+                    0.05,
+                    format!("{:.2}", state.forest_fireflies),
+                    Message::ForestFireflies,
+                ),
+                "Brightness of the drifting fireflies (0 = none).",
+                h,
+            ),
+            helped(
+                slider_row(
+                    "Drift",
+                    state.forest_drift,
+                    0.0..=3.0,
+                    0.05,
+                    format!("{:.2}", state.forest_drift),
+                    Message::ForestDrift,
+                ),
+                "Drift speed of the mist and fireflies.",
+                h,
+            ),
+            color_cell_with("Sky", &state.forest_sky, Message::ForestSky),
+            color_cell_with("Tree", &state.forest_tree, Message::ForestTree),
+            color_cell_with("Firefly", &state.forest_glow, Message::ForestGlow),
+        ]),
+    )
+}
+
+/// The ocean scene's authoring controls (M8) — horizon, waves, glint, colours.
+fn ocean_group(state: &State, h: bool) -> Element<'_, Message> {
+    group(
+        "OCEAN",
+        two_col(vec![
+            helped(
+                slider_row(
+                    "Horizon",
+                    state.ocean_horizon,
+                    0.25..=0.75,
+                    0.005,
+                    format!("{:.3}", state.ocean_horizon),
+                    Message::OceanHorizon,
+                ),
+                "Where the sea meets the sky (0 top … 1 bottom).",
+                h,
+            ),
+            helped(
+                slider_row(
+                    "Wave speed",
+                    state.ocean_wave_speed,
+                    0.0..=2.5,
+                    0.02,
+                    format!("{:.2}", state.ocean_wave_speed),
+                    Message::OceanWaveSpeed,
+                ),
+                "How fast the glitter shimmers.",
+                h,
+            ),
+            helped(
+                slider_row(
+                    "Glint",
+                    state.ocean_glint,
+                    0.0..=2.0,
+                    0.02,
+                    format!("{:.2}", state.ocean_glint),
+                    Message::OceanGlint,
+                ),
+                "Strength of the moon/sun glitter path.",
+                h,
+            ),
+            helped(
+                slider_row(
+                    "Wave scale",
+                    state.ocean_wave_scale,
+                    0.4..=2.5,
+                    0.05,
+                    format!("{:.2}", state.ocean_wave_scale),
+                    Message::OceanWaveScale,
+                ),
+                "Higher = finer, choppier ripples.",
+                h,
+            ),
+            color_cell_with("Sky", &state.ocean_sky, Message::OceanSky),
+            color_cell_with("Sea", &state.ocean_sea, Message::OceanSea),
+            color_cell_with("Glint", &state.ocean_glint_color, Message::OceanGlintColor),
         ]),
     )
 }

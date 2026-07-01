@@ -226,6 +226,37 @@ impl SkyShader {
                 z,
                 z,
             ),
+            crate::SkyMode::Mountains => (
+                [t.mtn_layers, t.mtn_peak, t.mtn_drift, t.mtn_haze],
+                z,
+                nom(t.mtn_sky),
+                nom(t.mtn_ridge),
+                nom(t.mtn_haze_color),
+            ),
+            crate::SkyMode::Forest => (
+                [
+                    t.forest_density,
+                    t.forest_mist,
+                    t.forest_fireflies,
+                    t.forest_drift,
+                ],
+                z,
+                nom(t.forest_sky),
+                nom(t.forest_tree),
+                nom(t.forest_glow),
+            ),
+            crate::SkyMode::Ocean => (
+                [
+                    t.ocean_horizon,
+                    t.ocean_wave_speed,
+                    t.ocean_glint,
+                    t.ocean_wave_scale,
+                ],
+                z,
+                nom(t.ocean_sky),
+                nom(t.ocean_sea),
+                nom(t.ocean_glint_color),
+            ),
             _ => (z, z, z, z, z),
         };
         let day = t.is_day;
@@ -1276,7 +1307,8 @@ fn rain_sky(uv: vec2<f32>, p: vec2<f32>, aspect: f32) -> vec3<f32> {
     let sc = vec2(46.0 + fl * 18.0, 7.0 + fl * 2.0);
     var rp = vec2(uv.x * aspect, uv.y) * sc;
     rp.x = rp.x + fl * 11.0 + uv.y * u.scene_a.z;        // diagonal slant
-    rp.y = rp.y + u.time * (u.scene_a.x + fl * 2.5) * sc.y / 7.0;
+    // uv.y grows downward, so subtract time to make the streaks fall (not rise).
+    rp.y = rp.y - u.time * (u.scene_a.x + fl * 2.5) * sc.y / 7.0;
     let cell = floor(rp);
     let h = hash21(cell + fl * 31.0);
     let f = fract(rp) - vec2(0.5, 0.5);
@@ -1295,7 +1327,7 @@ fn snow_sky(uv: vec2<f32>, p: vec2<f32>, aspect: f32) -> vec3<f32> {
     let fl = f32(l);
     let sc = 13.0 + fl * 7.0;
     var sp = vec2(uv.x * aspect, uv.y) * sc;
-    sp.y = sp.y + u.time * (u.scene_a.x + fl * 0.5);
+    sp.y = sp.y - u.time * (u.scene_a.x + fl * 0.5);   // fall downward (uv.y grows down)
     sp.x = sp.x + sin(u.time * 0.5 + fl + sp.y * 0.25) * u.scene_a.z;   // sway
     let cell = floor(sp);
     let h = hash21(cell + fl * 23.0);
@@ -1536,6 +1568,108 @@ fn solid_sky(uv: vec2<f32>, p: vec2<f32>, aspect: f32) -> vec3<f32> {
   return mix(u.bg_top.rgb, u.bg_bot.rgb, smoothstep(0.0, 1.0, uv.y));
 }
 
+// Mountains: layered ridgelines receding into haze (atmospheric perspective). Back layers
+// sit higher and pull toward the haze colour; front layers sit lower and stay dark.
+// scene_a = [layers, peak, drift, haze]; c1 = sky, c2 = near ridge, c3 = haze/far.
+fn mountains_sky(uv: vec2<f32>, p: vec2<f32>, aspect: f32) -> vec3<f32> {
+  let skyt = u.scene_c1.rgb;
+  let hazec = u.scene_c3.rgb;
+  let near = u.scene_c2.rgb;
+  var col = mix(skyt, hazec, smoothstep(0.0, 0.72, uv.y));
+  let layers = i32(clamp(u.scene_a.x, 1.0, 6.0));
+  let peak = u.scene_a.y;
+  let drift = u.scene_a.z;
+  let haze = u.scene_a.w;
+  let fL = f32(layers);
+  for (var i = 0; i < layers; i = i + 1) {
+    let fl = f32(i);
+    let depth = fl / max(fL - 1.0, 1.0);   // 0 = far, 1 = near
+    let freq = 1.5 + fl * 1.6;
+    let px = uv.x * aspect * freq + fl * 8.0 + u.time * drift * (0.01 + fl * 0.006);
+    let ridge = fbm(vec2(px, fl * 4.0 + 0.5));
+    let baseY = 0.40 + depth * 0.34;       // far ridges higher on screen, near ones lower
+    let ridgeY = baseY - ridge * peak * (0.4 + depth * 0.8);
+    let m = smoothstep(ridgeY - 0.004, ridgeY + 0.004, uv.y);
+    let lc = mix(near, hazec, (1.0 - depth) * haze);
+    col = mix(col, lc, m);
+  }
+  return col;
+}
+
+// Forest: a spiky pine treeline with a drifting mist band and warm twinkling fireflies.
+// scene_a = [density, mist, fireflies, drift]; c1 = sky, c2 = tree, c3 = firefly glow.
+fn forest_sky(uv: vec2<f32>, p: vec2<f32>, aspect: f32) -> vec3<f32> {
+  let sky = u.scene_c1.rgb;
+  var col = mix(sky, sky * 0.45, smoothstep(0.0, 0.85, uv.y));
+  let drift = u.scene_a.w;
+  // Mist band hovering around the treeline.
+  let mist = u.scene_a.y;
+  let mb = exp(-pow((uv.y - 0.58) * 3.2, 2.0));
+  let mn = 0.5 + 0.5 * fbm(vec2(uv.x * 2.5 + u.time * drift * 0.04, 0.7));
+  col = mix(col, sky + vec3(0.06, 0.07, 0.08), mb * mist * mn * 0.7);
+  // Treeline: two spiky silhouette layers (back higher, front darker/lower).
+  let tree = u.scene_c2.rgb;
+  let dens = u.scene_a.x;
+  for (var i = 0; i < 2; i = i + 1) {
+    let fl = f32(i);
+    let freq = dens * (1.0 + fl * 0.6);
+    let saw = abs(fract(uv.x * aspect * freq * 0.5 + fl * 0.37) - 0.5) * 2.0; // 0..1 spikes
+    let jit = fbm(vec2(uv.x * aspect * freq * 0.5, fl * 3.0)) * 0.05;
+    let tops = 0.60 + fl * 0.10 - (0.16 - fl * 0.05) * (1.0 - saw) - jit;
+    let m = smoothstep(tops - 0.004, tops + 0.004, uv.y);
+    col = mix(col, tree * (0.7 + fl * 0.3), m);
+  }
+  // Fireflies: warm drifting glow points above the treeline.
+  let ff = u.scene_a.z;
+  let glow = u.scene_c3.rgb;
+  var fg = 0.0;
+  for (var k = 0; k < 14; k = k + 1) {
+    let fk = f32(k);
+    let bx = hash21(vec2(fk, 1.0));
+    let by = hash21(vec2(fk, 2.0));
+    let fx = fract(bx + u.time * drift * 0.01 * (0.5 + bx));
+    let fy = 0.30 + by * 0.28 + 0.03 * sin(u.time * (0.6 + bx) + fk);
+    var rel = uv - vec2(fx, fy);
+    rel.x = rel.x * aspect;
+    let tw = 0.5 + 0.5 * sin(u.time * 2.0 + fk * 1.7);
+    fg = fg + exp(-dot(rel, rel) * 4000.0) * tw;
+  }
+  return col + glow * fg * ff;
+}
+
+// Ocean: a sea horizon with a moon/sun glitter path — specular sparkles down a column
+// that narrows toward the horizon. Distinct from the underwater `water` caustics.
+// scene_a = [horizon, wave_speed, glint, wave_scale]; c1 = sky, c2 = sea, c3 = glint.
+fn ocean_sky(uv: vec2<f32>, p: vec2<f32>, aspect: f32) -> vec3<f32> {
+  let hz = u.scene_a.x;
+  let sky = u.scene_c1.rgb;
+  let sea = u.scene_c2.rgb;
+  let glintc = u.scene_c3.rgb;
+  let wspeed = u.scene_a.y;
+  let glint = u.scene_a.z;
+  let wscale = u.scene_a.w;
+  let cx = (uv.x - 0.5) * aspect;
+  if (uv.y < hz) {
+    let t = uv.y / max(hz, 0.001);
+    var c = mix(sky * 0.7, sky + vec3(0.06, 0.05, 0.02), t);
+    c = c + glintc * exp(-cx * cx * 3.0) * smoothstep(0.0, 1.0, t) * 0.15;
+    return c;
+  }
+  let d = uv.y - hz;
+  var c = mix(mix(sky, sea, 0.5), sea, smoothstep(0.0, 0.25, d));
+  let path = exp(-cx * cx * (3.0 + 30.0 * (1.0 - clamp(d, 0.0, 1.0))));
+  let rowf = 0.6 / (d + 0.08);
+  let wave = sin(uv.y * rowf * 6.0 * wscale - u.time * wspeed * 2.5)
+           + 0.6 * sin(uv.x * aspect * 8.0 * wscale + u.time * wspeed);
+  let spark = smoothstep(
+    0.7, 1.0,
+    0.5 + 0.5 * sin(wave * 2.0 + fbm(vec2(uv.x * 6.0, uv.y * 30.0 - u.time * wspeed)) * 5.0)
+  );
+  c = c + glintc * spark * path * glint;
+  c = c + glintc * 0.05 * path * (0.5 + 0.5 * sin(uv.x * aspect * 40.0 * wscale + u.time * wspeed * 2.0));
+  return c;
+}
+
 // The base scene for the current mode — no comet/grain/vignette overlays. Shared by
 // fs_main and the frosted-card backdrop (fs_frost), so the blur matches the sky.
 fn scene_base(uv: vec2<f32>, p: vec2<f32>, aspect: f32) -> vec3<f32> {
@@ -1553,7 +1687,10 @@ fn scene_base(uv: vec2<f32>, p: vec2<f32>, aspect: f32) -> vec3<f32> {
     else if (mode < 9.5) { return plasma_sky(uv, p, aspect); }
     else if (mode < 10.5) { return fire_sky(uv, p, aspect); }
     else if (mode < 11.5) { return water_sky(uv, p, aspect); }
-    else { return solid_sky(uv, p, aspect); }
+    else if (mode < 12.5) { return solid_sky(uv, p, aspect); }
+    else if (mode < 13.5) { return mountains_sky(uv, p, aspect); }
+    else if (mode < 14.5) { return forest_sky(uv, p, aspect); }
+    else { return ocean_sky(uv, p, aspect); }
   }
   // mode 0 = auto/day/night: pick the daytime or night renderer by the day flag.
   if (day > 0.5) { return day_sky(uv, p, aspect); }

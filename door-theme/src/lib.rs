@@ -122,11 +122,17 @@ pub enum SkyMode {
     Night,
     /// A plain palette gradient — no stars, comet, or motion. The calm option.
     Solid,
+    /// Parallax mountain ridgelines receding into atmospheric haze.
+    Mountains,
+    /// A pine treeline with drifting mist and fireflies.
+    Forest,
+    /// A sea horizon with a moonlit/sunlit glitter path (≠ underwater `water`).
+    Ocean,
 }
 
 impl SkyMode {
     /// Every mode, for the settings picker.
-    pub const ALL: [SkyMode; 16] = [
+    pub const ALL: [SkyMode; 19] = [
         SkyMode::Auto,
         SkyMode::Seasonal,
         SkyMode::Day,
@@ -143,6 +149,9 @@ impl SkyMode {
         SkyMode::Plasma,
         SkyMode::Fire,
         SkyMode::Water,
+        SkyMode::Mountains,
+        SkyMode::Forest,
+        SkyMode::Ocean,
     ];
     /// The shader selector value (0 = auto → the day/night renderer).
     pub fn shader_id(self) -> f32 {
@@ -165,6 +174,9 @@ impl SkyMode {
             // palette they pin (see `prefers_day`), so the shader needs no new branch.
             SkyMode::Day | SkyMode::Night => 0.0,
             SkyMode::Solid => 12.0,
+            SkyMode::Mountains => 13.0,
+            SkyMode::Forest => 14.0,
+            SkyMode::Ocean => 15.0,
         }
     }
     /// The lowercase name used in the config and the picker.
@@ -186,6 +198,9 @@ impl SkyMode {
             SkyMode::Day => "day",
             SkyMode::Night => "night",
             SkyMode::Solid => "solid",
+            SkyMode::Mountains => "mountains",
+            SkyMode::Forest => "forest",
+            SkyMode::Ocean => "ocean",
         }
     }
     /// Resolve a selector mode to a concrete scene. Only `Seasonal` changes — mapped to
@@ -731,6 +746,54 @@ pub struct Theme {
     pub fog_opacity: f32,
     /// Fog colour.
     pub fog_color: Color,
+
+    // ── Mountains scene controls (M8) ──
+    /// Mountain ridge layer count (depth).
+    pub mtn_layers: f32,
+    /// Mountain peak height.
+    pub mtn_peak: f32,
+    /// Mountain parallax drift speed.
+    pub mtn_drift: f32,
+    /// Mountain atmospheric haze (how fast far ridges fade out).
+    pub mtn_haze: f32,
+    /// Mountain sky colour (top).
+    pub mtn_sky: Color,
+    /// Mountain nearest-ridge colour.
+    pub mtn_ridge: Color,
+    /// Mountain haze colour (far ridges / horizon).
+    pub mtn_haze_color: Color,
+
+    // ── Forest scene controls (M8) ──
+    /// Forest tree density (treeline frequency).
+    pub forest_density: f32,
+    /// Forest mist amount.
+    pub forest_mist: f32,
+    /// Forest firefly brightness/count.
+    pub forest_fireflies: f32,
+    /// Forest drift speed (mist + fireflies).
+    pub forest_drift: f32,
+    /// Forest sky colour.
+    pub forest_sky: Color,
+    /// Forest tree-silhouette colour.
+    pub forest_tree: Color,
+    /// Forest firefly glow colour.
+    pub forest_glow: Color,
+
+    // ── Ocean scene controls (M8) ──
+    /// Ocean horizon height (0 top … 1 bottom).
+    pub ocean_horizon: f32,
+    /// Ocean wave speed.
+    pub ocean_wave_speed: f32,
+    /// Ocean glint (glitter-path) strength.
+    pub ocean_glint: f32,
+    /// Ocean wave scale (shimmer frequency).
+    pub ocean_wave_scale: f32,
+    /// Ocean sky colour.
+    pub ocean_sky: Color,
+    /// Ocean sea colour.
+    pub ocean_sea: Color,
+    /// Ocean glint colour (the sun/moon glitter).
+    pub ocean_glint_color: Color,
     /// Card vertical-gradient strength (0 = flat fill; ~1 = a lit top sheen). Shared.
     pub card_gradient: f32,
     /// Film-grain strength over the whole sky (0 = off). Shared.
@@ -916,6 +979,27 @@ impl Default for Theme {
             fog_thickness: 0.45,
             fog_opacity: 0.7,
             fog_color: Color::rgb(0xa8, 0xb3, 0xc7),
+            mtn_layers: 4.0,
+            mtn_peak: 0.15,
+            mtn_drift: 1.0,
+            mtn_haze: 0.7,
+            mtn_sky: Color::rgb(0x2a, 0x3a, 0x5c),
+            mtn_ridge: Color::rgb(0x10, 0x14, 0x1f),
+            mtn_haze_color: Color::rgb(0x4a, 0x5a, 0x78),
+            forest_density: 6.0,
+            forest_mist: 0.6,
+            forest_fireflies: 1.0,
+            forest_drift: 1.0,
+            forest_sky: Color::rgb(0x13, 0x21, 0x32),
+            forest_tree: Color::rgb(0x0a, 0x0f, 0x0c),
+            forest_glow: Color::rgb(0xff, 0xd2, 0x7a),
+            ocean_horizon: 0.55,
+            ocean_wave_speed: 1.0,
+            ocean_glint: 1.0,
+            ocean_wave_scale: 1.0,
+            ocean_sky: Color::rgb(0x1a, 0x2a, 0x44),
+            ocean_sea: Color::rgb(0x0a, 0x1a, 0x2e),
+            ocean_glint_color: Color::rgb(0xcf, 0xe0, 0xff),
             card_gradient: 0.45,
             grain: 0.0,
             vignette: 0.2,
@@ -1076,6 +1160,27 @@ impl Theme {
             fog_thickness: 0.45,
             fog_opacity: 0.7,
             fog_color: Color::rgb(0xa8, 0xb3, 0xc7),
+            mtn_layers: 4.0,
+            mtn_peak: 0.15,
+            mtn_drift: 1.0,
+            mtn_haze: 0.7,
+            mtn_sky: Color::rgb(0x2a, 0x3a, 0x5c),
+            mtn_ridge: Color::rgb(0x10, 0x14, 0x1f),
+            mtn_haze_color: Color::rgb(0x4a, 0x5a, 0x78),
+            forest_density: 6.0,
+            forest_mist: 0.6,
+            forest_fireflies: 1.0,
+            forest_drift: 1.0,
+            forest_sky: Color::rgb(0x13, 0x21, 0x32),
+            forest_tree: Color::rgb(0x0a, 0x0f, 0x0c),
+            forest_glow: Color::rgb(0xff, 0xd2, 0x7a),
+            ocean_horizon: 0.55,
+            ocean_wave_speed: 1.0,
+            ocean_glint: 1.0,
+            ocean_wave_scale: 1.0,
+            ocean_sky: Color::rgb(0x1a, 0x2a, 0x44),
+            ocean_sea: Color::rgb(0x0a, 0x1a, 0x2e),
+            ocean_glint_color: Color::rgb(0xcf, 0xe0, 0xff),
             card_gradient: 0.45,
             grain: 0.0,
             vignette: 0.2,
@@ -1222,6 +1327,27 @@ struct ThemeFile {
     fog_thickness: Option<f32>,
     fog_opacity: Option<f32>,
     fog_color: Option<String>,
+    mtn_layers: Option<f32>,
+    mtn_peak: Option<f32>,
+    mtn_drift: Option<f32>,
+    mtn_haze: Option<f32>,
+    mtn_sky: Option<String>,
+    mtn_ridge: Option<String>,
+    mtn_haze_color: Option<String>,
+    forest_density: Option<f32>,
+    forest_mist: Option<f32>,
+    forest_fireflies: Option<f32>,
+    forest_drift: Option<f32>,
+    forest_sky: Option<String>,
+    forest_tree: Option<String>,
+    forest_glow: Option<String>,
+    ocean_horizon: Option<f32>,
+    ocean_wave_speed: Option<f32>,
+    ocean_glint: Option<f32>,
+    ocean_wave_scale: Option<f32>,
+    ocean_sky: Option<String>,
+    ocean_sea: Option<String>,
+    ocean_glint_color: Option<String>,
     card_gradient: Option<f32>,
     grain: Option<f32>,
     vignette: Option<f32>,
@@ -1520,6 +1646,31 @@ impl Theme {
         merge_f32(&mut self.fog_thickness, file.fog_thickness);
         merge_f32(&mut self.fog_opacity, file.fog_opacity);
         self.fog_color = color("fog_color", file.fog_color, self.fog_color);
+        merge_f32(&mut self.mtn_layers, file.mtn_layers);
+        merge_f32(&mut self.mtn_peak, file.mtn_peak);
+        merge_f32(&mut self.mtn_drift, file.mtn_drift);
+        merge_f32(&mut self.mtn_haze, file.mtn_haze);
+        self.mtn_sky = color("mtn_sky", file.mtn_sky, self.mtn_sky);
+        self.mtn_ridge = color("mtn_ridge", file.mtn_ridge, self.mtn_ridge);
+        self.mtn_haze_color = color("mtn_haze_color", file.mtn_haze_color, self.mtn_haze_color);
+        merge_f32(&mut self.forest_density, file.forest_density);
+        merge_f32(&mut self.forest_mist, file.forest_mist);
+        merge_f32(&mut self.forest_fireflies, file.forest_fireflies);
+        merge_f32(&mut self.forest_drift, file.forest_drift);
+        self.forest_sky = color("forest_sky", file.forest_sky, self.forest_sky);
+        self.forest_tree = color("forest_tree", file.forest_tree, self.forest_tree);
+        self.forest_glow = color("forest_glow", file.forest_glow, self.forest_glow);
+        merge_f32(&mut self.ocean_horizon, file.ocean_horizon);
+        merge_f32(&mut self.ocean_wave_speed, file.ocean_wave_speed);
+        merge_f32(&mut self.ocean_glint, file.ocean_glint);
+        merge_f32(&mut self.ocean_wave_scale, file.ocean_wave_scale);
+        self.ocean_sky = color("ocean_sky", file.ocean_sky, self.ocean_sky);
+        self.ocean_sea = color("ocean_sea", file.ocean_sea, self.ocean_sea);
+        self.ocean_glint_color = color(
+            "ocean_glint_color",
+            file.ocean_glint_color,
+            self.ocean_glint_color,
+        );
         merge_f32(&mut self.card_gradient, file.card_gradient);
         merge_f32(&mut self.grain, file.grain);
         merge_f32(&mut self.vignette, file.vignette);
@@ -1680,6 +1831,18 @@ impl Theme {
         merge_f32(&mut self.fog_scale, file.fog_scale);
         merge_f32(&mut self.fog_thickness, file.fog_thickness);
         merge_f32(&mut self.fog_opacity, file.fog_opacity);
+        merge_f32(&mut self.mtn_layers, file.mtn_layers);
+        merge_f32(&mut self.mtn_peak, file.mtn_peak);
+        merge_f32(&mut self.mtn_drift, file.mtn_drift);
+        merge_f32(&mut self.mtn_haze, file.mtn_haze);
+        merge_f32(&mut self.forest_density, file.forest_density);
+        merge_f32(&mut self.forest_mist, file.forest_mist);
+        merge_f32(&mut self.forest_fireflies, file.forest_fireflies);
+        merge_f32(&mut self.forest_drift, file.forest_drift);
+        merge_f32(&mut self.ocean_horizon, file.ocean_horizon);
+        merge_f32(&mut self.ocean_wave_speed, file.ocean_wave_speed);
+        merge_f32(&mut self.ocean_glint, file.ocean_glint);
+        merge_f32(&mut self.ocean_wave_scale, file.ocean_wave_scale);
         for (slot, s) in [
             (&mut self.synthwave_grid_color, &file.synthwave_grid_color),
             (&mut self.synthwave_sky_top, &file.synthwave_sky_top),
@@ -1701,6 +1864,15 @@ impl Theme {
             (&mut self.moon_color, &file.moon_color),
             (&mut self.moon_halo_color, &file.moon_halo_color),
             (&mut self.fog_color, &file.fog_color),
+            (&mut self.mtn_sky, &file.mtn_sky),
+            (&mut self.mtn_ridge, &file.mtn_ridge),
+            (&mut self.mtn_haze_color, &file.mtn_haze_color),
+            (&mut self.forest_sky, &file.forest_sky),
+            (&mut self.forest_tree, &file.forest_tree),
+            (&mut self.forest_glow, &file.forest_glow),
+            (&mut self.ocean_sky, &file.ocean_sky),
+            (&mut self.ocean_sea, &file.ocean_sea),
+            (&mut self.ocean_glint_color, &file.ocean_glint_color),
         ] {
             if let Some(s) = s {
                 if let Some(col) = Color::parse(s) {
@@ -2148,6 +2320,54 @@ impl Theme {
         out.push_str(&format!(
             "fog_color         = {:?}\n",
             self.fog_color.to_hex()
+        ));
+        out.push_str(&format!("mtn_layers        = {}\n", self.mtn_layers));
+        out.push_str(&format!("mtn_peak          = {}\n", self.mtn_peak));
+        out.push_str(&format!("mtn_drift         = {}\n", self.mtn_drift));
+        out.push_str(&format!("mtn_haze          = {}\n", self.mtn_haze));
+        out.push_str(&format!(
+            "mtn_sky           = {:?}\n",
+            self.mtn_sky.to_hex()
+        ));
+        out.push_str(&format!(
+            "mtn_ridge         = {:?}\n",
+            self.mtn_ridge.to_hex()
+        ));
+        out.push_str(&format!(
+            "mtn_haze_color    = {:?}\n",
+            self.mtn_haze_color.to_hex()
+        ));
+        out.push_str(&format!("forest_density    = {}\n", self.forest_density));
+        out.push_str(&format!("forest_mist       = {}\n", self.forest_mist));
+        out.push_str(&format!("forest_fireflies  = {}\n", self.forest_fireflies));
+        out.push_str(&format!("forest_drift      = {}\n", self.forest_drift));
+        out.push_str(&format!(
+            "forest_sky        = {:?}\n",
+            self.forest_sky.to_hex()
+        ));
+        out.push_str(&format!(
+            "forest_tree       = {:?}\n",
+            self.forest_tree.to_hex()
+        ));
+        out.push_str(&format!(
+            "forest_glow       = {:?}\n",
+            self.forest_glow.to_hex()
+        ));
+        out.push_str(&format!("ocean_horizon     = {}\n", self.ocean_horizon));
+        out.push_str(&format!("ocean_wave_speed  = {}\n", self.ocean_wave_speed));
+        out.push_str(&format!("ocean_glint       = {}\n", self.ocean_glint));
+        out.push_str(&format!("ocean_wave_scale  = {}\n", self.ocean_wave_scale));
+        out.push_str(&format!(
+            "ocean_sky         = {:?}\n",
+            self.ocean_sky.to_hex()
+        ));
+        out.push_str(&format!(
+            "ocean_sea         = {:?}\n",
+            self.ocean_sea.to_hex()
+        ));
+        out.push_str(&format!(
+            "ocean_glint_color = {:?}\n",
+            self.ocean_glint_color.to_hex()
         ));
         out.push_str(&format!("card_gradient = {}\n", self.card_gradient));
         out.push_str(&format!("grain         = {}\n", self.grain));

@@ -51,7 +51,9 @@ animate       = true
 # Scenes: "aurora", "storm", "rain", "snow", "meteor", "moon", "synthwave", "fog",
 #         "plasma", "fire", "water". Plus the basics: "day" (force the daytime sky +
 #         light palette), "night" (force the starfield + dark palette), "solid" (a plain
-#         palette gradient — no stars, comet, or motion).
+#         palette gradient — no stars, comet, or motion). Plus the earthy landscapes:
+#         "mountains" (parallax ridgelines), "forest" (pines + mist + fireflies),
+#         "ocean" (a sea horizon with a moonlit glitter path).
 # sky_mode      = "auto"
 # Comet-spinner controls. glow = head bloom (0 = crisp; a bright bloom blends on a
 # dark card but bands on a light one, so the day variant below defaults to 0).
@@ -180,6 +182,33 @@ spinner_trail = 1.0         # trail length 0.15–1.0 (shorter = crisper on a li
 # fog_thickness     = 0.45       # density of the banks
 # fog_opacity       = 0.7        # how much the fog veils the sky
 # fog_color         = "#a8b3c7"  # fog colour
+#
+# Mountains scene (only used when sky_mode = "mountains"):
+# mtn_layers        = 4          # how many receding ridge layers (1–6)
+# mtn_peak          = 0.15       # how tall/jagged the ridges rise
+# mtn_drift         = 1.0        # slow parallax drift speed
+# mtn_haze          = 0.7        # atmospheric fade of the far ridges
+# mtn_sky           = "#2a3a5c"  # sky colour (top)
+# mtn_ridge         = "#10141f"  # nearest-ridge colour
+# mtn_haze_color    = "#4a5a78"  # far-ridge / horizon haze colour
+#
+# Forest scene (only used when sky_mode = "forest"):
+# forest_density    = 6.0        # how many pines fill the treeline
+# forest_mist       = 0.6        # mist-band thickness at the treeline
+# forest_fireflies  = 1.0        # firefly brightness (0 = none)
+# forest_drift      = 1.0        # drift speed of mist + fireflies
+# forest_sky        = "#132132"  # sky colour
+# forest_tree       = "#0a0f0c"  # tree-silhouette colour
+# forest_glow       = "#ffd27a"  # firefly glow colour
+#
+# Ocean scene (only used when sky_mode = "ocean"):
+# ocean_horizon     = 0.55       # where sea meets sky (0 top … 1 bottom)
+# ocean_wave_speed  = 1.0        # how fast the glitter shimmers
+# ocean_glint       = 1.0        # strength of the moon/sun glitter path
+# ocean_wave_scale  = 1.0        # higher = finer, choppier ripples
+# ocean_sky         = "#1a2a44"  # sky colour
+# ocean_sea         = "#0a1a2e"  # sea colour
+# ocean_glint_color = "#cfe0ff"  # glitter colour
 # card_gradient  = 0.45       # vertical sheen on the card (0 = flat)
 # grain          = 0.0        # film grain over the sky (0 = off)
 # vignette       = 0.2        # darken the screen edges (0 = off)
