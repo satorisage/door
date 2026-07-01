@@ -233,6 +233,23 @@ enum Message {
     WaterCausticColor(String),
     WaterDeep(String),
     WaterShallow(String),
+    MeteorSpeed(f32),
+    MeteorCount(f32),
+    MeteorTrail(f32),
+    MeteorIntensity(f32),
+    MeteorColor(String),
+    MeteorStarColor(String),
+    MoonSize(f32),
+    MoonPhaseSpeed(f32),
+    MoonTexture(f32),
+    MoonHalo(f32),
+    MoonColor(String),
+    MoonHaloColor(String),
+    FogDrift(f32),
+    FogScale(f32),
+    FogThickness(f32),
+    FogOpacity(f32),
+    FogColor(String),
     CardGradient(f32),
     Grain(f32),
     Vignette(f32),
@@ -372,6 +389,23 @@ struct State {
     water_caustic_color: String,
     water_deep: String,
     water_shallow: String,
+    meteor_speed: f32,
+    meteor_count: f32,
+    meteor_trail: f32,
+    meteor_intensity: f32,
+    meteor_color: String,
+    meteor_star_color: String,
+    moon_size: f32,
+    moon_phase_speed: f32,
+    moon_texture: f32,
+    moon_halo: f32,
+    moon_color: String,
+    moon_halo_color: String,
+    fog_drift: f32,
+    fog_scale: f32,
+    fog_thickness: f32,
+    fog_opacity: f32,
+    fog_color: String,
     spinner_style: SpinnerStyle,
     card_gradient: f32,
     grain: f32,
@@ -644,6 +678,23 @@ impl State {
             water_caustic_color: night.water_caustic_color.to_hex(),
             water_deep: night.water_deep.to_hex(),
             water_shallow: night.water_shallow.to_hex(),
+            meteor_speed: night.meteor_speed,
+            meteor_count: night.meteor_count,
+            meteor_trail: night.meteor_trail,
+            meteor_intensity: night.meteor_intensity,
+            meteor_color: night.meteor_color.to_hex(),
+            meteor_star_color: night.meteor_star_color.to_hex(),
+            moon_size: night.moon_size,
+            moon_phase_speed: night.moon_phase_speed,
+            moon_texture: night.moon_texture,
+            moon_halo: night.moon_halo,
+            moon_color: night.moon_color.to_hex(),
+            moon_halo_color: night.moon_halo_color.to_hex(),
+            fog_drift: night.fog_drift,
+            fog_scale: night.fog_scale,
+            fog_thickness: night.fog_thickness,
+            fog_opacity: night.fog_opacity,
+            fog_color: night.fog_color.to_hex(),
             spinner_style: night.spinner_style,
             card_gradient: night.card_gradient,
             grain: night.grain,
@@ -779,6 +830,23 @@ impl State {
         self.water_caustic_color = night.water_caustic_color.to_hex();
         self.water_deep = night.water_deep.to_hex();
         self.water_shallow = night.water_shallow.to_hex();
+        self.meteor_speed = night.meteor_speed;
+        self.meteor_count = night.meteor_count;
+        self.meteor_trail = night.meteor_trail;
+        self.meteor_intensity = night.meteor_intensity;
+        self.meteor_color = night.meteor_color.to_hex();
+        self.meteor_star_color = night.meteor_star_color.to_hex();
+        self.moon_size = night.moon_size;
+        self.moon_phase_speed = night.moon_phase_speed;
+        self.moon_texture = night.moon_texture;
+        self.moon_halo = night.moon_halo;
+        self.moon_color = night.moon_color.to_hex();
+        self.moon_halo_color = night.moon_halo_color.to_hex();
+        self.fog_drift = night.fog_drift;
+        self.fog_scale = night.fog_scale;
+        self.fog_thickness = night.fog_thickness;
+        self.fog_opacity = night.fog_opacity;
+        self.fog_color = night.fog_color.to_hex();
         self.spinner_style = night.spinner_style;
         self.card_gradient = night.card_gradient;
         self.grain = night.grain;
@@ -998,6 +1066,23 @@ impl State {
             water_caustic_color: color("Water caustic", &self.water_caustic_color)?,
             water_deep: color("Water deep", &self.water_deep)?,
             water_shallow: color("Water shallow", &self.water_shallow)?,
+            meteor_speed: self.meteor_speed,
+            meteor_count: self.meteor_count,
+            meteor_trail: self.meteor_trail,
+            meteor_intensity: self.meteor_intensity,
+            meteor_color: color("Meteor colour", &self.meteor_color)?,
+            meteor_star_color: color("Meteor star", &self.meteor_star_color)?,
+            moon_size: self.moon_size,
+            moon_phase_speed: self.moon_phase_speed,
+            moon_texture: self.moon_texture,
+            moon_halo: self.moon_halo,
+            moon_color: color("Moon colour", &self.moon_color)?,
+            moon_halo_color: color("Moon halo", &self.moon_halo_color)?,
+            fog_drift: self.fog_drift,
+            fog_scale: self.fog_scale,
+            fog_thickness: self.fog_thickness,
+            fog_opacity: self.fog_opacity,
+            fog_color: color("Fog colour", &self.fog_color)?,
             spinner_style: self.spinner_style,
             card_gradient: self.card_gradient,
             grain: self.grain,
@@ -1176,6 +1261,23 @@ fn update(state: &mut State, message: Message) -> Task<Message> {
         Message::WaterCausticColor(s) => state.water_caustic_color = s,
         Message::WaterDeep(s) => state.water_deep = s,
         Message::WaterShallow(s) => state.water_shallow = s,
+        Message::MeteorSpeed(v) => state.meteor_speed = v.clamp(0.02, 1.0),
+        Message::MeteorCount(v) => state.meteor_count = v.clamp(1.0, 40.0),
+        Message::MeteorTrail(v) => state.meteor_trail = v.clamp(10.0, 60.0),
+        Message::MeteorIntensity(v) => state.meteor_intensity = v.clamp(0.0, 2.0),
+        Message::MeteorColor(s) => state.meteor_color = s,
+        Message::MeteorStarColor(s) => state.meteor_star_color = s,
+        Message::MoonSize(v) => state.moon_size = v.clamp(0.05, 0.4),
+        Message::MoonPhaseSpeed(v) => state.moon_phase_speed = v.clamp(0.0, 0.5),
+        Message::MoonTexture(v) => state.moon_texture = v.clamp(0.0, 0.6),
+        Message::MoonHalo(v) => state.moon_halo = v.clamp(0.0, 1.0),
+        Message::MoonColor(s) => state.moon_color = s,
+        Message::MoonHaloColor(s) => state.moon_halo_color = s,
+        Message::FogDrift(v) => state.fog_drift = v.clamp(0.0, 0.2),
+        Message::FogScale(v) => state.fog_scale = v.clamp(0.3, 5.0),
+        Message::FogThickness(v) => state.fog_thickness = v.clamp(0.0, 1.0),
+        Message::FogOpacity(v) => state.fog_opacity = v.clamp(0.0, 1.0),
+        Message::FogColor(s) => state.fog_color = s,
         Message::CardGradient(v) => state.card_gradient = v.clamp(0.0, 1.0),
         Message::Grain(v) => state.grain = v.clamp(0.0, 0.3),
         Message::Vignette(v) => state.vignette = v.clamp(0.0, 1.0),
@@ -2135,6 +2237,15 @@ fn sky_tab<'a>(state: &'a State, pal: &'a Palette, h: bool) -> Element<'a, Messa
     if matches!(state.sky_mode, SkyMode::Water) {
         col = col.push(water_group(state, h));
     }
+    if matches!(state.sky_mode, SkyMode::Meteor) {
+        col = col.push(meteor_group(state, h));
+    }
+    if matches!(state.sky_mode, SkyMode::Moon) {
+        col = col.push(moon_group(state, h));
+    }
+    if matches!(state.sky_mode, SkyMode::Fog) {
+        col = col.push(fog_group(state, h));
+    }
     col.into()
 }
 
@@ -2281,6 +2392,74 @@ fn water_group(state: &State, h: bool) -> Element<'_, Message> {
             color_cell_with("Caustic", &state.water_caustic_color, Message::WaterCausticColor),
             color_cell_with("Deep", &state.water_deep, Message::WaterDeep),
             color_cell_with("Shallow", &state.water_shallow, Message::WaterShallow),
+        ]),
+    )
+}
+
+/// The meteor scene's authoring controls (M8) — speed, count, trail, colours.
+fn meteor_group(state: &State, h: bool) -> Element<'_, Message> {
+    group(
+        "METEOR",
+        two_col(vec![
+            helped(slider_row("Speed", state.meteor_speed, 0.05..=0.6, 0.005,
+                format!("{:.3}", state.meteor_speed), Message::MeteorSpeed),
+                "How fast the meteors streak across.", h),
+            helped(slider_row("Count", state.meteor_count, 1.0..=30.0, 1.0,
+                format!("{:.0}", state.meteor_count), Message::MeteorCount),
+                "How many shooting stars at once.", h),
+            helped(slider_row("Trail decay", state.meteor_trail, 12.0..=45.0, 0.5,
+                format!("{:.0}", state.meteor_trail), Message::MeteorTrail),
+                "Higher = shorter, crisper trails.", h),
+            helped(slider_row("Brightness", state.meteor_intensity, 0.0..=2.0, 0.02,
+                format!("{:.2}", state.meteor_intensity), Message::MeteorIntensity),
+                "Overall meteor glow.", h),
+            color_cell_with("Meteor", &state.meteor_color, Message::MeteorColor),
+            color_cell_with("Stars", &state.meteor_star_color, Message::MeteorStarColor),
+        ]),
+    )
+}
+
+/// The moon scene's authoring controls (M8) — size, phase, texture, halo, colours.
+fn moon_group(state: &State, h: bool) -> Element<'_, Message> {
+    group(
+        "MOON",
+        two_col(vec![
+            helped(slider_row("Size", state.moon_size, 0.06..=0.35, 0.005,
+                format!("{:.3}", state.moon_size), Message::MoonSize),
+                "Radius of the moon disc.", h),
+            helped(slider_row("Phase speed", state.moon_phase_speed, 0.0..=0.3, 0.005,
+                format!("{:.3}", state.moon_phase_speed), Message::MoonPhaseSpeed),
+                "How fast the phase (terminator) drifts. 0 = frozen.", h),
+            helped(slider_row("Texture", state.moon_texture, 0.0..=0.5, 0.01,
+                format!("{:.2}", state.moon_texture), Message::MoonTexture),
+                "Surface mottling — the darker 'maria'.", h),
+            helped(slider_row("Halo", state.moon_halo, 0.0..=0.8, 0.01,
+                format!("{:.2}", state.moon_halo), Message::MoonHalo),
+                "Strength of the soft glow around the moon.", h),
+            color_cell_with("Moon", &state.moon_color, Message::MoonColor),
+            color_cell_with("Halo", &state.moon_halo_color, Message::MoonHaloColor),
+        ]),
+    )
+}
+
+/// The fog scene's authoring controls (M8) — drift, scale, thickness, opacity, colour.
+fn fog_group(state: &State, h: bool) -> Element<'_, Message> {
+    group(
+        "FOG",
+        two_col(vec![
+            helped(slider_row("Drift speed", state.fog_drift, 0.0..=0.12, 0.002,
+                format!("{:.3}", state.fog_drift), Message::FogDrift),
+                "How fast the fog banks drift.", h),
+            helped(slider_row("Scale", state.fog_scale, 0.5..=3.5, 0.05,
+                format!("{:.2}", state.fog_scale), Message::FogScale),
+                "Higher = finer, wispier banks.", h),
+            helped(slider_row("Thickness", state.fog_thickness, 0.0..=0.9, 0.01,
+                format!("{:.2}", state.fog_thickness), Message::FogThickness),
+                "Density of the fog banks.", h),
+            helped(slider_row("Opacity", state.fog_opacity, 0.0..=1.0, 0.02,
+                format!("{:.2}", state.fog_opacity), Message::FogOpacity),
+                "How much the fog veils the sky behind it.", h),
+            color_cell_with("Fog", &state.fog_color, Message::FogColor),
         ]),
     )
 }

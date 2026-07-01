@@ -670,6 +670,46 @@ pub struct Theme {
     pub water_deep: Color,
     /// Water shallow (bottom) colour.
     pub water_shallow: Color,
+
+    // ── Meteor scene controls (M8) ──
+    /// Meteor base travel speed.
+    pub meteor_speed: f32,
+    /// Meteor count (how many shooting stars at once).
+    pub meteor_count: f32,
+    /// Meteor trail decay (higher = shorter, crisper streaks).
+    pub meteor_trail: f32,
+    /// Meteor brightness.
+    pub meteor_intensity: f32,
+    /// Meteor streak colour.
+    pub meteor_color: Color,
+    /// Meteor-scene star colour.
+    pub meteor_star_color: Color,
+
+    // ── Moon scene controls (M8) ──
+    /// Moon disc radius.
+    pub moon_size: f32,
+    /// Moon phase-cycle speed (the terminator drift).
+    pub moon_phase_speed: f32,
+    /// Moon surface mottling amount (the "maria").
+    pub moon_texture: f32,
+    /// Moon halo strength.
+    pub moon_halo: f32,
+    /// Moon disc colour.
+    pub moon_color: Color,
+    /// Moon halo colour.
+    pub moon_halo_color: Color,
+
+    // ── Fog scene controls (M8) ──
+    /// Fog drift speed.
+    pub fog_drift: f32,
+    /// Fog scale (higher = finer banks).
+    pub fog_scale: f32,
+    /// Fog thickness (density of the banks).
+    pub fog_thickness: f32,
+    /// Fog opacity (how much it veils the sky).
+    pub fog_opacity: f32,
+    /// Fog colour.
+    pub fog_color: Color,
     /// Card vertical-gradient strength (0 = flat fill; ~1 = a lit top sheen). Shared.
     pub card_gradient: f32,
     /// Film-grain strength over the whole sky (0 = off). Shared.
@@ -838,6 +878,23 @@ impl Default for Theme {
             water_caustic_color: Color::rgb(0x73, 0xf2, 0xff),
             water_deep: Color::rgb(0x00, 0x1f, 0x38),
             water_shallow: Color::rgb(0x00, 0x4d, 0x6b),
+            meteor_speed: 0.16,
+            meteor_count: 10.0,
+            meteor_trail: 26.0,
+            meteor_intensity: 1.0,
+            meteor_color: Color::rgb(0xd9, 0xeb, 0xff),
+            meteor_star_color: Color::rgb(0xbf, 0xcc, 0xff),
+            moon_size: 0.16,
+            moon_phase_speed: 0.06,
+            moon_texture: 0.18,
+            moon_halo: 0.28,
+            moon_color: Color::rgb(0xed, 0xed, 0xdb),
+            moon_halo_color: Color::rgb(0x80, 0x8c, 0xb8),
+            fog_drift: 0.02,
+            fog_scale: 1.4,
+            fog_thickness: 0.45,
+            fog_opacity: 0.7,
+            fog_color: Color::rgb(0xa8, 0xb3, 0xc7),
             card_gradient: 0.45,
             grain: 0.0,
             vignette: 0.2,
@@ -981,6 +1038,23 @@ impl Theme {
             water_caustic_color: Color::rgb(0x73, 0xf2, 0xff),
             water_deep: Color::rgb(0x00, 0x1f, 0x38),
             water_shallow: Color::rgb(0x00, 0x4d, 0x6b),
+            meteor_speed: 0.16,
+            meteor_count: 10.0,
+            meteor_trail: 26.0,
+            meteor_intensity: 1.0,
+            meteor_color: Color::rgb(0xd9, 0xeb, 0xff),
+            meteor_star_color: Color::rgb(0xbf, 0xcc, 0xff),
+            moon_size: 0.16,
+            moon_phase_speed: 0.06,
+            moon_texture: 0.18,
+            moon_halo: 0.28,
+            moon_color: Color::rgb(0xed, 0xed, 0xdb),
+            moon_halo_color: Color::rgb(0x80, 0x8c, 0xb8),
+            fog_drift: 0.02,
+            fog_scale: 1.4,
+            fog_thickness: 0.45,
+            fog_opacity: 0.7,
+            fog_color: Color::rgb(0xa8, 0xb3, 0xc7),
             card_gradient: 0.45,
             grain: 0.0,
             vignette: 0.2,
@@ -1110,6 +1184,23 @@ struct ThemeFile {
     water_caustic_color: Option<String>,
     water_deep: Option<String>,
     water_shallow: Option<String>,
+    meteor_speed: Option<f32>,
+    meteor_count: Option<f32>,
+    meteor_trail: Option<f32>,
+    meteor_intensity: Option<f32>,
+    meteor_color: Option<String>,
+    meteor_star_color: Option<String>,
+    moon_size: Option<f32>,
+    moon_phase_speed: Option<f32>,
+    moon_texture: Option<f32>,
+    moon_halo: Option<f32>,
+    moon_color: Option<String>,
+    moon_halo_color: Option<String>,
+    fog_drift: Option<f32>,
+    fog_scale: Option<f32>,
+    fog_thickness: Option<f32>,
+    fog_opacity: Option<f32>,
+    fog_color: Option<String>,
     card_gradient: Option<f32>,
     grain: Option<f32>,
     vignette: Option<f32>,
@@ -1356,6 +1447,25 @@ impl Theme {
             color("water_caustic_color", file.water_caustic_color, self.water_caustic_color);
         self.water_deep = color("water_deep", file.water_deep, self.water_deep);
         self.water_shallow = color("water_shallow", file.water_shallow, self.water_shallow);
+        merge_f32(&mut self.meteor_speed, file.meteor_speed);
+        merge_f32(&mut self.meteor_count, file.meteor_count);
+        merge_f32(&mut self.meteor_trail, file.meteor_trail);
+        merge_f32(&mut self.meteor_intensity, file.meteor_intensity);
+        self.meteor_color = color("meteor_color", file.meteor_color, self.meteor_color);
+        self.meteor_star_color =
+            color("meteor_star_color", file.meteor_star_color, self.meteor_star_color);
+        merge_f32(&mut self.moon_size, file.moon_size);
+        merge_f32(&mut self.moon_phase_speed, file.moon_phase_speed);
+        merge_f32(&mut self.moon_texture, file.moon_texture);
+        merge_f32(&mut self.moon_halo, file.moon_halo);
+        self.moon_color = color("moon_color", file.moon_color, self.moon_color);
+        self.moon_halo_color =
+            color("moon_halo_color", file.moon_halo_color, self.moon_halo_color);
+        merge_f32(&mut self.fog_drift, file.fog_drift);
+        merge_f32(&mut self.fog_scale, file.fog_scale);
+        merge_f32(&mut self.fog_thickness, file.fog_thickness);
+        merge_f32(&mut self.fog_opacity, file.fog_opacity);
+        self.fog_color = color("fog_color", file.fog_color, self.fog_color);
         merge_f32(&mut self.card_gradient, file.card_gradient);
         merge_f32(&mut self.grain, file.grain);
         merge_f32(&mut self.vignette, file.vignette);
@@ -1498,6 +1608,18 @@ impl Theme {
         merge_f32(&mut self.water_scale, file.water_scale);
         merge_f32(&mut self.water_ripple, file.water_ripple);
         merge_f32(&mut self.water_caustic, file.water_caustic);
+        merge_f32(&mut self.meteor_speed, file.meteor_speed);
+        merge_f32(&mut self.meteor_count, file.meteor_count);
+        merge_f32(&mut self.meteor_trail, file.meteor_trail);
+        merge_f32(&mut self.meteor_intensity, file.meteor_intensity);
+        merge_f32(&mut self.moon_size, file.moon_size);
+        merge_f32(&mut self.moon_phase_speed, file.moon_phase_speed);
+        merge_f32(&mut self.moon_texture, file.moon_texture);
+        merge_f32(&mut self.moon_halo, file.moon_halo);
+        merge_f32(&mut self.fog_drift, file.fog_drift);
+        merge_f32(&mut self.fog_scale, file.fog_scale);
+        merge_f32(&mut self.fog_thickness, file.fog_thickness);
+        merge_f32(&mut self.fog_opacity, file.fog_opacity);
         for (slot, s) in [
             (&mut self.synthwave_grid_color, &file.synthwave_grid_color),
             (&mut self.synthwave_sky_top, &file.synthwave_sky_top),
@@ -1514,6 +1636,11 @@ impl Theme {
             (&mut self.water_caustic_color, &file.water_caustic_color),
             (&mut self.water_deep, &file.water_deep),
             (&mut self.water_shallow, &file.water_shallow),
+            (&mut self.meteor_color, &file.meteor_color),
+            (&mut self.meteor_star_color, &file.meteor_star_color),
+            (&mut self.moon_color, &file.moon_color),
+            (&mut self.moon_halo_color, &file.moon_halo_color),
+            (&mut self.fog_color, &file.fog_color),
         ] {
             if let Some(s) = s {
                 if let Some(col) = Color::parse(s) {
@@ -1849,6 +1976,23 @@ impl Theme {
         out.push_str(&format!("water_caustic_color = {:?}\n", self.water_caustic_color.to_hex()));
         out.push_str(&format!("water_deep        = {:?}\n", self.water_deep.to_hex()));
         out.push_str(&format!("water_shallow     = {:?}\n", self.water_shallow.to_hex()));
+        out.push_str(&format!("meteor_speed      = {}\n", self.meteor_speed));
+        out.push_str(&format!("meteor_count      = {}\n", self.meteor_count));
+        out.push_str(&format!("meteor_trail      = {}\n", self.meteor_trail));
+        out.push_str(&format!("meteor_intensity  = {}\n", self.meteor_intensity));
+        out.push_str(&format!("meteor_color      = {:?}\n", self.meteor_color.to_hex()));
+        out.push_str(&format!("meteor_star_color = {:?}\n", self.meteor_star_color.to_hex()));
+        out.push_str(&format!("moon_size         = {}\n", self.moon_size));
+        out.push_str(&format!("moon_phase_speed  = {}\n", self.moon_phase_speed));
+        out.push_str(&format!("moon_texture      = {}\n", self.moon_texture));
+        out.push_str(&format!("moon_halo         = {}\n", self.moon_halo));
+        out.push_str(&format!("moon_color        = {:?}\n", self.moon_color.to_hex()));
+        out.push_str(&format!("moon_halo_color   = {:?}\n", self.moon_halo_color.to_hex()));
+        out.push_str(&format!("fog_drift         = {}\n", self.fog_drift));
+        out.push_str(&format!("fog_scale         = {}\n", self.fog_scale));
+        out.push_str(&format!("fog_thickness     = {}\n", self.fog_thickness));
+        out.push_str(&format!("fog_opacity       = {}\n", self.fog_opacity));
+        out.push_str(&format!("fog_color         = {:?}\n", self.fog_color.to_hex()));
         out.push_str(&format!("card_gradient = {}\n", self.card_gradient));
         out.push_str(&format!("grain         = {}\n", self.grain));
         out.push_str(&format!("vignette      = {}\n", self.vignette));

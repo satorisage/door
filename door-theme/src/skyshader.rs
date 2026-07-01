@@ -200,6 +200,32 @@ impl SkyShader {
                 nom(t.water_deep),
                 nom(t.water_shallow),
             ),
+            crate::SkyMode::Meteor => (
+                [
+                    t.meteor_speed,
+                    t.meteor_count,
+                    t.meteor_trail,
+                    t.meteor_intensity,
+                ],
+                z,
+                nom(t.meteor_color),
+                nom(t.meteor_star_color),
+                z,
+            ),
+            crate::SkyMode::Moon => (
+                [t.moon_size, t.moon_phase_speed, t.moon_texture, t.moon_halo],
+                z,
+                nom(t.moon_color),
+                nom(t.moon_halo_color),
+                z,
+            ),
+            crate::SkyMode::Fog => (
+                [t.fog_drift, t.fog_scale, t.fog_thickness, t.fog_opacity],
+                z,
+                nom(t.fog_color),
+                z,
+                z,
+            ),
             _ => (z, z, z, z, z),
         };
         let day = t.is_day;
@@ -1295,13 +1321,14 @@ fn meteor_sky(uv: vec2<f32>, p: vec2<f32>, aspect: f32) -> vec3<f32> {
   let bg = u.bg_bot.rgb;
   let top = mix(bg, u.glow.rgb, 0.22);
   var col = mix(top, bg, smoothstep(0.0, 1.0, uv.y));
-  col = col + vec3(0.75, 0.8, 1.0) * scene_stars(uv, aspect);
+  col = col + u.scene_c2.rgb * scene_stars(uv, aspect);
 
   let dir = normalize(vec2(-0.6, 0.55)); // down-left (uv y is down)
   var m = 0.0;
-  for (var i = 0; i < 10; i = i + 1) {
+  let count = i32(clamp(u.scene_a.y, 1.0, 40.0));
+  for (var i = 0; i < count; i = i + 1) {
     let fi = f32(i);
-    let sp = 0.16 + 0.14 * hash21(vec2(fi, 2.0));
+    let sp = u.scene_a.x + 0.14 * hash21(vec2(fi, 2.0));
     let prog = u.time * sp + hash21(vec2(fi, 9.0));
     let life = floor(prog);
     let t = fract(prog);
@@ -1313,12 +1340,12 @@ fn meteor_sky(uv: vec2<f32>, p: vec2<f32>, aspect: f32) -> vec3<f32> {
     rel.x = rel.x * aspect;
     let along = dot(rel, dir);
     let perp = length(rel - along * dir);
-    let trail = exp(-perp * perp * 9000.0) * exp(along * 26.0) * step(along, 0.0);
+    let trail = exp(-perp * perp * 9000.0) * exp(along * u.scene_a.z) * step(along, 0.0);
     let headg = exp(-dot(rel, rel) * 5000.0);
     let env = smoothstep(0.0, 0.08, t) * smoothstep(1.0, 0.75, t);
     m = m + (trail * 0.85 + headg) * env;
   }
-  return col + vec3(0.85, 0.92, 1.0) * m;
+  return col + u.scene_c1.rgb * m * u.scene_a.w;
 }
 
 // Moon: a large phased moon (terminator drifts slowly) with fbm "maria", a soft halo
@@ -1332,16 +1359,16 @@ fn moon_sky(uv: vec2<f32>, p: vec2<f32>, aspect: f32) -> vec3<f32> {
   var rel = uv - mc;
   rel.x = rel.x * aspect;
   let r = length(rel);
-  let rad = 0.16;
+  let rad = u.scene_a.x;
   let disc = smoothstep(rad, rad - 0.006, r);
   // Phase: an offset shadow disc sweeps across (slow).
-  let phase = sin(u.time * 0.06);
+  let phase = sin(u.time * u.scene_a.y);
   let sr = length(rel - vec2(phase * 0.20, 0.0));
   let lit = smoothstep(rad - 0.006, rad, sr);
-  let maria = 0.82 + 0.18 * fbm(rel * 22.0);
-  col = col + vec3(0.93, 0.93, 0.86) * disc * lit * maria;
+  let maria = (1.0 - u.scene_a.z) + u.scene_a.z * fbm(rel * 22.0);
+  col = col + u.scene_c1.rgb * disc * lit * maria;
   // Soft halo.
-  col = col + vec3(0.5, 0.55, 0.72) * exp(-r * r * 26.0) * 0.28;
+  col = col + u.scene_c2.rgb * exp(-r * r * 26.0) * u.scene_a.w;
   return col;
 }
 
@@ -1390,12 +1417,12 @@ fn fog_sky(uv: vec2<f32>, p: vec2<f32>, aspect: f32) -> vec3<f32> {
   var fog = 0.0;
   for (var i = 0; i < 3; i = i + 1) {
     let fi = f32(i);
-    let drift = vec2(u.time * (0.02 + fi * 0.012), fi * 1.3);
-    fog = fog + fbm(p * (1.4 + fi * 1.1) + drift) * (0.45 - fi * 0.1);
+    let drift = vec2(u.time * (u.scene_a.x + fi * 0.012), fi * 1.3);
+    fog = fog + fbm(p * (u.scene_a.y + fi * 1.1) + drift) * (u.scene_a.z - fi * 0.1);
   }
   let fogc = clamp(fog, 0.0, 1.0);
   col = col + vec3(0.7, 0.74, 0.82) * scene_stars(uv, aspect) * (1.0 - fogc);
-  col = mix(col, vec3(0.66, 0.70, 0.78), fogc * 0.7);
+  col = mix(col, u.scene_c1.rgb, fogc * u.scene_a.w);
   return col;
 }
 

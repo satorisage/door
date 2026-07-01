@@ -155,6 +155,29 @@ spinner_trail = 1.0         # trail length 0.15–1.0 (shorter = crisper on a li
 # water_caustic_color = "#73f2ff"  # caustic web colour
 # water_deep          = "#001f38"  # deep (top) water colour
 # water_shallow       = "#004d6b"  # shallow (bottom) water colour
+#
+# Meteor scene (only used when sky_mode = "meteor"):
+# meteor_speed      = 0.16       # base travel speed
+# meteor_count      = 10         # how many shooting stars at once
+# meteor_trail      = 26.0       # trail decay (higher = shorter, crisper streaks)
+# meteor_intensity  = 1.0        # overall meteor brightness
+# meteor_color      = "#d9ebff"  # meteor streak colour
+# meteor_star_color = "#bfccff"  # background star colour
+#
+# Moon scene (only used when sky_mode = "moon"):
+# moon_size         = 0.16       # moon disc radius
+# moon_phase_speed  = 0.06       # phase/terminator drift speed (0 = frozen)
+# moon_texture      = 0.18       # surface mottling ("maria") amount
+# moon_halo         = 0.28       # soft-glow halo strength
+# moon_color        = "#ededdb"  # moon disc colour
+# moon_halo_color   = "#808cb8"  # halo colour
+#
+# Fog scene (only used when sky_mode = "fog"):
+# fog_drift         = 0.02       # bank drift speed
+# fog_scale         = 1.4        # higher = finer, wispier banks
+# fog_thickness     = 0.45       # density of the banks
+# fog_opacity       = 0.7        # how much the fog veils the sky
+# fog_color         = "#a8b3c7"  # fog colour
 # card_gradient  = 0.45       # vertical sheen on the card (0 = flat)
 # grain          = 0.0        # film grain over the sky (0 = off)
 # vignette       = 0.2        # darken the screen edges (0 = off)
