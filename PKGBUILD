@@ -6,7 +6,7 @@
 # step the admin runs separately (see the post-install note), with a tested TTY
 # revert in hand. The previous DM is left installed as the fallback.
 pkgname=door
-pkgver=0.1.2
+pkgver=0.1.3
 pkgrel=1
 pkgdesc="Beautiful, security-first Wayland display manager / login manager with an animated GPU greeter (privilege-separated, reversible)"
 arch=('x86_64')
@@ -70,9 +70,13 @@ package() {
         install -Dm644 "$preset" "$pkgdir/usr/share/door/presets/$(basename "$preset")"
     done
 
-    # Settings editor launcher (appears under Settings in the app menu).
+    # Settings editor launchers (appear under Settings in the app menu): the plain
+    # entry and an Expert entry that launches with the advanced (Tier-3) controls
+    # already revealed (door-settings --expert).
     install -Dm644 dist/door/door-settings.desktop \
         "$pkgdir/usr/share/applications/door-settings.desktop"
+    install -Dm644 dist/door/door-settings-expert.desktop \
+        "$pkgdir/usr/share/applications/door-settings-expert.desktop"
 
     install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
 }

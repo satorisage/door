@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=door Greeter Settings (Expert)
+GenericName=Login Screen Settings — Expert
+Comment=Configure the door greeter with the advanced (Tier-3) controls revealed
+Exec=door-settings --expert
+Icon=preferences-desktop-display
+Terminal=false
+Categories=Settings;DesktopSettings;
+Keywords=login;greeter;door;theme;wallpaper;tokyonight;expert;advanced;

@@ -44,6 +44,16 @@ for b in doord door-greeter door-settings; do
 done
 
 # --- 2. install (root) ------------------------------------------------------------
+# Heads-up if a packaged door is installed: this dev install writes the SAME paths
+# under /usr/share/door/ that the package owns, so it will shadow the package and
+# seed files pacman doesn't track (e.g. presets the installed package predates).
+# The next `pacman -U door` then fails with "conflicting files". Returning to the
+# packaged build takes ownership back: pacman -S door --overwrite '/usr/share/door/*'.
+if command -v pacman >/dev/null 2>&1 && pacman -Qq "$PKGNAME" >/dev/null 2>&1; then
+    echo "==> WARNING: '$PKGNAME' is pacman-managed; this dev install shadows it." >&2
+    echo "             To return to the package later: pacman -S $PKGNAME --overwrite '/usr/share/door/*'" >&2
+fi
+
 # Everything below writes under / and needs root. Re-exec the install half via sudo
 # so the build half above runs as the unprivileged user.
 echo "==> installing to / (sudo)"
@@ -66,12 +76,18 @@ install -Dm644 dist/sysusers.d/door.conf  /usr/lib/sysusers.d/door.conf
 # Greeter theme: default + wallpaper + presets, world-readable under /usr/share/door/.
 install -Dm644 dist/door/greeter.toml  /usr/share/door/greeter.toml
 install -Dm644 dist/door/wallpaper.png /usr/share/door/wallpaper.png
+# Reseed presets from a clean slate so a renamed/removed preset in the working tree
+# can't leave a stale file behind (which would then survive as an unowned file and
+# collide with a later `pacman -U`). The dir is fully owned by whatever installed
+# door last, so wiping and rewriting it is safe.
+rm -rf /usr/share/door/presets
 for preset in dist/door/presets/*.toml; do
     install -Dm644 "$preset" "/usr/share/door/presets/$(basename "$preset")"
 done
 
-# Settings editor launcher.
-install -Dm644 dist/door/door-settings.desktop /usr/share/applications/door-settings.desktop
+# Settings editor launchers: plain + Expert (opens with Tier-3 controls revealed).
+install -Dm644 dist/door/door-settings.desktop        /usr/share/applications/door-settings.desktop
+install -Dm644 dist/door/door-settings-expert.desktop /usr/share/applications/door-settings-expert.desktop
 
 install -Dm644 LICENSE "/usr/share/licenses/$PKGNAME/LICENSE"
 
