@@ -1,6 +1,6 @@
 # Project State
 
-**Last updated:** 2026-07-01
+**Last updated:** 2026-07-01 (D-0016 ratified — Tier 3 seccomp build spec)
 **Active focus (2026-07-01): M5 Tier 2 — pre-forked spawner.** Reconciled to master HEAD
 `9c9e1e1` after a ~3-milestone doc drift (this file had been frozen at 2026-06-27). Reality:
 **M8** (per-scene authoring controls + mode completeness, D-0013) and **M9** (global
@@ -203,12 +203,14 @@ ready/blocked frontier. Per-task DoD (`done-when:`) and progress live in
 ROADMAP — do **not** duplicate the DoD checklist here (D-0050 dissolved the
 old lockstep-with-SCOPE mandate, a Principle-7 violation).
 
-**Milestone:** M5 — Hardening pass (Tier 2, pre-forked spawner); see `ROADMAP.md`
-`## Active` frontier note + the M5 section. **Frontier:** M5 Tier 2 part 2 is landed
-behind `DOORD_SPAWNER` (HEAD `9c9e1e1`) and its **full login+teardown cycle is hardware-validated**
-(login → clean logout status-0 → reap → greeter recycle → re-login, all over the spawner via a
-`DOORD_SPAWNER=1` drop-in on `genny`, 2026-07-01, no orphans); the shipped `doord.service` default
-is now flipped to spawner mode (reversible). **Remaining** = Tier 3/4.
+**Milestone:** M5 — Hardening pass (Tier 3, supervisor sandbox); see `ROADMAP.md`
+`## Active` frontier note + the M5 section. **Frontier:** Tier 2 shipped as the
+`doord.service` default (spawner mode, reversible); Tier 3 **increment 1** (greeter routed through
+the spawner + concurrent reaper, HEAD `86739f6`) is **hardware-validated** on `genny` (full login →
+logout → greeter-recycle → re-login clean over the spawner). **Next = Tier 3 increment 2a:** build
+the supervisor seccomp filter per **DECISION-0016** (`seccompiler`, `SCMP_ACT_LOG` first, applied
+after `fork_spawner`). No seccomp code exists yet (`hardening.rs` is Tier 0 only). **Remaining** =
+Tier 3 (2a log → 2b genny log-run → 3 enforce) then Tier 4 (Landlock).
 **Criticality: Critical** (privilege boundary / login path). M1/M2/M3/M4/M6/M7/M8/M9 are complete.
 
 (Projects not using ROADMAP may keep a short DoD list here instead.)
@@ -237,13 +239,19 @@ it by kind: deferred-but-committed → a `## Backlog` task in `.agent/ROADMAP.md
 
 ## 5. Next session
 
-**M5 Tier 3 increment 1 (greeter reroute) — code complete, awaiting genny validation.** Route
-the greeter through the pre-forked spawner so a future supervisor seccomp filter never confines
-`cage`; the spawner became a concurrent-child reaper to allow the greeter + session worker to
-coexist during auth. Builds + 30 doord tests + clippy green in-tree. **Next session: install the
-new binary on genny, reboot, and confirm the full login → logout → recycle → re-login cycle still
-works over the rerouted greeter** (journal `-u doord`: `launched greeter` via spawner, clean logout,
-recycle, no orphans) before committing/pushing and moving to increment 2 (seccomp `SCMP_ACT_LOG`).
+**M5 Tier 3 increment 2a (build the supervisor seccomp filter) — next.** Per **DECISION-0016**
+(ratified 2026-07-01): add the `seccompiler` crate, write `hardening::apply_seccomp(mode)`, and call
+it **supervisor-only after `fork_spawner`** with default action `SCMP_ACT_LOG`. Gate it behind a new
+`DOORD_SECCOMP={off|log|enforce}` env flag (`DOORD_NO_SANDBOX=1` overrides to off). No seccomp code
+exists yet — `hardening.rs` is Tier 0 (`NO_NEW_PRIVS` + `PR_SET_DUMPABLE`) only. After 2a builds
+green in-tree, **2b is a required genny boot** with `DOORD_SECCOMP=log`: run the full login → logout
+→ recycle → re-login cycle, `journalctl | grep -i seccomp`, and widen the allowlist until the audit
+log is clean; then **increment 3** flips the default to `SCMP_ACT_ERRNO(EPERM)`.
+
+**[history] Tier 3 increment 1 (greeter reroute) — hardware-validated 2026-07-01** (HEAD `86739f6`,
+committed `39a7267`). The greeter routes through the spawner + concurrent reaper; a full login →
+logout → greeter-recycle → re-login cycle ran clean over the spawner on `genny`. The greeter
+compositor no longer forks off the supervisor, so the supervisor is now confinable (unblocked 2a).
 The validation + install commands are in `scratch/tier3-validate-increment1.sh`.
 
 **[history] M5 Tier 2 — full cycle validated + shipped default flipped.** The

@@ -56,3 +56,4 @@ inline in the title cell: `— **Superseded by 0NNN (YYYY-MM-DD)**`.)
 | 0013 | 2026-06-30 | [Per-scene authoring controls + sky-mode completeness (M8)](DECISION-0013-per-scene-controls-and-modes.md) |
 | 0014 | 2026-06-30 | [Global GPU-budget level (Lite/Moderate/High/Bonkers)](DECISION-0014-global-gpu-level.md) |
 | 0015 | 2026-06-30 | [Pre-forked spawner so the supervisor can sandbox itself (M5 Tier 2)](DECISION-0015-pre-forked-spawner-for-sandboxing.md) |
+| 0016 | 2026-07-01 | [Supervisor seccomp filter via seccompiler, log-before-enforce (M5 Tier 3)](DECISION-0016-supervisor-seccomp-seccompiler.md) |

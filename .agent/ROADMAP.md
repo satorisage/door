@@ -285,8 +285,16 @@ look byte-faithful; each shader change naga-gated.
                   the next real logout (not observed this boot; the validated session is still up).
             - [ ] **flip the shipped default** — part 2 currently on only via the machine-local
                   drop-in; part 3 makes it the default in the shipped `doord.service`.
-      - [ ] **part 3** — once validated: make spawner the default; then Tier 3 (seccomp
-            allowlist) + Tier 4 (Landlock paths) on the supervisor (applied after `fork_spawner`).
+      - [x] **part 3** — spawner is the shipped `doord.service` default (`DOORD_SPAWNER=1`).
+      - [ ] **Tier 3 — supervisor seccomp** (per **DECISION-0016**: `seccompiler`,
+            log-before-enforce, applied after `fork_spawner`).
+            - [x] **increment 1** — greeter routed through the spawner + concurrent reaper
+                  (HEAD `86739f6`); hardware-validated on `genny` 2026-07-01.
+            - [ ] **2a** — `hardening::apply_seccomp(mode)` + `seccompiler` dep + `DOORD_SECCOMP`
+                  flag, default action `SCMP_ACT_LOG`, supervisor-only after `fork_spawner`.
+            - [ ] **2b** — genny boot with `DOORD_SECCOMP=log`; grep journal for denials, tune allowlist.
+            - [ ] **3** — flip default action to `SCMP_ACT_ERRNO(EPERM)` once the log run is clean.
+      - [ ] **Tier 4 — Landlock paths** on the supervisor (same post-`fork_spawner` step).
 - privilege-drop audit ✅ (pentest 2026-06-30), IPC/PAM fuzzing ✅ (ipc_fuzz.rs)
 - secrets-zeroization audit ✅ (F1 fix); external review of the TCB
   `depends:` M1, M2
