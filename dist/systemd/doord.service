@@ -30,6 +30,13 @@ RuntimeDirectoryMode=0700
 Environment=DOORD_GREETER_USER=door-greeter
 Environment=DOORD_SEAT=seat0
 Environment=DOORD_VTNR=1
+# Spawn each per-login worker from a pre-forked helper that lives OUTSIDE doord's
+# own sandboxed lineage, instead of forking it inline. This is what lets the
+# Tier 3/4 sandboxing directives (see below) apply to doord without also caging
+# the user's desktop session. The full login → clean-logout → reap → recycle →
+# re-login cycle is validated on hardware; unset this to fall back to the legacy
+# in-lineage spawn if a regression appears.
+Environment=DOORD_SPAWNER=1
 # DOORD_SOCKET defaults to /run/doord/door.sock; DOORD_PAM_SERVICE to "doord".
 Restart=on-failure
 RestartSec=2
