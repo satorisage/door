@@ -296,8 +296,13 @@ look byte-faithful; each shader change naga-gated.
                   filter builds + installs verified locally (Log filter installs on this kernel
                   and the supervisor runs past it; non-spawner path correctly skips). 5 unit tests
                   + ipc_smoke green, clippy clean.
-            - [ ] **2b** — genny boot with `DOORD_SECCOMP=log`; grep journal for denials, tune allowlist.
-            - [ ] **3** — flip default action to `SCMP_ACT_ERRNO(EPERM)` once the log run is clean.
+            - [x] **2b** — genny full-allowlist Log run: **empty denial harvest** + **positive
+                  control passed** (2026-07-01, `scratch/tier3-poscontrol.sh` — dropping write/writev
+                  produced the expected `type=1326` records), proving capture works and
+                  `SUPERVISOR_ALLOWLIST` is complete. No widening needed.
+            - [ ] **3** — flip to `SCMP_ACT_ERRNO(EPERM)`: `restore` the full-allowlist binary first
+                  (this boot still runs the armed control build), flip the drop-in to
+                  `DOORD_SECCOMP=enforce`, reboot + validate, then bake `enforce` into `doord.service`.
       - [ ] **Tier 4 — Landlock paths** on the supervisor (same post-`fork_spawner` step).
 - privilege-drop audit ✅ (pentest 2026-06-30), IPC/PAM fuzzing ✅ (ipc_fuzz.rs)
 - secrets-zeroization audit ✅ (F1 fix); external review of the TCB

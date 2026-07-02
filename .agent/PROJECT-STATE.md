@@ -239,18 +239,21 @@ it by kind: deferred-but-committed → a `## Backlog` task in `.agent/ROADMAP.md
 
 ## 5. Next session
 
-**M5 Tier 3 increment 2b (genny seccomp log-run) — next.** Increment **2a is code-complete in-tree**
-on branch `tier3-seccomp-2a` (per **DECISION-0016**): `seccompiler` dep added, `hardening.rs` gained
-`SeccompMode{Off,Log,Enforce}` + `apply_seccomp(mode)` (compile split out as the pure/testable half),
-wired into `main.rs` **supervisor-only after `fork_spawner`** and skipped on the direct in-lineage
-path (a filter there would confine the desktop). Gated by `DOORD_SECCOMP={off|log|enforce}`;
-`DOORD_NO_SANDBOX=1` forces off. Verified locally: the Log filter *installs* on this kernel (unpriv,
-`NO_NEW_PRIVS` precondition) and the supervisor runs past it + binds; the non-spawner path prints the
-skip line and installs nothing. 5 unit tests + ipc_smoke green, clippy clean. **Branch awaits
-integration, then 2b: a genny boot** with `DOORD_SECCOMP=log`, run the full login → logout → recycle
-→ re-login cycle, `journalctl | grep -i seccomp` to collect the real denied-syscall set, and widen
-`SUPERVISOR_ALLOWLIST` (currently an empirically-refined seed) until the audit log is clean; then
-**increment 3** flips the default to `SCMP_ACT_ERRNO(EPERM)`.
+**M5 Tier 3 increment 2b (genny seccomp log-run) — VALIDATED; increment 3 (enforce) next.** 2a is
+integrated to master (merge `1eb8009`). On `genny` the full-allowlist Log binary ran the full login →
+logout → recycle → re-login cycle with an **empty denial harvest**, and — decisively — the **positive
+control passed** (`scratch/tier3-poscontrol.sh`: temporarily dropping `write`/`writev` from
+`SUPERVISOR_ALLOWLIST` produced the expected `type=1326` records in Log mode). That proves the
+`SCMP_ACT_LOG` capture path actually surfaces denials, so the empty harvest is *trustworthy* (not a
+blind instrument) and `SUPERVISOR_ALLOWLIST` is **complete — no widening needed**. Source is already
+restored to the full allowlist (no poscontrol markers in-tree); **the binary running this boot is
+still the armed control build** (write/writev removed), so enforce must not be flipped until the real
+binary is reinstalled. **Path to increment 3:** (1) `bash scratch/tier3-poscontrol.sh restore` —
+rebuild+install the real full-allowlist Log binary; (2) flip the machine-local drop-in
+`/etc/systemd/system/doord.service.d/seccomp-log.conf` from `DOORD_SECCOMP=log` to `enforce`
+(no code change — `SeccompMode::Enforce` → `SCMP_ACT_ERRNO(EPERM)` already exists, `hardening.rs:116`);
+(3) reboot + full login cycle to confirm the supervisor runs clean under enforce; (4) bake
+`Environment=DOORD_SECCOMP=enforce` into the shipped `dist/systemd/doord.service` and commit increment 3.
 
 **[history] Tier 3 increment 1 (greeter reroute) — hardware-validated 2026-07-01** (HEAD `86739f6`,
 committed `39a7267`). The greeter routes through the spawner + concurrent reaper; a full login →
