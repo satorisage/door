@@ -472,6 +472,14 @@ off-by-default DECISION naming its threat model before it can graduate.
 
 ## Shipped
 
+- **v0.1.4 → AUR** (2026-07-01): version bumped `0.1.3 → 0.1.4` (`Cargo.toml`
+  `[workspace.package]` + `PKGBUILD pkgver`, moved together per the v0.1.3 release
+  note; lockfile synced). Ships **M5 Tier 3 (supervisor seccomp) enforce as the
+  `doord.service` default** — `Environment=DOORD_SECCOMP=enforce`
+  (`SCMP_ACT_ERRNO(EPERM)`, reversible), validated clean under a full login cycle
+  on `genny`. Publish via `scripts/release.sh` (tags `v0.1.4` off `Cargo.toml`,
+  pushes, `updpkgsums` + AUR push). *Pending the AUR publish step.*
+
 - **v0.1.3 → AUR** (2026-07-01): tagged `v0.1.3` (commit `441cbb6`), live on the
   AUR (pkgver 0.1.3, pkgrel 1). Two items, both traced to an AUR upgrade bug
   report — `door 0.1.2` failed with `pacman` *conflicting files* on
