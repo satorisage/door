@@ -238,6 +238,10 @@ pub enum Message {
         secret: bool,
     },
     Notice(String),
+    /// The user edited the interactive second-factor prompt field (FIDO2 PIN, …).
+    PromptChanged(String),
+    /// The user submitted the interactive second-factor prompt — send the reply.
+    PromptSubmitted,
     AuthSucceeded,
     AuthFailed(String),
     SessionStarted,
@@ -260,6 +264,18 @@ pub enum Message {
     SessionPicked(SessionChoice),
     LoginPressed,
     PowerPressed(PowerAction),
+}
+
+/// An interactive PAM prompt whose reply the greeter must collect by typing —
+/// a second factor the pre-typed password can't answer, e.g. a FIDO2 PIN in a
+/// passwordless setup, or any prompt after the first. The password (the first
+/// secret prompt, pre-typed into the login form) is still auto-answered and
+/// never routes through here. `value` holds the in-progress input and is moved
+/// into a zeroizing [`Secret`] the instant it is submitted.
+struct PromptField {
+    text: String,
+    secret: bool,
+    value: String,
 }
 
 struct State {
@@ -294,6 +310,14 @@ struct State {
     /// Whether Caps Lock is currently on — read from the keyboard LED (local; no
     /// daemon). Drives the warning shown by the password field.
     caps_lock: bool,
+    /// An interactive second-factor prompt awaiting a typed reply (a FIDO2 PIN,
+    /// or any prompt the pre-typed password can't answer). `None` unless PAM is
+    /// mid-conversation asking for input the login form didn't already supply.
+    prompt: Option<PromptField>,
+    /// A one-way PAM cue shown mid-authentication — e.g. "Please touch the
+    /// device" from `pam_u2f cue`. Rendered as a distinct waiting indicator, not
+    /// a plain status line, so a hardware-key touch reads as an action to take.
+    cue: Option<String>,
 }
 
 impl State {
@@ -325,6 +349,8 @@ impl State {
             anim: 0.0,
             started: Instant::now(),
             caps_lock: caps_lock_on().unwrap_or(false),
+            prompt: None,
+            cue: None,
         }
     }
 
@@ -365,18 +391,60 @@ fn update(state: &mut State, message: Message) -> Task<Message> {
             }
         }
         Message::Prompt { text, secret } => {
-            // Show what PAM is asking. The daemon's only prompt is the password:
-            // if the user already typed it, answer immediately; otherwise the
-            // password field is there for them to type and submit.
-            state.status = text;
+            // A fresh prompt supersedes any prior touch cue.
+            state.cue = None;
             if secret && !state.password.is_empty() {
+                // Common case: the user pre-typed their password into the login
+                // form, so answer PAM's password prompt instantly — no extra
+                // field, the smooth path stays smooth.
+                state.status = text;
                 let reply = Secret::new(std::mem::take(&mut state.password));
                 state.send(Command::Reply(reply));
+            } else {
+                // A prompt the login form can't answer: a FIDO2 PIN, a second
+                // factor, or the first prompt of a passwordless stack. Surface
+                // PAM's own text and collect the typed reply interactively. The
+                // field's label carries the prompt; clear the status line so the
+                // two don't echo each other.
+                state.status = String::new();
+                state.status_error = false;
+                state.prompt = Some(PromptField {
+                    text,
+                    secret,
+                    value: String::new(),
+                });
+                task = iced::widget::operation::focus(PROMPT_ID);
             }
         }
-        Message::Notice(text) => state.status = text,
+        Message::Notice(text) => {
+            // Mid-authentication with no input field open, a one-way PAM message
+            // is a cue to act (touch your key) — show it as a distinct waiting
+            // indicator. Anywhere else it is ordinary status text.
+            if matches!(state.phase, Phase::Authenticating) && state.prompt.is_none() {
+                state.cue = Some(text);
+                state.status = String::new();
+            } else {
+                state.status = text;
+            }
+        }
+        Message::PromptChanged(value) => {
+            if let Some(p) = &mut state.prompt {
+                p.value = value;
+            }
+        }
+        Message::PromptSubmitted => {
+            if let Some(p) = state.prompt.take() {
+                // Move the typed value straight into a zeroizing Secret — no
+                // lingering copy — and send it as this round's PAM reply.
+                let reply = Secret::new(p.value);
+                state.send(Command::Reply(reply));
+                state.status = "Authenticating…".to_string();
+            }
+        }
         Message::AuthSucceeded => {
             state.password.clear();
+            state.prompt = None;
+            state.cue = None;
             match &state.selected {
                 Some(choice) => {
                     state.status = format!("Starting {}…", choice.name);
@@ -391,6 +459,8 @@ fn update(state: &mut State, message: Message) -> Task<Message> {
         }
         Message::AuthFailed(reason) => {
             state.password.clear();
+            state.prompt = None;
+            state.cue = None;
             state.status = reason;
             state.status_error = true;
             state.phase = Phase::Ready;
@@ -404,11 +474,15 @@ fn update(state: &mut State, message: Message) -> Task<Message> {
         }
         Message::DaemonError(message) => {
             state.password.clear();
+            state.prompt = None;
+            state.cue = None;
             state.status = message;
             state.status_error = true;
             state.phase = Phase::Ready;
         }
         Message::Fatal(message) => {
+            state.prompt = None;
+            state.cue = None;
             state.status = format!("Cannot reach doord: {message}");
             state.status_error = true;
             state.phase = Phase::Connecting;
@@ -425,6 +499,9 @@ fn update(state: &mut State, message: Message) -> Task<Message> {
             } else {
                 state.phase = Phase::Authenticating;
                 state.status = "Authenticating…".to_string();
+                // A fresh conversation: drop any stale prompt/cue from a prior try.
+                state.prompt = None;
+                state.cue = None;
                 let username = state.username.clone();
                 state.send(Command::Authenticate { username });
             }
@@ -736,6 +813,10 @@ fn clock_angles() -> (f32, f32, f32) {
     (hour / 12.0 * tau, min / 60.0 * tau, sec / 60.0 * tau)
 }
 
+/// Stable id for the interactive second-factor field, so `update` can focus it
+/// the moment PAM issues a prompt the login form didn't pre-answer.
+const PROMPT_ID: &str = "pam-prompt";
+
 fn view(state: &State) -> Element<'_, Message> {
     let t = &state.theme;
     let f = state.fade.clamp(0.0, 1.0);
@@ -870,17 +951,64 @@ fn view(state: &State) -> Element<'_, Message> {
     if let Some(logo) = logo {
         items.push(logo);
     }
-    items.push(username.into());
-    items.push(password.into());
-    if state.caps_lock {
+    if let Some(p) = &state.prompt {
+        // An interactive second factor (e.g. a FIDO2 PIN): PAM's own label above a
+        // focused field, replacing the login form for this round of the exchange.
         items.push(
-            text("⇪  Caps Lock is on")
-                .size(12.0 * t.font_scale)
-                .color(t.error_color.iced_alpha(f))
+            text(p.text.clone())
+                .size(13.0 * t.font_scale)
+                .color(fg)
                 .into(),
         );
+        let field = text_input("", &p.value)
+            .id(PROMPT_ID)
+            .on_input(Message::PromptChanged)
+            .on_submit(Message::PromptSubmitted)
+            .secure(p.secret)
+            .padding(11)
+            .size(15.0 * t.font_scale)
+            .style(field_style(t, f));
+        items.push(field.into());
+        let submit = button(
+            text("Submit")
+                .width(Length::Fill)
+                .center()
+                .size(15.0 * t.font_scale),
+        )
+        .width(Length::Fill)
+        .padding(11)
+        .on_press(Message::PromptSubmitted)
+        .style(button_style(t, f));
+        items.push(submit.into());
+    } else if let Some(cue) = &state.cue {
+        // A one-way waiting cue (e.g. "Please touch the device"): a distinct
+        // pulsing indicator so the moment reads as an action to take, not a
+        // passive status line. The pulse rides the shared animation clock.
+        let pulse = 0.55 + 0.45 * (state.anim * 2.4).sin().abs();
+        items.push(
+            column![
+                text("◉")
+                    .size(30.0 * t.font_scale)
+                    .color(t.accent.iced_alpha(f * pulse)),
+                text(cue.clone()).size(14.0 * t.font_scale).color(fg),
+            ]
+            .spacing(10)
+            .align_x(Alignment::Center)
+            .into(),
+        );
+    } else {
+        items.push(username.into());
+        items.push(password.into());
+        if state.caps_lock {
+            items.push(
+                text("⇪  Caps Lock is on")
+                    .size(12.0 * t.font_scale)
+                    .color(t.error_color.iced_alpha(f))
+                    .into(),
+            );
+        }
+        items.push(login.into());
     }
-    items.push(login.into());
     items.push(picker.into());
     items.push(status);
     let form = Column::with_children(items)

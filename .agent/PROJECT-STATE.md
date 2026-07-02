@@ -159,12 +159,20 @@ C (composition) / D (clock-logo-type) / E (functional-UX). Criticality Material.
 honest README (early-alpha, Wayland-only, Arch+systemd). **X11 sessions are filtered from
 the picker by default** (`DOORD_ALLOW_X11=1` to override) — door starts no X server, so
 offering them would be a login that can't succeed; real X11 support is deferred past v1.
-Sharing-without-`.agent`: the strategy landed as **gitignore + keep-on-disk** —
-`.agent/`, `CLAUDE.md`, and `scratch/` are gitignored (never tracked, so they were
-never in git history; verified: `git log --all -- .agent` = 0 commits), and the
-`.gitattributes export-ignore` lines are kept as a redundant tarball safety net.
-(This *replaces* the earlier "track + export-ignore, no gitignore" plan — that plan
-was never executed.)
+Sharing-without-`.agent`: **[SUPERSEDED — see below]** the strategy landed as
+**gitignore + keep-on-disk** — `.agent/`, `CLAUDE.md`, and `scratch/` are gitignored
+(never tracked...), and the `.gitattributes export-ignore` lines are kept as a
+redundant tarball safety net.
+
+**[CORRECTION 2026-07-02]** The gitignore-`.agent` claim above is **stale/wrong for
+current reality.** `.agent/` is **tracked and committed** — `.gitignore` excludes only
+`*.db`, `/target/`, `/pkg/`, `/scratch/`, `CLAUDE.md`, `vendor/`, and debug captures
+(**not** `.agent/`), and `git log -- .agent` shows 12+ commits (e.g. `e2c84b8`
+"docs(agent): …"). So governance **does** go to the public GitHub repo, under a
+`docs(agent):`/`feat(...)` commit convention, and the earlier "gitignore + keep-on-disk"
+plan was **not** the one that stuck. `CLAUDE.md` and `scratch/` remain gitignored as
+stated; only the `.agent/` half of the claim is corrected. (Old text kept struck-through
+above for the audit trail, per "don't edit history.")
 
 **Released to the AUR (2026-06-28):** `v0.1.0` is live on the AUR
 (`https://aur.archlinux.org/packages/door`). Public-history audit confirmed clean:

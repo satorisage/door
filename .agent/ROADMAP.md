@@ -456,6 +456,32 @@ off-by-default DECISION naming its threat model before it can graduate.
 
 ## Loose
 
+- **YubiKey / FIDO2 2FA — enabled & documented (2026-07-02).** Owner-ratified
+  shape: **FIDO2/U2F (`pam_u2f`) · password+key 2FA · door stays policy-neutral**
+  (the `pam_u2f` line lives in the admin's system PAM stack, not door's files).
+  **No TCB change** — the daemon's multi-round PAM conversation
+  (`worker.rs` `ControlConversation`, `protocol` `AuthPrompt`) already relays it,
+  and the FIDO2 exchange runs in the root worker, never the greeter. Shipped:
+  setup+lockout-avoidance guide `docs/yubikey.md`, README §Two-factor, a
+  `pam-u2f` PKGBUILD optdepend, and threat model
+  `.agent/SECURITY/yubikey-2fa-threat-model.md`. Network-OTP/YubiCloud excluded
+  by the no-network constraint. Graduated from `IDEAS/2026-07-02-yubikey-support.md`
+  (archived). **Both follow-ups also built (2026-07-02):** the greeter now renders
+  an **arbitrary** PAM prompt — a focused, masked-if-secret field for any prompt it
+  can't pre-answer (FIDO2 PIN / second factor / passwordless first prompt), reply
+  moved straight into a zeroizing `Secret` — plus a distinct pulsing "touch your
+  key" cue indicator (was a plain status line). This unlocks **passwordless +
+  FIDO2-PIN** (`sufficient pam_u2f … pinverification=1`, documented). Pre-auth UI
+  only, trust boundary unchanged; both new states visually verified headless
+  (cage+grim, `scratch/m4shots/yk-{touch,pin}.png`); clippy clean, workspace tests
+  green. **Auth path HARDWARE-VALIDATED (2026-07-02):** owner enrolled a key to
+  `/etc/u2f_mappings`, added `auth required pam_u2f.so … cue` after the
+  `system-auth` include in `/etc/pam.d/system-login`, and a console `login`
+  (password → touch) succeeded — the same stack door authenticates through, so the
+  2FA path is proven end-to-end. Greeter touch-cue/PIN UI states verified by
+  headless capture (real-VT greeter render inherits the same conversation).
+  Passwordless+PIN remains owner-optional (documented, not yet exercised).
+
 - ~~Greeter dropout glitch~~ — **fixed 2026-07-01.** A blanket 30s `READ_TIMEOUT`
   on the greeter socket dropped the connection whenever a human paused at the
   prompt (username not yet typed, or mid-password), churning the login screen

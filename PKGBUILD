@@ -17,6 +17,11 @@ license=('MPL-2.0')
 # looks as designed out of the box.
 depends=('pam' 'systemd' 'cage' 'ttf-meslo-nerd')
 makedepends=('cargo')
+# Optional hardware-key 2FA. door drives whatever PAM stack the system presents,
+# so a `pam_u2f.so` line the admin adds to the login stack "just works" over the
+# daemon's multi-prompt conversation — see docs/yubikey.md. pamu2fcfg (enrollment)
+# ships in the same package.
+optdepends=('pam-u2f: FIDO2/U2F hardware-key second factor (YubiKey etc.), see docs/yubikey.md')
 backup=('etc/pam.d/doord' 'etc/pam.d/door-greeter')
 install="${pkgname}.install"
 options=('!debug' '!lto')

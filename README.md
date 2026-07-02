@@ -71,6 +71,15 @@ sudo systemctl disable --now doord
 sudo systemctl enable --now sddm       # or gdm / your previous DM
 ```
 
+## Two-factor with a YubiKey
+
+door can require a **hardware security key** (YubiKey or any FIDO2/U2F key) as a
+second factor — password **and** a touch. door already relays multi-round PAM
+conversations, so this is a `pam_u2f` line you add to your login stack plus
+`pam-u2f` installed; door needs no reconfiguration and the key exchange stays
+inside the privileged daemon, never the greeter. Setup, and how to avoid locking
+yourself out, are in **[docs/yubikey.md](docs/yubikey.md)**.
+
 ## Theming
 
 Run **door-settings** (also under *Settings* in the app menu) to edit the look live:
