@@ -306,8 +306,9 @@ look byte-faithful; each shader change naga-gated.
                   validated clean under enforce on `genny` (owner-reported, 2026-07-01), then
                   `Environment=DOORD_SECCOMP=enforce` baked into the shipped `doord.service`.
                   Reversible: unset / `DOORD_SECCOMP=log` / `DOORD_NO_SANDBOX=1`.
-      - [~] **Tier 4 — Landlock paths** on the supervisor (same post-`fork_spawner` step;
-            per **DECISION-0017**: `landlock` crate, enforce-only 2-mode, ABI-V1 floor).
+      - [x] **Tier 4 — Landlock paths** on the supervisor (2026-07-02; same post-`fork_spawner`
+            step; per **DECISION-0017**: `landlock` crate, enforce-only 2-mode, ABI-V1 floor).
+            Shipped enforce — closes M5.
             - [x] **substrate** (2026-07-02) — `hardening::apply_landlock(mode)` +
                   `LandlockMode {Off, Enforce}` + `landlock` 0.4.5 dep + `DOORD_LANDLOCK`
                   flag, best-effort ABI-V1 ruleset over a seed path set
@@ -317,13 +318,16 @@ look byte-faithful; each shader change naga-gated.
                   (V5+) doesn't lock out DRM/VT. 39 unit tests + a fork-isolated
                   confinement test (denies an out-of-allowlist path, allows `/usr`) green
                   on this kernel; clippy clean. Inert until the flag is set.
-            - [ ] **genny enforce run** — boot `DOORD_LANDLOCK=enforce`, run login →
-                  logout → recycle → re-login, widen the path seed off the `EACCES`/audit
-                  trail until clean (`scratch/genny-tier4-validate.sh`). No permissive
-                  stage exists — a miss is a recoverable login failure + kill-switch.
-            - [ ] **flip shipped unit** — `Environment=DOORD_LANDLOCK=enforce` into
-                  `dist/systemd/doord.service` once the genny cycle is clean +
-                  threat-model note in `.agent/SECURITY/`. Closes M5.
+            - [x] **genny enforce run** (2026-07-02) — booted `DOORD_LANDLOCK=enforce`,
+                  full login → logout → recycle → re-login cycle ran **clean with the
+                  shipped path seed** (no widening needed; `scratch/genny-tier4-validate.sh`
+                  PASS verdict — Landlock ruleset engaged, no EACCES/audit denials).
+                  Owner-run runtime act, recorded here per D-0037.
+            - [x] **flip shipped unit** (2026-07-02) — `Environment=DOORD_LANDLOCK=enforce`
+                  now in `dist/systemd/doord.service` + threat-model note
+                  `.agent/SECURITY/landlock-path-threat-model.md`. **Closes M5.**
+            - Backlog idea: tighten the `/dev` grant to `/dev/dri` + `/dev/tty*` leaves
+                  (broad subtree validated clean; narrowing risks a working config — N2).
 - privilege-drop audit ✅ (pentest 2026-06-30), IPC/PAM fuzzing ✅ (ipc_fuzz.rs)
 - secrets-zeroization audit ✅ (F1 fix); external review of the TCB
   `depends:` M1, M2

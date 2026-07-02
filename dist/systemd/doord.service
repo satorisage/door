@@ -48,6 +48,19 @@ Environment=DOORD_SPAWNER=1
 # filter, DOORD_SECCOMP=log to re-observe, DOORD_NO_SANDBOX=1 to force off for
 # lockout recovery.
 Environment=DOORD_SECCOMP=enforce
+# Confine the supervisor's own filesystem surface (Tier 4 Landlock). Like the
+# seccomp filter, a Landlock ruleset is inherited across fork + preserved across
+# execve, so this is safe to enforce only because DOORD_SPAWNER=1 moved
+# session/greeter spawn off this lineage (doord skips it on the legacy path). The
+# ruleset grants read/exec on /usr /etc /proc /sys /run and read/write on
+# /run/doord and /dev, denying everything else — most sharply /home, /root, /var,
+# /tmp, /boot. Landlock has NO permissive/log mode, so unlike seccomp this was
+# validated by an enumerate-then-enforce genny boot: DOORD_LANDLOCK=enforce ran a
+# full login -> logout -> recycle -> re-login cycle clean with the shipped path
+# seed before this flip. A too-tight seed is a debuggable, recoverable login
+# failure (EACCES), not a killed supervisor. Reversible: unset for no ruleset, or
+# DOORD_NO_SANDBOX=1 to force off for lockout recovery from a TTY.
+Environment=DOORD_LANDLOCK=enforce
 # DOORD_SOCKET defaults to /run/doord/door.sock; DOORD_PAM_SERVICE to "doord".
 Restart=on-failure
 RestartSec=2

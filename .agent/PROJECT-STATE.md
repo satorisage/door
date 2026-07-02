@@ -1,17 +1,20 @@
 # Project State
 
-**Last updated:** 2026-07-02 (M5 Tier 4 Landlock **substrate landed + DECISION-0017 ratified
-Binding** — `landlock` crate, enforce-only 2-mode, ABI-V1 floor. Code is inert/default-off
-in-tree; remaining = the genny enforce validation + shipped-unit flip. See ROADMAP M5 Tier 4.)
-**Active focus (2026-07-02): M5 Tier 4 — Landlock, substrate built, awaiting genny validation.**
-Tier 3 (supervisor seccomp) is COMPLETE and shipping enforce. Tier 4 per **DECISION-0017**:
-`hardening::apply_landlock` installs a best-effort ABI-V1 Landlock ruleset over a seed path set,
-supervisor-only after `apply_seccomp`, gated behind `DOORD_LANDLOCK={off|enforce}` (default off,
-`DOORD_NO_SANDBOX=1` kill-switch). Landlock has no `SCMP_ACT_LOG` permissive mode, so the rollout
-is enumerate-then-enforce: the path seed is tuned on a `genny` `DOORD_LANDLOCK=enforce` boot
-(`scratch/genny-tier4-validate.sh`) off the `EACCES`/audit trail, *then* the shipped
-`doord.service` flips. 39 unit tests + a fork-isolated confinement test green; clippy clean.
-**Next = the genny enforce run + path-seed tuning, then flip the unit + threat-model note (closes M5).**
+**Last updated:** 2026-07-02 (**M5 COMPLETE** — Tier 4 Landlock validated on `genny` and shipping
+enforce. `dist/systemd/doord.service` now sets `Environment=DOORD_LANDLOCK=enforce`; threat-model
+note filed at `.agent/SECURITY/landlock-path-threat-model.md`. All four sandbox tiers now ship.)
+**Active focus (2026-07-02): M5 CLOSED — supervisor fully sandboxed (spawner + seccomp + Landlock).**
+Tier 4 per **DECISION-0017** (Binding): `hardening::apply_landlock` installs a best-effort ABI-V1
+Landlock ruleset over the `SUPERVISOR_RO_PATHS`/`SUPERVISOR_RW_PATHS` seed (RO: `/usr /etc /proc
+/sys /run`; RW: `/run/doord /dev`), supervisor-only after `apply_seccomp`, gated behind
+`DOORD_LANDLOCK={off|enforce}` (`DOORD_NO_SANDBOX=1` kill-switch). Landlock has no `SCMP_ACT_LOG`
+permissive mode, so it was validated enumerate-then-enforce: a **`genny` `DOORD_LANDLOCK=enforce`
+boot ran a full login → logout → recycle → re-login cycle CLEAN with the shipped path seed**
+(no widening needed; `scratch/genny-tier4-validate.sh` PASS — ruleset engaged, zero EACCES/audit
+denials). Owner-run runtime act, recorded per D-0037. 39 unit tests + a fork-isolated confinement
+test green; clippy clean. **Next = ship it: bump version + release (0.1.5 → 0.1.6, first build
+carrying Tier 4 Landlock enforce). Open hardening idea: tighten the `/dev` grant to `/dev/dri` +
+`/dev/tty*` leaves (N2, backlog).**
 
 **[history] Active focus (2026-07-01): M5 Tier 2 — pre-forked spawner.** Reconciled to master HEAD
 `9c9e1e1` after a ~3-milestone doc drift (this file had been frozen at 2026-06-27). Reality:
