@@ -1,19 +1,37 @@
 //! Process-level hardening applied before the daemon does anything else.
 //!
-//! These are cheap, irreversible kernel toggles that shrink what an attacker who
-//! later compromises the daemon can do. They are applied at startup, before the
-//! IPC socket exists, so the credential-handling process runs hardened for its
-//! whole life. The heavier sandbox (seccomp syscall allowlist, Landlock
-//! filesystem bounding) lands in the dedicated hardening milestone; these two
-//! are the baseline that costs nothing to set now.
+//! Two layers live here. The **baseline** ([`apply_baseline`]) is a pair of cheap,
+//! irreversible kernel toggles set at startup, before the IPC socket exists, so the
+//! credential-handling process runs hardened for its whole life. The heavier
+//! **syscall sandbox** ([`apply_seccomp`]) installs a seccomp-BPF filter that bounds
+//! which syscalls the long-lived, root, untrusted-input-facing *supervisor* may make.
+//!
+//! Why the sandbox is supervisor-only, and applied late: a seccomp filter is
+//! inherited across `fork` and preserved across `execve`. The per-login session
+//! worker and the user's desktop it `execve`s must run with a full syscall set, so
+//! the filter must land on a process that is *not* on the path to spawning a session.
+//! The pre-forked spawner (forked before this filter is applied) owns session
+//! creation, so its descendants stay unconfined; only the supervisor gets the filter.
+//! Caller ordering is load-bearing: fork spawner → bind listener → `apply_seccomp` →
+//! serve. The baseline's `NO_NEW_PRIVS` is the precondition that lets an unprivileged
+//! filter install take effect for children.
+//!
+//! Rollout is staged (log before enforce): [`SeccompMode::Log`] installs the filter
+//! with a *logging* default action, so a syscall outside the allowlist is recorded to
+//! the audit log but still runs — used on hardware to enumerate the supervisor's real
+//! syscall set before [`SeccompMode::Enforce`] turns the default into an `EPERM`.
 
+use std::collections::BTreeMap;
 use std::io;
+
+use seccompiler::{BpfProgram, SeccompAction, SeccompFilter, SeccompRule, TargetArch};
 
 /// Apply the always-on baseline:
 ///
 /// - **`NO_NEW_PRIVS`** — no `execve` from this process (or any child) can ever
 ///   gain privileges via setuid/setgid/file capabilities. A spawned session can
-///   only drop privilege, never escalate.
+///   only drop privilege, never escalate. Also the precondition for an
+///   unprivileged process to install a seccomp filter (see [`apply_seccomp`]).
 /// - **non-dumpable** — disables core dumps and blocks `ptrace`-attach by other
 ///   processes of the same user, so a credential sitting in this daemon's memory
 ///   cannot be scraped out of a core file or a debugger.
@@ -46,4 +64,294 @@ fn set_non_dumpable() -> io::Result<()> {
         return Err(io::Error::last_os_error());
     }
     Ok(())
+}
+
+/// How the supervisor seccomp filter treats a syscall that is *not* in the
+/// allowlist. Selected by `DOORD_SECCOMP` (`DOORD_NO_SANDBOX=1` forces `Off`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SeccompMode {
+    /// No filter installed. The supervisor runs with the baseline only.
+    Off,
+    /// Install the filter with a **logging** default action: an unlisted syscall
+    /// is written to the seccomp audit log (`SCMP_ACT_LOG`) but still executes.
+    /// Used to enumerate the real syscall set on hardware before enforcing.
+    Log,
+    /// Install the filter with an **`EPERM`** default action: an unlisted syscall
+    /// fails with `EPERM` (not a process kill — a stray syscall degrades to a
+    /// logged local failure rather than taking the seat down).
+    Enforce,
+}
+
+impl SeccompMode {
+    /// Resolve the mode from the environment. `DOORD_NO_SANDBOX` (any non-empty,
+    /// non-`0` value) is the recovery kill-switch and wins over everything.
+    pub fn from_env() -> Self {
+        let no_sandbox = std::env::var("DOORD_NO_SANDBOX")
+            .ok()
+            .is_some_and(|v| !v.is_empty() && v != "0");
+        let value = std::env::var("DOORD_SECCOMP").ok();
+        Self::parse(value.as_deref(), no_sandbox)
+    }
+
+    /// Pure parser behind [`from_env`](Self::from_env), split out so it is testable
+    /// without touching process-global environment.
+    fn parse(value: Option<&str>, no_sandbox: bool) -> Self {
+        if no_sandbox {
+            return Self::Off;
+        }
+        match value.map(str::trim).map(str::to_ascii_lowercase).as_deref() {
+            Some("log") => Self::Log,
+            Some("enforce") => Self::Enforce,
+            // Unset, empty, "off", "0", or anything unrecognized: no filter.
+            _ => Self::Off,
+        }
+    }
+
+    /// The default (mismatch) action for this mode, or `None` when no filter is
+    /// installed at all.
+    fn mismatch_action(self) -> Option<SeccompAction> {
+        match self {
+            Self::Off => None,
+            Self::Log => Some(SeccompAction::Log),
+            Self::Enforce => Some(SeccompAction::Errno(libc::EPERM as u32)),
+        }
+    }
+}
+
+/// Install the supervisor seccomp filter for `mode`. A no-op for [`SeccompMode::Off`].
+///
+/// **Call supervisor-only, after the spawner has been forked** — a filter applied
+/// before the spawner fork (or on the direct in-lineage path, where the supervisor
+/// itself forks the session) is inherited by the desktop and breaks every login.
+///
+/// The filter is irreversible and inherited by children, so it is never installed
+/// from a test — [`compile`] (which does everything up to the install) is the
+/// testable half.
+pub fn apply_seccomp(mode: SeccompMode) -> io::Result<()> {
+    match compile(mode)? {
+        None => Ok(()),
+        Some(program) => seccompiler::apply_filter(&program)
+            .map_err(|e| io::Error::other(format!("seccomp: could not install filter: {e}"))),
+    }
+}
+
+/// Build (but do not install) the BPF program for `mode`. `Ok(None)` for
+/// [`SeccompMode::Off`]. This is the pure, testable half of [`apply_seccomp`]:
+/// it exercises the allowlist and the target-arch compile without confining the
+/// calling process.
+fn compile(mode: SeccompMode) -> io::Result<Option<BpfProgram>> {
+    let Some(mismatch_action) = mode.mismatch_action() else {
+        return Ok(None);
+    };
+
+    // An empty rule list per syscall means "match on the syscall number alone,
+    // unconditionally" — i.e. a plain allow. We gate on syscall numbers only; no
+    // argument-level conditions in this tier.
+    let rules: BTreeMap<i64, Vec<SeccompRule>> = SUPERVISOR_ALLOWLIST
+        .iter()
+        .map(|&nr| (nr, Vec::new()))
+        .collect();
+
+    let filter = SeccompFilter::new(
+        rules,
+        mismatch_action,      // syscalls outside the allowlist
+        SeccompAction::Allow, // syscalls inside the allowlist
+        target_arch()?,
+    )
+    .map_err(|e| io::Error::other(format!("seccomp: could not build filter: {e}")))?;
+
+    let program: BpfProgram = filter
+        .try_into()
+        .map_err(|e| io::Error::other(format!("seccomp: could not compile filter: {e}")))?;
+
+    Ok(Some(program))
+}
+
+fn target_arch() -> io::Result<TargetArch> {
+    #[cfg(target_arch = "x86_64")]
+    {
+        Ok(TargetArch::x86_64)
+    }
+    #[cfg(target_arch = "aarch64")]
+    {
+        Ok(TargetArch::aarch64)
+    }
+    #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
+    {
+        Err(io::Error::other(
+            "seccomp: no allowlist for this target architecture",
+        ))
+    }
+}
+
+/// Initial supervisor syscall allowlist — an **empirically-refined seed**, not a
+/// proven-minimal set. This tier ships in `SCMP_ACT_LOG` mode: the hardware log
+/// run records every syscall the supervisor makes that is *not*
+/// listed here, and the list is widened until the audit log is clean across a full
+/// login → logout → recycle → re-login cycle. Only then does `Enforce` turn the
+/// default action into an `EPERM`. Entries here cover the supervisor's known steady
+/// state: the epoll/accept IPC loop, `SCM_RIGHTS` fd passing to the spawner, PAM-relay
+/// proxying, seat/VT/DRM ioctls, the SIGCHLD reaper, and process teardown. The
+/// spawner, worker, and session are *not* covered — they run outside this lineage.
+const SUPERVISOR_ALLOWLIST: &[i64] = &[
+    // --- event loop / socket I/O ---
+    libc::SYS_epoll_create1,
+    libc::SYS_epoll_ctl,
+    libc::SYS_epoll_wait,
+    libc::SYS_epoll_pwait,
+    libc::SYS_ppoll,
+    libc::SYS_poll,
+    libc::SYS_accept,
+    libc::SYS_accept4,
+    libc::SYS_socket,
+    libc::SYS_socketpair,
+    libc::SYS_bind,
+    libc::SYS_listen,
+    libc::SYS_connect,
+    libc::SYS_getsockname,
+    libc::SYS_getpeername,
+    libc::SYS_getsockopt, // incl. SO_PEERCRED, the greeter authorization gate
+    libc::SYS_setsockopt,
+    libc::SYS_shutdown,
+    libc::SYS_recvmsg, // SCM_RIGHTS fd receive from the spawner
+    libc::SYS_sendmsg, // SCM_RIGHTS fd send to the spawner
+    libc::SYS_recvfrom,
+    libc::SYS_sendto,
+    // --- generic fd / file ops ---
+    libc::SYS_read,
+    libc::SYS_write,
+    libc::SYS_readv,
+    libc::SYS_writev,
+    libc::SYS_pread64,
+    libc::SYS_pwrite64,
+    libc::SYS_open,
+    libc::SYS_openat,
+    libc::SYS_close,
+    libc::SYS_lseek,
+    libc::SYS_fcntl,
+    libc::SYS_dup,
+    libc::SYS_dup2,
+    libc::SYS_dup3,
+    libc::SYS_pipe2,
+    libc::SYS_eventfd2,
+    libc::SYS_fstat,
+    libc::SYS_newfstatat,
+    libc::SYS_stat,
+    libc::SYS_lstat,
+    libc::SYS_statx,
+    libc::SYS_getdents64,
+    libc::SYS_readlink,
+    libc::SYS_readlinkat,
+    libc::SYS_access,
+    libc::SYS_faccessat,
+    libc::SYS_faccessat2,
+    // --- socket-dir bookkeeping (create/chmod/chown/unlink the listener) ---
+    libc::SYS_mkdir,
+    libc::SYS_mkdirat,
+    libc::SYS_unlink,
+    libc::SYS_unlinkat,
+    libc::SYS_rename,
+    libc::SYS_renameat2,
+    libc::SYS_chmod,
+    libc::SYS_fchmod,
+    libc::SYS_chown,
+    libc::SYS_fchown,
+    libc::SYS_fchownat,
+    // --- seat / VT / DRM management ---
+    libc::SYS_ioctl,
+    // --- signals + SIGCHLD reaper ---
+    libc::SYS_rt_sigaction,
+    libc::SYS_rt_sigprocmask,
+    libc::SYS_rt_sigreturn,
+    libc::SYS_sigaltstack,
+    libc::SYS_signalfd4,
+    libc::SYS_wait4,
+    libc::SYS_waitid,
+    libc::SYS_kill,
+    libc::SYS_tgkill,
+    // --- memory management ---
+    libc::SYS_mmap,
+    libc::SYS_munmap,
+    libc::SYS_mremap,
+    libc::SYS_mprotect,
+    libc::SYS_madvise,
+    libc::SYS_brk,
+    // --- process / identity / scheduling ---
+    libc::SYS_getpid,
+    libc::SYS_gettid,
+    libc::SYS_getppid,
+    libc::SYS_getuid,
+    libc::SYS_geteuid,
+    libc::SYS_getgid,
+    libc::SYS_getegid,
+    libc::SYS_getpgrp,
+    libc::SYS_getrandom,
+    libc::SYS_prctl,
+    libc::SYS_futex,
+    libc::SYS_sched_yield,
+    libc::SYS_set_robust_list,
+    libc::SYS_get_robust_list,
+    libc::SYS_rseq,
+    // --- time ---
+    libc::SYS_clock_gettime,
+    libc::SYS_clock_getres,
+    libc::SYS_clock_nanosleep,
+    libc::SYS_nanosleep,
+    libc::SYS_gettimeofday,
+    // --- teardown ---
+    libc::SYS_exit,
+    libc::SYS_exit_group,
+    libc::SYS_restart_syscall,
+];
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn no_sandbox_overrides_every_value() {
+        assert_eq!(SeccompMode::parse(Some("enforce"), true), SeccompMode::Off);
+        assert_eq!(SeccompMode::parse(Some("log"), true), SeccompMode::Off);
+        assert_eq!(SeccompMode::parse(None, true), SeccompMode::Off);
+    }
+
+    #[test]
+    fn parse_recognizes_the_modes_case_insensitively() {
+        assert_eq!(SeccompMode::parse(Some("log"), false), SeccompMode::Log);
+        assert_eq!(SeccompMode::parse(Some("  LOG "), false), SeccompMode::Log);
+        assert_eq!(
+            SeccompMode::parse(Some("Enforce"), false),
+            SeccompMode::Enforce
+        );
+    }
+
+    #[test]
+    fn parse_defaults_to_off_for_unset_or_unknown() {
+        assert_eq!(SeccompMode::parse(None, false), SeccompMode::Off);
+        assert_eq!(SeccompMode::parse(Some(""), false), SeccompMode::Off);
+        assert_eq!(SeccompMode::parse(Some("off"), false), SeccompMode::Off);
+        assert_eq!(SeccompMode::parse(Some("0"), false), SeccompMode::Off);
+        assert_eq!(
+            SeccompMode::parse(Some("yes-please"), false),
+            SeccompMode::Off
+        );
+    }
+
+    #[test]
+    fn off_compiles_to_no_program() {
+        assert!(compile(SeccompMode::Off).unwrap().is_none());
+    }
+
+    #[test]
+    fn log_and_enforce_compile_to_a_nonempty_program() {
+        // Compiling exercises the allowlist + target-arch lowering without
+        // installing anything, so the test process stays unconfined.
+        for mode in [SeccompMode::Log, SeccompMode::Enforce] {
+            let program = compile(mode).unwrap().expect("a program for the mode");
+            assert!(
+                !program.is_empty(),
+                "{mode:?} should compile to a non-empty BPF program"
+            );
+        }
+    }
 }

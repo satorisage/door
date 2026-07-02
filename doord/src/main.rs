@@ -82,6 +82,36 @@ fn main() -> ExitCode {
     } else {
         None
     };
+    // Confine the supervisor's syscall surface (seccomp), now that the spawner owns
+    // session/greeter creation off this lineage. Applied here — after fork_spawner,
+    // before serving — and only in spawner mode: on the direct in-lineage path the
+    // supervisor itself forks the session, so a seccomp filter, being inherited
+    // across fork and preserved across execve, would confine the desktop and break
+    // every login.
+    // Best-effort: a failed install (or `off`) leaves the supervisor running with
+    // the baseline only, and says so. `DOORD_SECCOMP=log` records unlisted syscalls
+    // without blocking; `enforce` fails them with EPERM; `DOORD_NO_SANDBOX=1` forces off.
+    if spawner.is_some() {
+        let mode = hardening::SeccompMode::from_env();
+        match hardening::apply_seccomp(mode) {
+            Ok(()) if mode != hardening::SeccompMode::Off => {
+                eprintln!("doord: supervisor seccomp filter installed ({mode:?})");
+            }
+            Ok(()) => {}
+            Err(e) => {
+                eprintln!(
+                    "doord: warning: could not apply the seccomp filter ({mode:?}); \
+                     continuing with the baseline only: {e}"
+                );
+            }
+        }
+    } else if hardening::SeccompMode::from_env() != hardening::SeccompMode::Off {
+        eprintln!(
+            "doord: DOORD_SECCOMP set but not in spawner mode; skipping — a supervisor \
+             filter on the direct in-lineage path would confine the desktop session"
+        );
+    }
+
     let logins = WorkerLoginFactory::new();
 
     match ipc::serve(&config, &logins, spawner.as_ref()) {

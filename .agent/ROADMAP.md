@@ -290,8 +290,12 @@ look byte-faithful; each shader change naga-gated.
             log-before-enforce, applied after `fork_spawner`).
             - [x] **increment 1** — greeter routed through the spawner + concurrent reaper
                   (HEAD `86739f6`); hardware-validated on `genny` 2026-07-01.
-            - [ ] **2a** — `hardening::apply_seccomp(mode)` + `seccompiler` dep + `DOORD_SECCOMP`
+            - [x] **2a** — `hardening::apply_seccomp(mode)` + `seccompiler` dep + `DOORD_SECCOMP`
                   flag, default action `SCMP_ACT_LOG`, supervisor-only after `fork_spawner`.
+                  **Code-complete in-tree** on branch `tier3-seccomp-2a` (pending hardware 2b):
+                  filter builds + installs verified locally (Log filter installs on this kernel
+                  and the supervisor runs past it; non-spawner path correctly skips). 5 unit tests
+                  + ipc_smoke green, clippy clean.
             - [ ] **2b** — genny boot with `DOORD_SECCOMP=log`; grep journal for denials, tune allowlist.
             - [ ] **3** — flip default action to `SCMP_ACT_ERRNO(EPERM)` once the log run is clean.
       - [ ] **Tier 4 — Landlock paths** on the supervisor (same post-`fork_spawner` step).
