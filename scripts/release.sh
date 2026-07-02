@@ -1,5 +1,13 @@
 #!/usr/bin/env bash
-# door release helper — run from the repo root on a machine that has:
+# door release helper.
+#   Usage: scripts/release.sh [X.Y.Z]
+#     X.Y.Z given → bump Cargo.toml + PKGBUILD + Cargo.lock to it and commit the
+#                   bump FIRST (pkgrel resets to 1), so the version tip can never
+#                   be forgotten; omitted → release the version already in-tree.
+#   Env: DOOR_RELEASE_SSH_KEY=/path/to/key — a non-default SSH key to load into
+#        ssh-agent up front (so the AUR push never re-prompts mid-build).
+#
+# Run from the repo root on a machine that has:
 #   - the gh CLI authed as the repo owner            (the public flip + tag push)
 #   - an AUR account with your SSH key uploaded       (the AUR push)
 #   - pacman-contrib + base-devel                     (updpkgsums, makepkg)
@@ -21,6 +29,62 @@
 set -euo pipefail
 
 REPO="satorisage/door"
+
+# --- 0a. Cache the SSH key ONCE, up front -----------------------------------------
+# Both the GitHub push and the AUR clone/push authenticate over SSH, and the AUR
+# push happens AFTER the multi-minute makepkg build (step 3). Without a warm agent
+# you get re-prompted for the passphrase right after walking away — or ssh times
+# out and the whole run fails, forcing a rerun. Load the key into ssh-agent now:
+# one passphrase entry covers every later SSH op. Set DOOR_RELEASE_SSH_KEY if the
+# key is not a default ~/.ssh/id_* (e.g. a dedicated AUR key).
+cache_ssh_key() {
+    local rc=0
+    ssh-add -l >/dev/null 2>&1 || rc=$?          # 0 = has keys, 1 = empty agent, 2 = no agent
+    if [ "$rc" -eq 2 ] || [ -z "${SSH_AUTH_SOCK:-}" ]; then
+        eval "$(ssh-agent -s)" >/dev/null
+        trap 'ssh-agent -k >/dev/null 2>&1 || true' EXIT   # only kill an agent WE started
+        echo "    started an ssh-agent for this run (killed on exit)"
+    fi
+    local key="${DOOR_RELEASE_SSH_KEY:-}"
+    if [ -n "$key" ]; then
+        # Add the named key unless the agent already holds it (avoid a needless re-prompt).
+        local fp
+        fp="$(ssh-keygen -lf "$key" 2>/dev/null | awk '{print $2}')"
+        if [ -n "$fp" ] && ssh-add -l 2>/dev/null | grep -qF "$fp"; then
+            echo "    ssh key already cached"
+        else
+            ssh-add "$key"
+        fi
+    elif ssh-add -l >/dev/null 2>&1; then
+        echo "    ssh-agent already holds a key"
+    else
+        ssh-add                                  # default ~/.ssh/id_* — one passphrase prompt
+    fi
+}
+cache_ssh_key
+
+# --- 0b. Optional version bump (arg) ----------------------------------------------
+# `release.sh 0.1.6` bumps the version everywhere and commits it before anything
+# ships — release.sh only READS the version (it never used to bump), and the manual
+# bump commit was easy to forget (which shipped a rebuild of the old version). No
+# arg = release whatever is already in-tree. A version change resets pkgrel to 1.
+CUR_VER="$(grep -m1 '^version' Cargo.toml | sed -E 's/.*"([^"]+)".*/\1/')"
+NEW_VER="${1:-$CUR_VER}"
+if ! printf '%s' "$NEW_VER" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+    echo "!! '$NEW_VER' is not an X.Y.Z version. Usage: $0 [X.Y.Z]" >&2
+    exit 1
+fi
+if [ "$NEW_VER" != "$CUR_VER" ]; then
+    echo "==> bumping ${CUR_VER} → ${NEW_VER}"
+    sed -i -E "s/^version = \"${CUR_VER}\"\$/version = \"${NEW_VER}\"/" Cargo.toml
+    sed -i -E "s/^pkgver=${CUR_VER}\$/pkgver=${NEW_VER}/" PKGBUILD
+    sed -i -E "s/^pkgrel=.*/pkgrel=1/" PKGBUILD
+    cargo update --workspace --quiet             # sync the workspace versions in Cargo.lock
+    git add Cargo.toml Cargo.lock PKGBUILD
+    git commit -q -m "chore(release): bump ${CUR_VER} → ${NEW_VER}"
+    echo "    committed the bump (Cargo.toml + Cargo.lock + PKGBUILD)"
+fi
+
 VER="$(grep -m1 '^version' Cargo.toml | sed -E 's/.*"([^"]+)".*/\1/')"
 REL="$(grep -m1 '^pkgrel=' PKGBUILD | cut -d= -f2)"
 echo "==> door v${VER}-${REL}  (${REPO})"
