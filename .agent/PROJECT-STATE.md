@@ -239,14 +239,18 @@ it by kind: deferred-but-committed → a `## Backlog` task in `.agent/ROADMAP.md
 
 ## 5. Next session
 
-**M5 Tier 3 increment 2a (build the supervisor seccomp filter) — next.** Per **DECISION-0016**
-(ratified 2026-07-01): add the `seccompiler` crate, write `hardening::apply_seccomp(mode)`, and call
-it **supervisor-only after `fork_spawner`** with default action `SCMP_ACT_LOG`. Gate it behind a new
-`DOORD_SECCOMP={off|log|enforce}` env flag (`DOORD_NO_SANDBOX=1` overrides to off). No seccomp code
-exists yet — `hardening.rs` is Tier 0 (`NO_NEW_PRIVS` + `PR_SET_DUMPABLE`) only. After 2a builds
-green in-tree, **2b is a required genny boot** with `DOORD_SECCOMP=log`: run the full login → logout
-→ recycle → re-login cycle, `journalctl | grep -i seccomp`, and widen the allowlist until the audit
-log is clean; then **increment 3** flips the default to `SCMP_ACT_ERRNO(EPERM)`.
+**M5 Tier 3 increment 2b (genny seccomp log-run) — next.** Increment **2a is code-complete in-tree**
+on branch `tier3-seccomp-2a` (per **DECISION-0016**): `seccompiler` dep added, `hardening.rs` gained
+`SeccompMode{Off,Log,Enforce}` + `apply_seccomp(mode)` (compile split out as the pure/testable half),
+wired into `main.rs` **supervisor-only after `fork_spawner`** and skipped on the direct in-lineage
+path (a filter there would confine the desktop). Gated by `DOORD_SECCOMP={off|log|enforce}`;
+`DOORD_NO_SANDBOX=1` forces off. Verified locally: the Log filter *installs* on this kernel (unpriv,
+`NO_NEW_PRIVS` precondition) and the supervisor runs past it + binds; the non-spawner path prints the
+skip line and installs nothing. 5 unit tests + ipc_smoke green, clippy clean. **Branch awaits
+integration, then 2b: a genny boot** with `DOORD_SECCOMP=log`, run the full login → logout → recycle
+→ re-login cycle, `journalctl | grep -i seccomp` to collect the real denied-syscall set, and widen
+`SUPERVISOR_ALLOWLIST` (currently an empirically-refined seed) until the audit log is clean; then
+**increment 3** flips the default to `SCMP_ACT_ERRNO(EPERM)`.
 
 **[history] Tier 3 increment 1 (greeter reroute) — hardware-validated 2026-07-01** (HEAD `86739f6`,
 committed `39a7267`). The greeter routes through the spawner + concurrent reaper; a full login →
