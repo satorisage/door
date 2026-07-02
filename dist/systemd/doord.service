@@ -37,6 +37,17 @@ Environment=DOORD_VTNR=1
 # re-login cycle is validated on hardware; unset this to fall back to the legacy
 # in-lineage spawn if a regression appears.
 Environment=DOORD_SPAWNER=1
+# Confine the supervisor's own syscall surface (Tier 3 seccomp). Safe to enforce
+# only because DOORD_SPAWNER=1 moved session/greeter spawn off this lineage — the
+# filter is inherited across fork + preserved across execve, so on the legacy
+# in-lineage path it would confine the user's desktop and break every login (doord
+# skips it there). `enforce` fails an unlisted syscall with EPERM (a debuggable
+# local failure, not a killed supervisor); the empirically-derived allowlist was
+# validated clean under SCMP_ACT_LOG across a full login → logout → recycle →
+# re-login cycle on hardware before this flip. Reversible: unset for no
+# filter, DOORD_SECCOMP=log to re-observe, DOORD_NO_SANDBOX=1 to force off for
+# lockout recovery.
+Environment=DOORD_SECCOMP=enforce
 # DOORD_SOCKET defaults to /run/doord/door.sock; DOORD_PAM_SERVICE to "doord".
 Restart=on-failure
 RestartSec=2

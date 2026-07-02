@@ -286,8 +286,9 @@ look byte-faithful; each shader change naga-gated.
             - [ ] **flip the shipped default** — part 2 currently on only via the machine-local
                   drop-in; part 3 makes it the default in the shipped `doord.service`.
       - [x] **part 3** — spawner is the shipped `doord.service` default (`DOORD_SPAWNER=1`).
-      - [ ] **Tier 3 — supervisor seccomp** (per **DECISION-0016**: `seccompiler`,
-            log-before-enforce, applied after `fork_spawner`).
+      - [x] **Tier 3 — supervisor seccomp** ✅ (per **DECISION-0016**: `seccompiler`,
+            log-before-enforce, applied after `fork_spawner`) — **enforce shipped as the
+            `doord.service` default** (2026-07-01).
             - [x] **increment 1** — greeter routed through the spawner + concurrent reaper
                   (HEAD `86739f6`); hardware-validated on `genny` 2026-07-01.
             - [x] **2a** — `hardening::apply_seccomp(mode)` + `seccompiler` dep + `DOORD_SECCOMP`
@@ -300,9 +301,11 @@ look byte-faithful; each shader change naga-gated.
                   control passed** (2026-07-01, `scratch/tier3-poscontrol.sh` — dropping write/writev
                   produced the expected `type=1326` records), proving capture works and
                   `SUPERVISOR_ALLOWLIST` is complete. No widening needed.
-            - [ ] **3** — flip to `SCMP_ACT_ERRNO(EPERM)`: `restore` the full-allowlist binary first
-                  (this boot still runs the armed control build), flip the drop-in to
-                  `DOORD_SECCOMP=enforce`, reboot + validate, then bake `enforce` into `doord.service`.
+            - [x] **3** — flipped to `SCMP_ACT_ERRNO(EPERM)`: full-allowlist binary restored,
+                  the drop-in flipped to `DOORD_SECCOMP=enforce`, reboot + full login cycle
+                  validated clean under enforce on `genny` (owner-reported, 2026-07-01), then
+                  `Environment=DOORD_SECCOMP=enforce` baked into the shipped `doord.service`.
+                  Reversible: unset / `DOORD_SECCOMP=log` / `DOORD_NO_SANDBOX=1`.
       - [ ] **Tier 4 — Landlock paths** on the supervisor (same post-`fork_spawner` step).
 - privilege-drop audit ✅ (pentest 2026-06-30), IPC/PAM fuzzing ✅ (ipc_fuzz.rs)
 - secrets-zeroization audit ✅ (F1 fix); external review of the TCB

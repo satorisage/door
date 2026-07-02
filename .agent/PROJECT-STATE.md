@@ -1,7 +1,12 @@
 # Project State
 
-**Last updated:** 2026-07-01 (D-0016 ratified — Tier 3 seccomp build spec)
-**Active focus (2026-07-01): M5 Tier 2 — pre-forked spawner.** Reconciled to master HEAD
+**Last updated:** 2026-07-01 (M5 Tier 3 seccomp enforce shipped as the `doord.service` default)
+**Active focus (2026-07-01): M5 Tier 4 — Landlock.** Tier 3 (supervisor seccomp) is COMPLETE:
+`Environment=DOORD_SECCOMP=enforce` (`SCMP_ACT_ERRNO(EPERM)`) is baked into the shipped
+`dist/systemd/doord.service` after a clean full-cycle enforce validation on `genny` (see §5). Next =
+Tier 4 Landlock on the same post-`fork_spawner` supervisor step.
+
+**[history] Active focus (2026-07-01): M5 Tier 2 — pre-forked spawner.** Reconciled to master HEAD
 `9c9e1e1` after a ~3-milestone doc drift (this file had been frozen at 2026-06-27). Reality:
 **M8** (per-scene authoring controls + mode completeness, D-0013) and **M9** (global
 GPU-budget level, D-0014) are **COMPLETE and on master**; **M4**'s Done-when is **met on
@@ -205,12 +210,10 @@ old lockstep-with-SCOPE mandate, a Principle-7 violation).
 
 **Milestone:** M5 — Hardening pass (Tier 3, supervisor sandbox); see `ROADMAP.md`
 `## Active` frontier note + the M5 section. **Frontier:** Tier 2 shipped as the
-`doord.service` default (spawner mode, reversible); Tier 3 **increment 1** (greeter routed through
-the spawner + concurrent reaper, HEAD `86739f6`) is **hardware-validated** on `genny` (full login →
-logout → greeter-recycle → re-login clean over the spawner). **Next = Tier 3 increment 2a:** build
-the supervisor seccomp filter per **DECISION-0016** (`seccompiler`, `SCMP_ACT_LOG` first, applied
-after `fork_spawner`). No seccomp code exists yet (`hardening.rs` is Tier 0 only). **Remaining** =
-Tier 3 (2a log → 2b genny log-run → 3 enforce) then Tier 4 (Landlock).
+`doord.service` default (spawner mode, reversible); **Tier 3 (supervisor seccomp) is COMPLETE** —
+`Environment=DOORD_SECCOMP=enforce` (`SCMP_ACT_ERRNO(EPERM)`, reversible) is baked into the shipped
+`doord.service` after a clean full-cycle enforce validation on `genny` (per D-0016, log→enforce
+staged). **Next = Tier 4 (Landlock paths)** on the same post-`fork_spawner` supervisor step.
 **Criticality: Critical** (privilege boundary / login path). M1/M2/M3/M4/M6/M7/M8/M9 are complete.
 
 (Projects not using ROADMAP may keep a short DoD list here instead.)
@@ -239,21 +242,23 @@ it by kind: deferred-but-committed → a `## Backlog` task in `.agent/ROADMAP.md
 
 ## 5. Next session
 
-**M5 Tier 3 increment 2b (genny seccomp log-run) — VALIDATED; increment 3 (enforce) next.** 2a is
-integrated to master (merge `1eb8009`). On `genny` the full-allowlist Log binary ran the full login →
-logout → recycle → re-login cycle with an **empty denial harvest**, and — decisively — the **positive
-control passed** (`scratch/tier3-poscontrol.sh`: temporarily dropping `write`/`writev` from
-`SUPERVISOR_ALLOWLIST` produced the expected `type=1326` records in Log mode). That proves the
-`SCMP_ACT_LOG` capture path actually surfaces denials, so the empty harvest is *trustworthy* (not a
-blind instrument) and `SUPERVISOR_ALLOWLIST` is **complete — no widening needed**. Source is already
-restored to the full allowlist (no poscontrol markers in-tree); **the binary running this boot is
-still the armed control build** (write/writev removed), so enforce must not be flipped until the real
-binary is reinstalled. **Path to increment 3:** (1) `bash scratch/tier3-poscontrol.sh restore` —
-rebuild+install the real full-allowlist Log binary; (2) flip the machine-local drop-in
-`/etc/systemd/system/doord.service.d/seccomp-log.conf` from `DOORD_SECCOMP=log` to `enforce`
-(no code change — `SeccompMode::Enforce` → `SCMP_ACT_ERRNO(EPERM)` already exists, `hardening.rs:116`);
-(3) reboot + full login cycle to confirm the supervisor runs clean under enforce; (4) bake
-`Environment=DOORD_SECCOMP=enforce` into the shipped `dist/systemd/doord.service` and commit increment 3.
+**M5 Tier 3 COMPLETE — enforce shipped as the `doord.service` default (2026-07-01).** Increment 3
+is done: the full-allowlist binary was restored (undoing the 2b armed control build), the machine-local
+drop-in flipped to `DOORD_SECCOMP=enforce`, and a **full login → logout → recycle → re-login cycle ran
+clean under enforce on `genny`** (owner-reported "all clear, full test"). With that hardware
+confirmation, `Environment=DOORD_SECCOMP=enforce` is now **baked into the shipped
+`dist/systemd/doord.service`** (placed with the `DOORD_SPAWNER=1` block, since the code only applies the
+filter in spawner mode — `main.rs:94`). `SeccompMode::Enforce` → `SCMP_ACT_ERRNO(EPERM)` — a stray
+unlisted syscall fails locally rather than killing the supervisor (`hardening.rs:116`). Reversible per
+D-0016: unset for no filter, `DOORD_SECCOMP=log` to re-observe, `DOORD_NO_SANDBOX=1` to force off for
+lockout recovery. Workspace tests green (76), clippy clean. **Remaining on M5: Tier 4 — Landlock paths**
+on the supervisor (same post-`fork_spawner` step, unblocked by the spawner split).
+
+**[history] Tier 3 increment 2b (genny seccomp log-run) — VALIDATED.** 2a integrated to master (merge
+`1eb8009`). On `genny` the full-allowlist Log binary ran the full cycle with an **empty denial harvest**,
+and the **positive control passed** (`scratch/tier3-poscontrol.sh`: dropping `write`/`writev` produced
+the expected `type=1326` records in Log mode), proving the `SCMP_ACT_LOG` capture path surfaces denials
+and `SUPERVISOR_ALLOWLIST` is complete — no widening needed.
 
 **[history] Tier 3 increment 1 (greeter reroute) — hardware-validated 2026-07-01** (HEAD `86739f6`,
 committed `39a7267`). The greeter routes through the spawner + concurrent reaper; a full login →
