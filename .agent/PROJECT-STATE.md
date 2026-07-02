@@ -24,7 +24,19 @@ login → logout → reap → recycle → re-login cycle runs over the spawner.*
 now flipped:** `dist/systemd/doord.service` ships `Environment=DOORD_SPAWNER=1` (reversible — unset
 falls back to legacy in-lineage spawn; the flag/legacy path is retained on purpose until Tier 3/4
 are also hardware-proven). **Remaining on M5:** Tier 3 seccomp / Tier 4 Landlock on the supervisor —
-now unblocked, since session-spawn has left doord's sandboxed lineage. The milestone narrative below (M2/M3/M6/M4/M7) is retained as
+now unblocked, since session-spawn has left doord's sandboxed lineage. **Tier 3 is
+staged in 3 increments** (log-only-before-enforce per D-0015; each needs a genny boot to
+validate): **(1) greeter reroute — CODE COMPLETE, pending hardware.** The greeter compositor
+(`cage`) was forked directly by the supervisor and re-forked on every logout, so a supervisor
+seccomp filter would confine it — greeter lineage had to move off the supervisor first (owner
+decision 2026-07-01: route the greeter through the spawner). Landed: the spawner now serves the
+**greeter worker** too (`REQ_SPAWN_GREETER`) and manages **concurrent** children (greeter + session
+worker coexist during auth) via a non-blocking SIGCHLD-interrupt reaper — the old serial blocking
+reap would have deadlocked; the supervisor tracks the greeter by control-fd EOF (mirroring the
+session worker) + pid-signal, `WorkerLoginFactory` is now stateless with `begin(greeter, spawner)`,
+and cage no longer inherits the control fd (CLOEXEC in `run_greeter`). Behavior-preserving; 30
+doord unit tests green (incl. new `serves_concurrent_children_of_both_kinds`), clippy clean.
+**Then (2) seccomp in `SCMP_ACT_LOG` (boot, grep journal for denials); (3) flip to enforce.** The milestone narrative below (M2/M3/M6/M4/M7) is retained as
 **history/context, not current state**.
 
 ---
@@ -221,7 +233,16 @@ it by kind: deferred-but-committed → a `## Backlog` task in `.agent/ROADMAP.md
 
 ## 5. Next session
 
-**M5 Tier 2 — full cycle validated + shipped default flipped; next is Tier 3/4.** The
+**M5 Tier 3 increment 1 (greeter reroute) — code complete, awaiting genny validation.** Route
+the greeter through the pre-forked spawner so a future supervisor seccomp filter never confines
+`cage`; the spawner became a concurrent-child reaper to allow the greeter + session worker to
+coexist during auth. Builds + 30 doord tests + clippy green in-tree. **Next session: install the
+new binary on genny, reboot, and confirm the full login → logout → recycle → re-login cycle still
+works over the rerouted greeter** (journal `-u doord`: `launched greeter` via spawner, clean logout,
+recycle, no orphans) before committing/pushing and moving to increment 2 (seccomp `SCMP_ACT_LOG`).
+The validation + install commands are in `scratch/tier3-validate-increment1.sh`.
+
+**[history] M5 Tier 2 — full cycle validated + shipped default flipped.** The
 pre-forked spawner is wired behind `DOORD_SPAWNER` and its **full cycle is
 hardware-validated** on `genny` (2026-07-01, journal `-b`): login → clean logout (status 0) → worker
 reap → greeter recycle → re-login, all over the spawner, no orphans, one clean auth-failure retry

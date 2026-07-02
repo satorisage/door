@@ -29,9 +29,11 @@ mod pam;
 mod privdrop;
 mod sessions;
 mod spawn;
-// M5 sandbox groundwork: the pre-forked spawner + its supervisor-side helpers.
-// Opt-in via DOORD_SPAWNER (below) pending hardware validation of a real session
-// spawn; the default path is unchanged.
+// M5 sandbox groundwork: the pre-forked spawner + its supervisor-side helpers. It
+// creates both the session worker and the greeter worker outside the supervisor's
+// lineage so a future supervisor self-sandbox never confines the desktop or the
+// greeter compositor. Enabled by default via DOORD_SPAWNER (the shipped unit sets
+// it); unset it to fall back to the direct in-lineage path.
 mod spawner;
 mod user;
 mod worker;
@@ -57,27 +59,32 @@ fn main() -> ExitCode {
 
     let config = Config::from_env();
 
-    // Worker creation: by default the daemon forks each worker itself. Opt into the
-    // sandbox split with DOORD_SPAWNER — a spawner is forked here (after the baseline
-    // but before serving) that owns worker creation, so a future supervisor
-    // self-sandbox is never inherited by the session. Fails open to the direct path
-    // if the spawner can't be forked. Off by default until hardware-validated.
-    let logins = if std::env::var_os("DOORD_SPAWNER").is_some() {
-        match spawner::fork_spawner(pam::spawn_worker_raw) {
+    // Child creation: with DOORD_SPAWNER (the shipped default), a spawner is forked
+    // here — after the baseline but before serving — that owns creation of both the
+    // greeter worker and the per-login session worker, so a future supervisor
+    // self-sandbox is never inherited by the desktop or the greeter compositor.
+    // Fails open to the direct in-lineage path if the spawner can't be forked; unset
+    // the flag to select that path deliberately.
+    let spawner = if std::env::var_os("DOORD_SPAWNER").is_some() {
+        match spawner::fork_spawner(pam::spawn_raw) {
             Ok(sock) => {
-                eprintln!("doord: spawner mode — workers are created by a pre-forked helper");
-                WorkerLoginFactory::with_spawner(sock)
+                eprintln!(
+                    "doord: spawner mode — the greeter and session workers are created by a \
+                     pre-forked helper"
+                );
+                Some(spawner::Spawner::new(sock))
             }
             Err(e) => {
-                eprintln!("doord: could not fork the spawner ({e}); using the direct worker path");
-                WorkerLoginFactory::new()
+                eprintln!("doord: could not fork the spawner ({e}); using the direct in-lineage path");
+                None
             }
         }
     } else {
-        WorkerLoginFactory::new()
+        None
     };
+    let logins = WorkerLoginFactory::new();
 
-    match ipc::serve(&config, &logins) {
+    match ipc::serve(&config, &logins, spawner.as_ref()) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
             eprintln!(

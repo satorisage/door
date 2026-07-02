@@ -45,6 +45,11 @@ pub const GREETER_WORKER_ARG: &str = "greeter-worker";
 /// re-exec; the greeter socket and listener do not.
 pub const CONTROL_FD: i32 = 3;
 
+/// Env marker set when a greeter worker is spawned with a control socket on
+/// [`CONTROL_FD`] (the sandbox-split path). Present ⇒ adopt the fd so its close on
+/// exit is the EOF the supervisor waits on; absent (direct/dev) ⇒ tracked by pid.
+pub const GREETER_CONTROL_ENV: &str = "DOORD_GREETER_CONTROL";
+
 /// Daemon → worker. The only inputs the worker accepts; it never reads the
 /// greeter directly.
 #[derive(Serialize, Deserialize)]
@@ -133,11 +138,19 @@ pub fn main() -> ExitCode {
 /// greeter. It opens a **passwordless** logind session for the greeter user (so
 /// the host compositor gets seat0 DRM/input access), forks
 /// `cage -- door-greeter` as that user on the seat VT, waits for it, then closes
-/// the session and exits. No control socket — the daemon manages this process by
-/// pid (terminate at handoff, reap on exit).
+/// the session and exits.
+///
+/// In the sandbox-split path the spawner hands this worker a control socket on
+/// [`CONTROL_FD`]; we adopt it (below) purely so its close on our exit is the EOF
+/// the supervisor waits on — the supervisor cannot `waitpid` us there, as we are
+/// the spawner's child, not its own. In the direct/dev path there is no control fd
+/// and the supervisor tracks us by pid.
 pub fn run_greeter() -> ExitCode {
     crate::hardening::apply_baseline();
     let config = Config::from_env();
+    // Hold the control fd (if any) for this process's whole life; its `Drop` at
+    // exit closes it, which the supervisor reads as greeter teardown.
+    let _control = adopt_control_fd();
     match launch_greeter(&config) {
         Ok(status) => {
             eprintln!("doord-greeter-worker: greeter exited ({status:?})");
@@ -148,6 +161,26 @@ pub fn run_greeter() -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+/// Adopt the control fd the spawner handed this greeter worker, if any. Marks it
+/// close-on-exec so the compositor we fork never inherits the supervisor's control
+/// channel, and returns the owned socket so it stays open until this process exits —
+/// its close is the EOF the supervisor treats as greeter teardown. Returns `None`
+/// in the pid-tracked (direct/dev) path, where no control fd was passed.
+fn adopt_control_fd() -> Option<UnixStream> {
+    // Absent marker (direct/dev path) ⇒ no control fd was passed; nothing to adopt.
+    std::env::var_os(GREETER_CONTROL_ENV)?;
+    // SAFETY: in the split path the spawner dup'd the control socket onto
+    // CONTROL_FD before exec and we are its sole owner here.
+    let control = unsafe { UnixStream::from_raw_fd(CONTROL_FD) };
+    // Close-on-exec so cage (forked+exec'd below) never gets the control channel;
+    // we keep it in this process until exit.
+    // SAFETY: CONTROL_FD is the fd we just adopted; setting FD_CLOEXEC is safe.
+    unsafe {
+        libc::fcntl(CONTROL_FD, libc::F_SETFD, libc::FD_CLOEXEC);
+    }
+    Some(control)
 }
 
 /// The compositor child's pid, published for the terminate-forwarding signal

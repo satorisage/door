@@ -19,7 +19,6 @@
 //! The [`Login`]/[`LoginFactory`] seam is abstracted so the IPC flow can be tested
 //! in-process without root, a live PAM stack, or a real worker.
 
-use std::cell::RefCell;
 use std::io;
 use std::os::unix::io::AsRawFd;
 use std::os::unix::net::UnixStream;
@@ -32,7 +31,7 @@ use crate::config::SeatTarget;
 use crate::ipc::read_greeter_request;
 use crate::sessions::{DiscoveredSession, SessionKind};
 use crate::spawn::{LaunchError, SessionChild};
-use crate::spawner;
+use crate::spawner::{SpawnKind, Spawner};
 use crate::worker::{
     self, Verdict, WorkerCommand, WorkerEvent, WorkerSeat, WorkerSession, CONTROL_FD,
 };
@@ -92,35 +91,23 @@ pub trait Login {
 }
 
 /// Builds a fresh [`Login`] per greeter connection, handing it that connection's
-/// socket (a clone the login owns for relaying the PAM conversation).
+/// socket (a clone the login owns for relaying the PAM conversation). When a
+/// [`Spawner`] is present (the sandbox split), the login's worker is created there,
+/// outside the supervisor's lineage; without one, it is forked directly.
 pub trait LoginFactory {
-    fn begin(&self, greeter: UnixStream) -> Box<dyn Login>;
+    fn begin(&self, greeter: UnixStream, spawner: Option<&Spawner>) -> Box<dyn Login>;
 }
 
 /// Production [`LoginFactory`]. Each login gets a session worker; the worker reads
 /// its configuration (PAM service, seat, …) from the inherited environment, so the
-/// factory carries no auth state. With a **spawner** present (the sandbox split), the
+/// factory carries no state. With a **spawner** present (the sandbox split), the
 /// worker is created by the pre-forked spawner and its control fd is passed back;
-/// without one, the factory forks the worker directly (the original path).
-pub struct WorkerLoginFactory {
-    /// The supervisor's end of the spawner control socket, when running split.
-    /// `None` = fork the worker directly. `RefCell` because `begin` takes `&self`
-    /// and logins are strictly serial.
-    spawner: Option<RefCell<UnixStream>>,
-}
+/// without one, the worker is forked directly (the original path).
+pub struct WorkerLoginFactory;
 
 impl WorkerLoginFactory {
-    /// The direct path: the factory forks each worker itself.
     pub fn new() -> Self {
-        WorkerLoginFactory { spawner: None }
-    }
-
-    /// The split path: worker creation is delegated to the pre-forked spawner over
-    /// `spawner` (the supervisor's control-socket end).
-    pub fn with_spawner(spawner: UnixStream) -> Self {
-        WorkerLoginFactory {
-            spawner: Some(RefCell::new(spawner)),
-        }
+        WorkerLoginFactory
     }
 }
 
@@ -131,10 +118,10 @@ impl Default for WorkerLoginFactory {
 }
 
 impl LoginFactory for WorkerLoginFactory {
-    fn begin(&self, greeter: UnixStream) -> Box<dyn Login> {
+    fn begin(&self, greeter: UnixStream, spawner: Option<&Spawner>) -> Box<dyn Login> {
         // Split path: ask the spawner for a worker; it hands back the control fd.
-        if let Some(cell) = &self.spawner {
-            return match spawner::request_worker(&mut cell.borrow_mut()) {
+        if let Some(spawner) = spawner {
+            return match spawner.request_worker() {
                 Ok(worker) => Box::new(WorkerLogin {
                     greeter,
                     control: worker.control,
@@ -332,23 +319,29 @@ impl Login for WorkerLogin {
     }
 }
 
-/// Re-exec the daemon as a session worker, returning the worker process and the
-/// daemon's end of the control socket. The worker's end is dup'd onto
-/// [`CONTROL_FD`] (kept open across `exec`); every other fd — listener, greeter
-/// socket — is `O_CLOEXEC` and is closed by the `exec`, so the worker is reachable
-/// only over the control socket and can never touch a greeter byte.
-fn spawn_worker() -> io::Result<(Child, UnixStream)> {
-    let (daemon_end, worker_end) = UnixStream::pair()?;
-    let worker_fd = worker_end.as_raw_fd();
+/// Re-exec the daemon (as the session worker or the greeter worker) with a control
+/// socket, returning the child process and the daemon's end of that socket. The
+/// child's end is dup'd onto [`CONTROL_FD`] (kept open across `exec`); every other
+/// fd — listener, greeter socket — is `O_CLOEXEC` and is closed by the `exec`, so
+/// the child is reachable only over the control socket and can never touch a greeter
+/// byte. `control_env`, when set, is exported so the child knows it was handed a
+/// control fd (the greeter worker, unlike the session worker, also runs without one
+/// in the direct/dev path).
+fn reexec_with_control(arg: &str, control_env: Option<&str>) -> io::Result<(Child, UnixStream)> {
+    let (daemon_end, child_end) = UnixStream::pair()?;
+    let child_fd = child_end.as_raw_fd();
 
     let mut command = Command::new("/proc/self/exe");
-    command.arg(worker::WORKER_ARG);
+    command.arg(arg);
+    if let Some(key) = control_env {
+        command.env(key, "1");
+    }
     // SAFETY: the closure runs in the forked child before `exec`. It only dup's an
     // inherited fd onto a fixed number and clears that fd's close-on-exec flag —
     // async-signal-safe syscalls touching no shared parent state.
     unsafe {
         command.pre_exec(move || {
-            if libc::dup2(worker_fd, CONTROL_FD) < 0 {
+            if libc::dup2(child_fd, CONTROL_FD) < 0 {
                 return Err(io::Error::last_os_error());
             }
             // dup2 clears CLOEXEC on the new fd; set it explicitly too in case the
@@ -363,17 +356,32 @@ fn spawn_worker() -> io::Result<(Child, UnixStream)> {
     let child = command.spawn()?;
     // The parent keeps only its end; the child's inherited copy is CLOEXEC and is
     // gone after exec — only the dup'd CONTROL_FD survives there.
-    drop(worker_end);
+    drop(child_end);
     Ok((child, daemon_end))
 }
 
-/// The [`spawner::SpawnFn`] for the pre-forked spawner: fork a worker exactly as
-/// [`spawn_worker`] does, but return the raw pid (so the spawner can `waitpid`-reap
-/// it) instead of a `Child`. Dropping the `Child` here does not reap — it only
-/// releases std's handle; the process becomes a zombie the spawner then reaps. Runs
-/// inside the spawner process, which is single-threaded, so the fork is safe.
-pub fn spawn_worker_raw() -> io::Result<(libc::pid_t, UnixStream)> {
-    let (child, control) = spawn_worker()?;
+/// Re-exec the daemon as a session worker (D-0005) with a control socket.
+fn spawn_worker() -> io::Result<(Child, UnixStream)> {
+    reexec_with_control(worker::WORKER_ARG, None)
+}
+
+/// Re-exec the daemon as a greeter worker (D-0008) with a control socket, so the
+/// supervisor observes greeter-worker exit as EOF on it — the same mechanism the
+/// session worker uses. The env marker tells the greeter worker to adopt the fd.
+fn spawn_greeter() -> io::Result<(Child, UnixStream)> {
+    reexec_with_control(worker::GREETER_WORKER_ARG, Some(worker::GREETER_CONTROL_ENV))
+}
+
+/// The [`crate::spawner::SpawnFn`] for the pre-forked spawner: fork the requested
+/// child exactly as the direct path does, but return the raw pid instead of a
+/// `Child`. Dropping the `Child` here does not reap — it only releases std's handle;
+/// the process becomes the spawner's to reap. Runs inside the spawner process, which
+/// is single-threaded, so the fork is safe.
+pub fn spawn_raw(kind: SpawnKind) -> io::Result<(libc::pid_t, UnixStream)> {
+    let (child, control) = match kind {
+        SpawnKind::Worker => spawn_worker()?,
+        SpawnKind::Greeter => spawn_greeter()?,
+    };
     let pid = child.id() as libc::pid_t;
     drop(child);
     Ok((pid, control))
@@ -420,7 +428,7 @@ pub mod testing {
     }
 
     impl LoginFactory for ScriptedLoginFactory {
-        fn begin(&self, greeter: UnixStream) -> Box<dyn Login> {
+        fn begin(&self, greeter: UnixStream, _spawner: Option<&Spawner>) -> Box<dyn Login> {
             Box::new(ScriptedLogin {
                 password: self.password.clone(),
                 greeter,

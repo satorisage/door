@@ -40,6 +40,7 @@ use protocol::{read_frame, write_frame, FrameError, Request, Response, PROTOCOL_
 use crate::config::Config;
 use crate::pam::{AuthOutcome, Login, LoginFactory};
 use crate::spawn::SessionChild;
+use crate::spawner::Spawner;
 use crate::worker;
 
 /// How long to wait for the greeter to exit after `SIGTERM` before `SIGKILL`.
@@ -416,7 +417,11 @@ fn drm_card_holders(cards: &[PathBuf]) -> Vec<libc::pid_t> {
 ///
 /// Returns only on a fatal error setting up the listener; per-connection and
 /// per-greeter errors are logged and the loop continues.
-pub fn serve(config: &Config, logins: &dyn LoginFactory) -> io::Result<()> {
+pub fn serve(
+    config: &Config,
+    logins: &dyn LoginFactory,
+    spawner: Option<&Spawner>,
+) -> io::Result<()> {
     let listener = bind(config)?;
     let manage_greeter = config.greeter_user.is_some();
     eprintln!(
@@ -464,10 +469,13 @@ pub fn serve(config: &Config, logins: &dyn LoginFactory) -> io::Result<()> {
         // launch fails, back off and retry rather than block on accept() with no
         // greeter to connect.
         let greeter = if manage_greeter {
-            match launch_greeter(config) {
-                Ok(child) => {
-                    eprintln!("doord: launched greeter (pid {})", child.id());
-                    Some(RefCell::new(GreeterHandle::new(child)))
+            match launch_greeter(config, spawner) {
+                Ok(handle) => {
+                    match handle.pid() {
+                        Some(pid) => eprintln!("doord: launched greeter (pid {pid})"),
+                        None => eprintln!("doord: launched greeter"),
+                    }
+                    Some(RefCell::new(handle))
                 }
                 Err(e) => {
                     eprintln!("doord: could not launch greeter: {e}; retrying shortly");
@@ -492,7 +500,9 @@ pub fn serve(config: &Config, logins: &dyn LoginFactory) -> io::Result<()> {
         let greeted_at = Instant::now();
         match accept_with_greeter_watch(&listener, greeter.as_ref()) {
             Ok(AcceptOutcome::Connected(stream)) => {
-                if let Err(e) = handle_connection(stream, config, logins, greeter.as_ref()) {
+                if let Err(e) =
+                    handle_connection(stream, config, logins, spawner, greeter.as_ref())
+                {
                     eprintln!("doord: connection ended: {e}");
                 }
             }
@@ -676,38 +686,92 @@ unsafe fn reset_vt_via_fd(fd: libc::c_int, vtnr: u32) {
 }
 
 /// A managed greeter process (the re-exec'd greeter worker, which runs
-/// `cage -- door-greeter`). Owns the child so it can be torn down at the
-/// greeter→session handoff and reaped before a re-greet.
+/// `cage -- door-greeter`), tracked so it can be torn down at the greeter→session
+/// handoff and cleaned up before a re-greet. How it is tracked depends on who forked
+/// it: in the direct/dev path it is the supervisor's own child; in the sandbox-split
+/// path it is the spawner's child, so the supervisor watches its control-fd EOF
+/// (the spawner reaps the pid) and signals it by pid.
 struct GreeterHandle {
-    child: Option<Child>,
+    backend: GreeterBackend,
+}
+
+enum GreeterBackend {
+    /// Direct/dev: the greeter worker is the supervisor's child — wait/kill/reap it.
+    Owned(Option<Child>),
+    /// Sandbox split: the greeter worker is the *spawner's* child. `control`'s EOF
+    /// signals its exit (it closes the fd when it exits); `pid` is retained to
+    /// signal it at handoff. The spawner reaps the pid; the supervisor only watches
+    /// the fd. `ended` latches once EOF is seen so later checks are cheap.
+    Spawned {
+        pid: libc::pid_t,
+        control: UnixStream,
+        ended: bool,
+    },
 }
 
 impl GreeterHandle {
-    fn new(child: Child) -> Self {
-        GreeterHandle { child: Some(child) }
+    /// Track a greeter worker forked directly by the supervisor (direct/dev path).
+    fn owned(child: Child) -> Self {
+        GreeterHandle {
+            backend: GreeterBackend::Owned(Some(child)),
+        }
     }
 
-    /// Non-blocking check for a greeter that exited *before* connecting. Reaps it
-    /// if so (clearing the handle, which makes a later [`terminate`](Self::terminate)
-    /// a no-op) and reports `true`; `true` also if it was already reaped. Used by
-    /// the greeter-watch so a pre-handshake death is noticed instead of hanging
-    /// the daemon on `accept()`.
+    /// Track a greeter worker forked by the spawner: observe its exit as EOF on the
+    /// control fd (set non-blocking so [`reap_if_exited`](Self::reap_if_exited) can
+    /// poll it), and keep its pid to signal it at handoff.
+    fn spawned(pid: libc::pid_t, control: UnixStream) -> io::Result<Self> {
+        control.set_nonblocking(true)?;
+        Ok(GreeterHandle {
+            backend: GreeterBackend::Spawned {
+                pid,
+                control,
+                ended: false,
+            },
+        })
+    }
+
+    /// The greeter worker's pid, if known (for journaling at launch).
+    fn pid(&self) -> Option<libc::pid_t> {
+        match &self.backend {
+            GreeterBackend::Owned(child) => child.as_ref().map(|c| c.id() as libc::pid_t),
+            GreeterBackend::Spawned { pid, .. } => Some(*pid),
+        }
+    }
+
+    /// Non-blocking check for a greeter that exited *before* connecting. Reports
+    /// `true` once it has exited (or was already gone). Used by the greeter-watch so
+    /// a pre-handshake death is noticed instead of hanging the daemon on `accept()`.
     fn reap_if_exited(&mut self) -> bool {
-        let Some(child) = self.child.as_mut() else {
-            return true;
-        };
-        match child.try_wait() {
-            Ok(Some(_)) => {
-                self.child = None;
-                true
+        match &mut self.backend {
+            GreeterBackend::Owned(slot) => {
+                let Some(child) = slot.as_mut() else {
+                    return true;
+                };
+                match child.try_wait() {
+                    Ok(Some(_)) => {
+                        *slot = None;
+                        true
+                    }
+                    Ok(None) => false,
+                    // An errored wait can't be retried meaningfully; treat it as gone
+                    // so the loop stops waiting rather than spinning on a broken handle.
+                    Err(e) => {
+                        eprintln!("doord: checking the greeter failed: {e}; treating it as exited");
+                        *slot = None;
+                        true
+                    }
+                }
             }
-            Ok(None) => false,
-            // An errored wait can't be retried meaningfully; treat it as gone so
-            // the loop stops waiting rather than spinning on a broken handle.
-            Err(e) => {
-                eprintln!("doord: checking the greeter failed: {e}; treating it as exited");
-                self.child = None;
-                true
+            GreeterBackend::Spawned { control, ended, .. } => {
+                if *ended {
+                    return true;
+                }
+                if control_hit_eof(control) {
+                    *ended = true;
+                    return true;
+                }
+                false
             }
         }
     }
@@ -715,31 +779,92 @@ impl GreeterHandle {
     /// Terminate the greeter and **wait for it to exit**, so the seat's VT/DRM is
     /// released before the session takes it. `SIGTERM` first (cage releases the
     /// seat and exits cleanly), escalating to `SIGKILL` if it lingers. Idempotent:
-    /// a second call (or one after the greeter already exited) just reaps.
+    /// a second call (or one after the greeter already exited) just returns.
     fn terminate(&mut self) {
-        let Some(mut child) = self.child.take() else {
-            return;
-        };
-        let pid = child.id() as libc::pid_t;
-        // SAFETY: pid is this child's; SIGTERM is a request to exit.
-        unsafe { libc::kill(pid, libc::SIGTERM) };
+        match &mut self.backend {
+            GreeterBackend::Owned(slot) => {
+                let Some(mut child) = slot.take() else {
+                    return;
+                };
+                let pid = child.id() as libc::pid_t;
+                // SAFETY: pid is this child's; SIGTERM is a request to exit.
+                unsafe { libc::kill(pid, libc::SIGTERM) };
 
-        let deadline = Instant::now() + GREETER_TERM_GRACE;
-        loop {
-            match child.try_wait() {
-                Ok(Some(_)) => return,
-                Ok(None) if Instant::now() < deadline => thread::sleep(Duration::from_millis(10)),
-                Ok(None) => break,
-                Err(e) => {
-                    eprintln!("doord: waiting on the greeter failed: {e}");
+                let deadline = Instant::now() + GREETER_TERM_GRACE;
+                loop {
+                    match child.try_wait() {
+                        Ok(Some(_)) => return,
+                        Ok(None) if Instant::now() < deadline => {
+                            thread::sleep(Duration::from_millis(10))
+                        }
+                        Ok(None) => break,
+                        Err(e) => {
+                            eprintln!("doord: waiting on the greeter failed: {e}");
+                            return;
+                        }
+                    }
+                }
+                // Still alive after the grace period — force it.
+                // SAFETY: pid is this child's; it has not been reaped (try_wait
+                // returned None).
+                unsafe { libc::kill(pid, libc::SIGKILL) };
+                let _ = child.wait();
+            }
+            GreeterBackend::Spawned {
+                pid,
+                control,
+                ended,
+            } => {
+                if *ended {
                     return;
                 }
+                let pid = *pid;
+                // SAFETY: pid is the spawner-forked greeter worker's; SIGTERM asks it
+                // to exit (it forwards to cage, which releases the seat, then closes
+                // its logind session). We observe completion as EOF on `control`.
+                unsafe { libc::kill(pid, libc::SIGTERM) };
+                if wait_for_control_eof(control, GREETER_TERM_GRACE) {
+                    *ended = true;
+                    return;
+                }
+                // Still alive after the grace period — force it. The spawner reaps.
+                // SAFETY: pid is that greeter worker's; EOF has not been seen.
+                unsafe { libc::kill(pid, libc::SIGKILL) };
+                wait_for_control_eof(control, GREETER_TERM_GRACE);
+                *ended = true;
             }
         }
-        // Still alive after the grace period — force it.
-        // SAFETY: pid is this child's; it has not been reaped (try_wait returned None).
-        unsafe { libc::kill(pid, libc::SIGKILL) };
-        let _ = child.wait();
+    }
+}
+
+/// Non-blocking check whether a control socket has hit EOF (the far process closed
+/// it — i.e. exited). A hard read error is also treated as EOF so the caller stops
+/// waiting on a broken fd. Requires the socket to be non-blocking.
+fn control_hit_eof(control: &mut UnixStream) -> bool {
+    use std::io::Read;
+    let mut sink = [0u8; 64];
+    match control.read(&mut sink) {
+        Ok(0) => true,
+        Ok(_) => false, // stray bytes (none are expected); still alive
+        Err(e) if e.kind() == io::ErrorKind::WouldBlock => false,
+        Err(e) if e.kind() == io::ErrorKind::Interrupted => false,
+        Err(_) => true,
+    }
+}
+
+/// Block until `control` hits EOF (the far process exited) or `timeout` elapses,
+/// polling the fd rather than busy-spinning. Returns `true` if EOF was seen.
+fn wait_for_control_eof(control: &mut UnixStream, timeout: Duration) -> bool {
+    let deadline = Instant::now() + timeout;
+    loop {
+        if control_hit_eof(control) {
+            return true;
+        }
+        let now = Instant::now();
+        if now >= deadline {
+            return false;
+        }
+        poll_readable(control.as_raw_fd(), deadline - now);
     }
 }
 
@@ -811,15 +936,27 @@ fn poll_readable(fd: libc::c_int, timeout: Duration) {
     }
 }
 
-/// Re-exec the daemon as the greeter worker (D-0008). The child inherits the
-/// daemon's environment (the `DOORD_*` config), which is how the greeter worker
-/// learns the greeter user, seat/VT, PAM service, and command. No socket is
-/// passed — the daemon manages this process by pid.
-fn launch_greeter(config: &Config) -> io::Result<Child> {
+/// Launch the greeter worker (D-0008). The greeter worker inherits the daemon's
+/// environment (the `DOORD_*` config), which is how it learns the greeter user,
+/// seat/VT, PAM service, and command.
+///
+/// With a **spawner** present (the sandbox split), the greeter worker is forked by
+/// the pre-forked spawner — outside the supervisor's sandboxed lineage, so a future
+/// supervisor seccomp/Landlock profile never confines the greeter compositor — and
+/// its control fd is handed back so the supervisor observes its exit as EOF. Without
+/// one (direct/dev), the supervisor forks it as its own child and tracks it by pid.
+fn launch_greeter(config: &Config, spawner: Option<&Spawner>) -> io::Result<GreeterHandle> {
     let _ = config; // configuration travels via the inherited environment
-    Command::new("/proc/self/exe")
+    if let Some(spawner) = spawner {
+        let child = spawner
+            .request_greeter()
+            .map_err(|e| io::Error::other(format!("spawner could not start the greeter: {e}")))?;
+        return GreeterHandle::spawned(child.pid, child.control);
+    }
+    let child = Command::new("/proc/self/exe")
         .arg(worker::GREETER_WORKER_ARG)
-        .spawn()
+        .spawn()?;
+    Ok(GreeterHandle::owned(child))
 }
 
 /// Create the socket directory, remove any stale socket, bind, and lock down
@@ -887,6 +1024,7 @@ fn handle_connection(
     stream: UnixStream,
     config: &Config,
     logins: &dyn LoginFactory,
+    spawner: Option<&Spawner>,
     managed_greeter: Option<&RefCell<GreeterHandle>>,
 ) -> Result<(), FrameError> {
     let cred = peer_cred(&stream)?;
@@ -928,7 +1066,7 @@ fn handle_connection(
             return Ok(());
         }
     };
-    let mut login = logins.begin(greeter);
+    let mut login = logins.begin(greeter, spawner);
 
     loop {
         let request: Request = match read_greeter_request(&conn) {
@@ -1357,7 +1495,7 @@ mod tests {
         let handle = thread::spawn(move || {
             let cfg = test_config();
             let logins = scripted_logins(Arc::new(Mutex::new(Vec::new())));
-            let _ = handle_connection(server, &cfg, &logins, None);
+            let _ = handle_connection(server, &cfg, &logins, None, None);
             let _ = typed; // captured to keep the closure's intent explicit
         });
 
@@ -1457,7 +1595,7 @@ mod tests {
         let handle = thread::spawn(move || {
             let cfg = test_config();
             let logins = scripted_logins(Arc::new(Mutex::new(Vec::new())));
-            let _ = handle_connection(server, &cfg, &logins, None);
+            let _ = handle_connection(server, &cfg, &logins, None, None);
         });
 
         write_frame(
@@ -1498,7 +1636,7 @@ mod tests {
                 ..test_config()
             };
             let logins = scripted_logins(calls_in);
-            let _ = handle_connection(server, &cfg, &logins, None);
+            let _ = handle_connection(server, &cfg, &logins, None, None);
         });
 
         // Handshake, then jump straight to Start without authenticating.
@@ -1545,7 +1683,7 @@ mod tests {
                 ..test_config()
             };
             let logins = scripted_logins(calls_in);
-            let _ = handle_connection(server, &cfg, &logins, None);
+            let _ = handle_connection(server, &cfg, &logins, None, None);
         });
 
         write_frame(
