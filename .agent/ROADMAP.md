@@ -472,13 +472,18 @@ off-by-default DECISION naming its threat model before it can graduate.
 
 ## Shipped
 
-- **v0.1.4 → AUR** (2026-07-01): version bumped `0.1.3 → 0.1.4` (`Cargo.toml`
-  `[workspace.package]` + `PKGBUILD pkgver`, moved together per the v0.1.3 release
-  note; lockfile synced). Ships **M5 Tier 3 (supervisor seccomp) enforce as the
-  `doord.service` default** — `Environment=DOORD_SECCOMP=enforce`
+- **v0.1.4 → AUR** (2026-07-01): **live on the AUR** (pkgver 0.1.4, pkgrel 1) —
+  GitHub tag `v0.1.4` → `90b78ff`, AUR commit `6e65f98 door 0.1.4-1` (real sha256
+  pinned by `updpkgsums`), published via `scripts/release.sh`. Version bumped
+  `0.1.3 → 0.1.4` (`Cargo.toml` `[workspace.package]` + `PKGBUILD pkgver` moved
+  together per the v0.1.3 note; lockfile synced). Ships **M5 Tier 3 (supervisor
+  seccomp) enforce as the `doord.service` default** — `Environment=DOORD_SECCOMP=enforce`
   (`SCMP_ACT_ERRNO(EPERM)`, reversible), validated clean under a full login cycle
-  on `genny`. Publish via `scripts/release.sh` (tags `v0.1.4` off `Cargo.toml`,
-  pushes, `updpkgsums` + AUR push). *Pending the AUR publish step.*
+  on `genny`. Release note: right after the push, the **aurweb RPC metadata lagged**
+  (paru's "New Version" column showed the stale `0.1.3-1` for several minutes while
+  the AUR *git repo* already held `0.1.4-1`) — a reindex/cache delay, not a publish
+  failure; `paru -S door` builds from the freshly-pulled git PKGBUILD (0.1.4)
+  regardless of the RPC display.
 
 - **v0.1.3 → AUR** (2026-07-01): tagged `v0.1.3` (commit `441cbb6`), live on the
   AUR (pkgver 0.1.3, pkgrel 1). Two items, both traced to an AUR upgrade bug
