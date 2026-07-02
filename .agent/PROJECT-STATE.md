@@ -26,7 +26,11 @@ falls back to legacy in-lineage spawn; the flag/legacy path is retained on purpo
 are also hardware-proven). **Remaining on M5:** Tier 3 seccomp / Tier 4 Landlock on the supervisor —
 now unblocked, since session-spawn has left doord's sandboxed lineage. **Tier 3 is
 staged in 3 increments** (log-only-before-enforce per D-0015; each needs a genny boot to
-validate): **(1) greeter reroute — CODE COMPLETE, pending hardware.** The greeter compositor
+validate): **(1) greeter reroute — CODE COMPLETE and HARDWARE-VALIDATED (2026-07-01, HEAD
+`86739f6` on `genny`):** the greeter-through-spawner + concurrent-reaper build booted and a full
+login → logout → greeter-recycle → re-login cycle ran clean over the spawner (owner-reported
+runtime act, not a commit — same D-0037 gap class as the other spawner validations, recorded here
+from the live run). The greeter compositor
 (`cage`) was forked directly by the supervisor and re-forked on every logout, so a supervisor
 seccomp filter would confine it — greeter lineage had to move off the supervisor first (owner
 decision 2026-07-01: route the greeter through the spawner). Landed: the spawner now serves the
