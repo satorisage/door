@@ -36,6 +36,21 @@ else
     git push origin "v${VER}"
 fi
 
+# --- 2b. Publish a GitHub Release with notes --------------------------------------
+# The AUR only pulls the tag's source tarball — it carries no release notes. The
+# GitHub Release is where notes live (and what an AUR user sees on clicking
+# through). Notes come from dist/release-notes/v<ver>.md if present, else GitHub
+# auto-generates them from the commits since the last tag. Idempotent.
+NOTES="dist/release-notes/v${VER}.md"
+if gh release view "v${VER}" >/dev/null 2>&1; then
+    echo "==> GitHub Release v${VER} already exists, skipping"
+elif [ -f "$NOTES" ]; then
+    gh release create "v${VER}" --title "door v${VER}" --notes-file "$NOTES"
+else
+    echo "    (no $NOTES — auto-generating notes from commits)"
+    gh release create "v${VER}" --title "door v${VER}" --generate-notes
+fi
+
 # --- 3. Build + publish the AUR package -------------------------------------------
 WORK="$(mktemp -d)/door"
 echo "==> staging AUR package in ${WORK}"
