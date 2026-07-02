@@ -306,7 +306,24 @@ look byte-faithful; each shader change naga-gated.
                   validated clean under enforce on `genny` (owner-reported, 2026-07-01), then
                   `Environment=DOORD_SECCOMP=enforce` baked into the shipped `doord.service`.
                   Reversible: unset / `DOORD_SECCOMP=log` / `DOORD_NO_SANDBOX=1`.
-      - [ ] **Tier 4 — Landlock paths** on the supervisor (same post-`fork_spawner` step).
+      - [~] **Tier 4 — Landlock paths** on the supervisor (same post-`fork_spawner` step;
+            per **DECISION-0017**: `landlock` crate, enforce-only 2-mode, ABI-V1 floor).
+            - [x] **substrate** (2026-07-02) — `hardening::apply_landlock(mode)` +
+                  `LandlockMode {Off, Enforce}` + `landlock` 0.4.5 dep + `DOORD_LANDLOCK`
+                  flag, best-effort ABI-V1 ruleset over a seed path set
+                  (`SUPERVISOR_RO_PATHS`/`SUPERVISOR_RW_PATHS`), supervisor-only after
+                  `apply_seccomp`, default-off. Landlock has no `SCMP_ACT_LOG`, so 2-mode
+                  (`off|enforce`) not 3; ABI pinned to V1 so device `ioctl` governance
+                  (V5+) doesn't lock out DRM/VT. 39 unit tests + a fork-isolated
+                  confinement test (denies an out-of-allowlist path, allows `/usr`) green
+                  on this kernel; clippy clean. Inert until the flag is set.
+            - [ ] **genny enforce run** — boot `DOORD_LANDLOCK=enforce`, run login →
+                  logout → recycle → re-login, widen the path seed off the `EACCES`/audit
+                  trail until clean (`scratch/genny-tier4-validate.sh`). No permissive
+                  stage exists — a miss is a recoverable login failure + kill-switch.
+            - [ ] **flip shipped unit** — `Environment=DOORD_LANDLOCK=enforce` into
+                  `dist/systemd/doord.service` once the genny cycle is clean +
+                  threat-model note in `.agent/SECURITY/`. Closes M5.
 - privilege-drop audit ✅ (pentest 2026-06-30), IPC/PAM fuzzing ✅ (ipc_fuzz.rs)
 - secrets-zeroization audit ✅ (F1 fix); external review of the TCB
   `depends:` M1, M2

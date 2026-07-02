@@ -1,10 +1,12 @@
 //! Process-level hardening applied before the daemon does anything else.
 //!
-//! Two layers live here. The **baseline** ([`apply_baseline`]) is a pair of cheap,
+//! Three layers live here. The **baseline** ([`apply_baseline`]) is a pair of cheap,
 //! irreversible kernel toggles set at startup, before the IPC socket exists, so the
-//! credential-handling process runs hardened for its whole life. The heavier
-//! **syscall sandbox** ([`apply_seccomp`]) installs a seccomp-BPF filter that bounds
-//! which syscalls the long-lived, root, untrusted-input-facing *supervisor* may make.
+//! credential-handling process runs hardened for its whole life. The **syscall sandbox**
+//! ([`apply_seccomp`]) installs a seccomp-BPF filter that bounds which syscalls the
+//! long-lived, root, untrusted-input-facing *supervisor* may make. The **path sandbox**
+//! ([`apply_landlock`]) installs a Landlock ruleset that bounds which filesystem paths
+//! the same supervisor may reach.
 //!
 //! Why the sandbox is supervisor-only, and applied late: a seccomp filter is
 //! inherited across `fork` and preserved across `execve`. The per-login session
@@ -24,6 +26,10 @@
 use std::collections::BTreeMap;
 use std::io;
 
+use landlock::{
+    path_beneath_rules, Access, AccessFs, CompatLevel, Compatible, Ruleset, RulesetAttr,
+    RulesetCreatedAttr, RulesetStatus, ABI,
+};
 use seccompiler::{BpfProgram, SeccompAction, SeccompFilter, SeccompRule, TargetArch};
 
 /// Apply the always-on baseline:
@@ -304,6 +310,131 @@ const SUPERVISOR_ALLOWLIST: &[i64] = &[
     libc::SYS_restart_syscall,
 ];
 
+// ===========================================================================
+// Landlock — filesystem-path sandbox on the supervisor (Tier 4)
+// ===========================================================================
+//
+// Where seccomp bounds *which syscalls* the supervisor may make, Landlock bounds
+// *which filesystem paths* it may reach — a compromised supervisor cannot read
+// `/home`, write `/etc/shadow`, or touch arbitrary user data outside the small set
+// of subtrees it genuinely needs. Same placement constraint as seccomp: a Landlock
+// ruleset is inherited across `fork` and preserved across `execve`, so it is applied
+// supervisor-only, after `fork_spawner`, or it would confine the user's desktop.
+//
+// **No permissive/log mode.** Unlike seccomp's `SCMP_ACT_LOG`, Landlock has no
+// observe-without-breaking mode: any path outside the ruleset is *blocked the moment
+// the ruleset is active*. (Kernel 6.15+ audits denials, but the denial still blocks —
+// diagnostics while enforcing, not permissive operation.) So the rollout is
+// enumerate-then-enforce: the path set below is an empirically-refined **seed**, the
+// filter ships flag-gated + default-off, and a genny boot with `DOORD_LANDLOCK=enforce`
+// runs a full login → logout → recycle → re-login cycle, widening the set (via the
+// `EACCES` journal trail; `DOORD_NO_SANDBOX=1` recovers a miss) until the cycle is clean.
+//
+// **ABI floor is V1, deliberately.** The handled access set is pinned to
+// [`ABI::V1`] (governs Execute/Read/Write/Dir/Make/Remove). Device-file `ioctl`
+// governance (`LANDLOCK_ACCESS_FS_IOCTL_DEV`) only enters the handled set at ABI V5;
+// declaring it on genny's newer kernel would govern the supervisor's DRM-master and
+// VT `ioctl`s and lock out login unless `IoctlDev` were also granted on `/dev/dri` and
+// the VT. Raising the ABI to also confine device ioctls is a documented genny-tuning
+// follow-on, not part of this inert seed. Best-effort compatibility means an older
+// kernel (or one without Landlock) degrades to `NotEnforced` rather than aborting.
+
+/// Whether the supervisor installs the Landlock filesystem sandbox. Selected by
+/// `DOORD_LANDLOCK` (`DOORD_NO_SANDBOX=1` forces `Off`). There is no `Log` variant —
+/// Landlock cannot log-and-allow, so the safe rollout is flag-gated enforce validated
+/// on hardware (see the module note above), not a permissive stage.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LandlockMode {
+    /// No ruleset installed. The supervisor's filesystem access is unbounded (Tier 0
+    /// baseline + any seccomp only).
+    Off,
+    /// Install the path ruleset and confine the supervisor: any filesystem path outside
+    /// the granted subtrees is denied (`EACCES`).
+    Enforce,
+}
+
+impl LandlockMode {
+    /// Resolve the mode from the environment. `DOORD_NO_SANDBOX` (any non-empty,
+    /// non-`0` value) is the recovery kill-switch and wins over everything.
+    pub fn from_env() -> Self {
+        let no_sandbox = std::env::var("DOORD_NO_SANDBOX")
+            .ok()
+            .is_some_and(|v| !v.is_empty() && v != "0");
+        let value = std::env::var("DOORD_LANDLOCK").ok();
+        Self::parse(value.as_deref(), no_sandbox)
+    }
+
+    /// Pure parser behind [`from_env`](Self::from_env), split out so it is testable
+    /// without touching process-global environment.
+    fn parse(value: Option<&str>, no_sandbox: bool) -> Self {
+        if no_sandbox {
+            return Self::Off;
+        }
+        match value.map(str::trim).map(str::to_ascii_lowercase).as_deref() {
+            Some("enforce") => Self::Enforce,
+            // Unset, empty, "off", "0", or anything unrecognized: no ruleset.
+            _ => Self::Off,
+        }
+    }
+}
+
+/// Read-only subtrees the supervisor needs (Execute/ReadFile/ReadDir). An
+/// **empirically-refined seed**, not proven-minimal — see the module note. `/home`,
+/// `/root`, `/var`, `/tmp`, `/boot`, `/opt`, `/srv`, `/mnt` are deliberately absent:
+/// denying them is the point of this tier.
+const SUPERVISOR_RO_PATHS: &[&str] = &[
+    "/usr",  // session `.desktop` discovery + shared libraries/binaries the process maps
+    "/etc",  // NSS / `nsswitch.conf` / `passwd` for user lookup, `ld.so.cache`
+    "/proc", // `free_seat`'s per-process `/fd` scan (read_dir + read_link)
+    "/sys",  // DRM / device metadata
+    "/run",  // logind/D-Bus sockets + runtime dirs (the rw `/run/doord` subtree is below)
+];
+
+/// Read-write subtrees the supervisor needs (full filesystem access set at ABI V1).
+const SUPERVISOR_RW_PATHS: &[&str] = &[
+    "/run/doord", // the IPC listener socket dir: create/bind/chmod/chown/unlink
+    "/dev",       // `/dev/dri/card*` (DRM master) + `/dev/tty{N}` (VT); tighten on genny
+];
+
+/// Install the supervisor Landlock ruleset for `mode`. A no-op for [`LandlockMode::Off`].
+///
+/// **Call supervisor-only, after the spawner has been forked** — a ruleset applied
+/// before the spawner fork (or on the direct in-lineage path, where the supervisor
+/// itself forks the session) is inherited by the desktop and breaks every login.
+///
+/// Best-effort: on a kernel without Landlock (or an older ABI) the ruleset degrades
+/// to [`RulesetStatus::NotEnforced`]/`PartiallyEnforced` rather than aborting startup —
+/// the returned status says which, so the caller can log the real enforcement level.
+/// The confinement is irreversible and inherited by children, so it is never applied
+/// from a test.
+pub fn apply_landlock(mode: LandlockMode) -> io::Result<RulesetStatus> {
+    if mode == LandlockMode::Off {
+        return Ok(RulesetStatus::NotEnforced);
+    }
+
+    // ABI V1 handled set (see the module note on why not the newest ABI): governs
+    // path read/write/exec/dir/make/remove, not device ioctls.
+    let abi = ABI::V1;
+    let status = Ruleset::default()
+        .set_compatibility(CompatLevel::BestEffort)
+        .handle_access(AccessFs::from_all(abi))
+        .map_err(landlock_err)?
+        .create()
+        .map_err(landlock_err)?
+        .add_rules(path_beneath_rules(SUPERVISOR_RO_PATHS, AccessFs::from_read(abi)))
+        .map_err(landlock_err)?
+        .add_rules(path_beneath_rules(SUPERVISOR_RW_PATHS, AccessFs::from_all(abi)))
+        .map_err(landlock_err)?
+        .restrict_self()
+        .map_err(landlock_err)?;
+
+    Ok(status.ruleset)
+}
+
+fn landlock_err(e: impl std::fmt::Display) -> io::Error {
+    io::Error::other(format!("landlock: {e}"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -353,5 +484,98 @@ mod tests {
                 "{mode:?} should compile to a non-empty BPF program"
             );
         }
+    }
+
+    // --- Landlock ---
+    //
+    // Only the (pure) mode parser is unit-tested: building a real ruleset syscalls,
+    // and `restrict_self` would confine the test process irreversibly, so the ruleset
+    // install is validated on hardware (a genny `DOORD_LANDLOCK=enforce` boot), not here.
+
+    #[test]
+    fn landlock_no_sandbox_overrides_every_value() {
+        assert_eq!(LandlockMode::parse(Some("enforce"), true), LandlockMode::Off);
+        assert_eq!(LandlockMode::parse(None, true), LandlockMode::Off);
+    }
+
+    #[test]
+    fn landlock_parse_recognizes_enforce_case_insensitively() {
+        assert_eq!(
+            LandlockMode::parse(Some("enforce"), false),
+            LandlockMode::Enforce
+        );
+        assert_eq!(
+            LandlockMode::parse(Some("  ENFORCE "), false),
+            LandlockMode::Enforce
+        );
+    }
+
+    #[test]
+    fn landlock_parse_defaults_to_off_for_unset_or_unknown() {
+        assert_eq!(LandlockMode::parse(None, false), LandlockMode::Off);
+        assert_eq!(LandlockMode::parse(Some(""), false), LandlockMode::Off);
+        assert_eq!(LandlockMode::parse(Some("off"), false), LandlockMode::Off);
+        assert_eq!(LandlockMode::parse(Some("0"), false), LandlockMode::Off);
+        // No permissive stage exists for Landlock — "log" is not a valid mode.
+        assert_eq!(LandlockMode::parse(Some("log"), false), LandlockMode::Off);
+    }
+
+    #[test]
+    fn landlock_apply_off_is_a_noop() {
+        // Off must never touch the kernel or confine the caller; safe to call in-test.
+        assert_eq!(
+            apply_landlock(LandlockMode::Off).unwrap(),
+            RulesetStatus::NotEnforced
+        );
+    }
+
+    /// Real confinement check: enforce inside a `fork`ed child (so the test runner is
+    /// never confined) and assert the child can read an allowlisted subtree but is
+    /// denied a path outside it. Ignored by default — it installs a live Landlock
+    /// ruleset, so it only means anything on a Landlock-capable kernel:
+    ///   cargo test -p doord --bin doord -- --ignored landlock_enforce_confines
+    #[test]
+    #[ignore = "installs a real Landlock ruleset; run manually on a Landlock kernel"]
+    fn landlock_enforce_confines_a_forked_child() {
+        // Probe file OUTSIDE the allowlist — the OS temp dir (/tmp) is deliberately
+        // excluded from the supervisor path seed.
+        let probe = std::env::temp_dir().join(format!("doord-ll-probe-{}", std::process::id()));
+        std::fs::write(&probe, b"x").expect("write probe file");
+
+        let pid = unsafe { libc::fork() };
+        assert!(pid >= 0, "fork failed");
+        if pid == 0 {
+            // Child: confine self, then probe. Exit code encodes the outcome — never
+            // returns to the harness.
+            let code = match apply_landlock(LandlockMode::Enforce) {
+                // Kernel without Landlock: inconclusive, tell the parent to skip.
+                Ok(RulesetStatus::NotEnforced) => 40,
+                Ok(_) => {
+                    let outside_denied = std::fs::File::open(&probe).is_err();
+                    let inside_ok = std::fs::read_dir("/usr").is_ok();
+                    if outside_denied && inside_ok {
+                        0
+                    } else {
+                        10
+                    }
+                }
+                Err(_) => 41,
+            };
+            unsafe { libc::_exit(code) };
+        }
+
+        let mut wstatus = 0i32;
+        unsafe { libc::waitpid(pid, &mut wstatus, 0) };
+        let _ = std::fs::remove_file(&probe);
+        let code = libc::WEXITSTATUS(wstatus);
+        if code == 40 {
+            eprintln!("landlock not enforced on this kernel — skipping the confinement assertion");
+            return;
+        }
+        assert_eq!(
+            code, 0,
+            "child exit {code}: 0 = confined (outside denied, /usr allowed), \
+             10 = ruleset did not confine as expected, 41 = apply_landlock errored"
+        );
     }
 }

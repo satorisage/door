@@ -17,3 +17,4 @@ zeroize = { version = "1", features = ["derive"] }
 libc = "0.2"
 pam-client = "0.5"
 seccompiler = "0.4"
+landlock = "0.4"

@@ -15,3 +15,4 @@ serde_json = { workspace = true }
 libc = { workspace = true }
 pam-client = { workspace = true }
 seccompiler = { workspace = true }
+landlock = { workspace = true }

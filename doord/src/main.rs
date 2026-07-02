@@ -112,6 +112,33 @@ fn main() -> ExitCode {
         );
     }
 
+    // Confine the supervisor's filesystem reach (Landlock), after seccomp and under the
+    // same rule: spawner-only, so the desktop/greeter — forked off the spawner, not this
+    // lineage — never inherits the path ruleset. Landlock has no permissive mode, so this
+    // ships flag-gated + default-off (`DOORD_LANDLOCK=enforce` opts a genny boot in; the
+    // path seed is tuned there before the shipped unit flips). Best-effort: an old kernel
+    // degrades to NotEnforced. `DOORD_NO_SANDBOX=1` forces off.
+    if spawner.is_some() {
+        let mode = hardening::LandlockMode::from_env();
+        match hardening::apply_landlock(mode) {
+            Ok(status) if mode != hardening::LandlockMode::Off => {
+                eprintln!("doord: supervisor Landlock ruleset installed ({mode:?}, {status:?})");
+            }
+            Ok(_) => {}
+            Err(e) => {
+                eprintln!(
+                    "doord: warning: could not apply the Landlock ruleset ({mode:?}); \
+                     continuing without a path sandbox: {e}"
+                );
+            }
+        }
+    } else if hardening::LandlockMode::from_env() != hardening::LandlockMode::Off {
+        eprintln!(
+            "doord: DOORD_LANDLOCK set but not in spawner mode; skipping — a supervisor \
+             path ruleset on the direct in-lineage path would confine the desktop session"
+        );
+    }
+
     let logins = WorkerLoginFactory::new();
 
     match ipc::serve(&config, &logins, spawner.as_ref()) {
