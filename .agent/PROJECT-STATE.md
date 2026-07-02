@@ -1,6 +1,8 @@
 # Project State
 
-**Last updated:** 2026-07-01 (M5 Tier 3 seccomp enforce shipped as the `doord.service` default)
+**Last updated:** 2026-07-02 (v0.1.5 shipped to the AUR — FIDO2/U2F 2FA; `release.sh` hardened
+against `.SRCINFO`/`PKGBUILD`/`Cargo.toml` version drift — see ROADMAP `## Shipped` v0.1.5.
+Active focus unchanged: M5 Tier 4 Landlock.)
 **Active focus (2026-07-01): M5 Tier 4 — Landlock.** Tier 3 (supervisor seccomp) is COMPLETE:
 `Environment=DOORD_SECCOMP=enforce` (`SCMP_ACT_ERRNO(EPERM)`) is baked into the shipped
 `dist/systemd/doord.service` after a clean full-cycle enforce validation on `genny` (see §5). Next =

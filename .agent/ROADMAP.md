@@ -498,6 +498,25 @@ off-by-default DECISION naming its threat model before it can graduate.
 
 ## Shipped
 
+- **v0.1.5 → AUR** (2026-07-02): **live on the AUR** (pkgver 0.1.5, pkgrel 1) —
+  GitHub tag `v0.1.5` → `bf0d425`, AUR commit `0185cc2 door 0.1.5-1` (real sha256
+  pinned by `updpkgsums`), GitHub Release
+  <https://github.com/satorisage/door/releases/tag/v0.1.5> (notes from
+  `dist/release-notes/v0.1.5.md` — the new `release.sh` step 2b). Ships the
+  **FIDO2/U2F hardware-key 2FA** feature (greeter multi-prompt + touch cue,
+  `pam-u2f` optdepend, `docs/yubikey.md`; no TCB change). **Publish hiccup +
+  durable fix:** right after push the AUR looked stale — but this was **cgit/CDN
+  cache + RPC reindex lag** (first fetches served old `0.1.4` content for ~a
+  minute; the git repo held `0.1.5-1` the whole time). Confirmed resolved: RPC
+  serves `0.1.5-1`, `.SRCINFO` carries the `pam-u2f` optdepend. **`release.sh`
+  hardened** so the *real* footgun (a `.SRCINFO`/`PKGBUILD`/`Cargo.toml` version
+  drift silently shipping the wrong version, since aurweb indexes `.SRCINFO`) can
+  no longer publish: preflight asserts `Cargo.toml`==`PKGBUILD` pkgver; step 3
+  asserts `updpkgsums` pinned a real sha (never `SKIP`) and the regenerated
+  `.SRCINFO` matches `${VER}-${REL}` *before* the push; a post-push RPC poll +
+  a printed `paru -Sy && paru -S door` hint close the "published but paru shows
+  old" loop. Users refresh with `paru -Sy` (paru caches AUR metadata).
+
 - **v0.1.4 → AUR** (2026-07-01): **live on the AUR** (pkgver 0.1.4, pkgrel 1) —
   GitHub tag `v0.1.4` → `90b78ff`, AUR commit `6e65f98 door 0.1.4-1` (real sha256
   pinned by `updpkgsums`), published via `scripts/release.sh`. Version bumped
