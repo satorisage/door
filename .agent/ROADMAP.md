@@ -5,13 +5,18 @@ milestone's task tree is the plan; `.agent/TODO.md` is its derived ready-frontie
 
 ## Active
 
-> **Current frontier (2026-07-01): M5 Tier 2 — pre-forked spawner.** M4's Done-when
-> is met on hardware (real-VT PASS 2026-07-01; one minor save-leg open). M8 and M9 are
-> **complete** (see their sections below — tagged in place per the M7 convention, not
-> physically relocated). The live build frontier is **M5 §Tier 2 part 2**: the spawner
-> is wired behind `DOORD_SPAWNER` and needs a real seat/PAM hardware validation before
-> the flag becomes default. Its section lives under `## Backlog` below by the in-place
-> convention — but it is the active work.
+> **Current frontier (2026-07-01): M5 Tier 2 — pre-forked spawner, login path HARDWARE-VALIDATED.**
+> M4's Done-when is met on hardware (real-VT PASS 2026-07-01; one minor save-leg open). M8 and
+> M9 are **complete** (see their sections below — tagged in place per the M7 convention, not
+> physically relocated). **M5 §Tier 2 part 2 validation happened out-of-tree** (a runtime act,
+> so D-0037's commit-boundary sync never fired — recorded here 2026-07-01 from the live machine):
+> a `DOORD_SPAWNER=1` systemd drop-in is enabled on `genny`, doord booted in spawner mode, and a
+> **real PAM login (`stephen`) handed off into a `plasma` session over the spawner path** (journal
+> `-b`, boot 10:45 CDT; session stable 9h+). The login leg is proven on metal. **Remaining before
+> the flag becomes the shipped default:** (a) confirm the clean logout/teardown leg (control-EOF →
+> worker reap — not yet observed this boot, no logout), (b) flip the shipped `doord.service`
+> default (currently on only via the machine-local drop-in), then Tier 3 (seccomp) / Tier 4
+> (Landlock). The section lives under `## Backlog` below by the in-place convention.
 
 ### M4 — The beautiful greeter — **Done-when MET on hardware (2026-07-01)**; lone open leg: door-settings *save*
 **Criticality: Material** (pre-auth UI; no auth/lockout change, but the greeter is
@@ -231,9 +236,11 @@ look byte-faithful; each shader change naga-gated.
 
 ### M5 — Hardening pass — ⏳ ACTIVE (current frontier, 2026-07-01)
 > Tier 1 (systemd unit hardening) done; Tier 2 part 1 (spawner foundation) done; **Tier 2
-> part 2 (live-path flip, gated `DOORD_SPAWNER`) landed at HEAD `9c9e1e1` and awaits
-> hardware validation** (real BeginAuth → worker → session → control-EOF on a real seat/PAM)
-> before the flag becomes default. Then part 3 (default flip) → Tier 3 seccomp / Tier 4 Landlock.
+> part 2 (live-path flip, gated `DOORD_SPAWNER`) landed at HEAD `9c9e1e1`; its LOGIN path is
+> now HARDWARE-VALIDATED** — a `DOORD_SPAWNER=1` drop-in on `genny` ran a real PAM login into a
+> `plasma` session over the spawner (2026-07-01, recorded out-of-tree; see the `## Active` note).
+> Remaining: confirm the clean logout/teardown (control-EOF → reap) leg, then part 3 flips the
+> **shipped** unit default (drop-in → real default) → Tier 3 seccomp / Tier 4 Landlock.
 - [x] **session discovery / `.desktop` trust pentest** (2026-06-30) — clean, no findings.
       Session dirs are root-owned system dirs only (no user dir read); `Exec` is tokenized
       → direct `Command::new` exec (no shell injection); `session_id` exact-matched (no path
@@ -267,8 +274,17 @@ look byte-faithful; each shader change naga-gated.
             already closes control on exit (`worker.rs`), and the spawner bare-reaps, so no
             exit-report/desync. `spawn_worker_raw` is the `SpawnFn`. Default = direct path,
             unchanged. Boot-tested in the real binary (`ipc_smoke::boots_and_serves_in_spawner_mode`).
-            **Remaining: hardware validation** of the full BeginAuth → real worker → session →
-            control-EOF path on a real seat/PAM before the flag becomes default.
+            - [x] **login path HARDWARE-VALIDATED (2026-07-01, recorded out-of-tree)** — a
+                  `DOORD_SPAWNER=1` systemd drop-in on `genny` (`/etc/systemd/system/doord.service.d/`)
+                  booted doord in spawner mode; journal (`-b`, 10:45 CDT): greeter connected →
+                  `authentication succeeded for 'stephen'` → handoff → `started session 'plasma'`,
+                  session stable 9h+. The full BeginAuth → real worker (SCM_RIGHTS) → session →
+                  start path is proven on real seat/PAM. NOTE: this was a runtime act, not a commit,
+                  so D-0037's sync never fired — documented after the fact.
+            - [ ] **teardown leg** — confirm the clean logout path (control-EOF → worker reap) on
+                  the next real logout (not observed this boot; the validated session is still up).
+            - [ ] **flip the shipped default** — part 2 currently on only via the machine-local
+                  drop-in; part 3 makes it the default in the shipped `doord.service`.
       - [ ] **part 3** — once validated: make spawner the default; then Tier 3 (seccomp
             allowlist) + Tier 4 (Landlock paths) on the supervisor (applied after `fork_spawner`).
 - privilege-drop audit ✅ (pentest 2026-06-30), IPC/PAM fuzzing ✅ (ipc_fuzz.rs)

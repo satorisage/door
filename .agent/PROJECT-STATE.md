@@ -8,10 +8,16 @@ GPU-budget level, D-0014) are **COMPLETE and on master**; **M4**'s Done-when is 
 hardware** (real-VT PASS 2026-07-01 — themed greeter → password → PAM → session; lone open
 leg = the door-settings *save* to `/etc/door` via `pkexec`, design-verified only). The live
 frontier is **M5 Tier 2 part 2** (DECISION-0015): the pre-forked spawner is wired behind
-`DOORD_SPAWNER` (HEAD `9c9e1e1`) and needs a real seat/PAM **hardware validation** (BeginAuth
-→ real worker → session → control-EOF) before the flag becomes default; then part 3
-default-flip → Tier 3 seccomp / Tier 4 Landlock. The milestone narrative below
-(M2/M3/M6/M4/M7) is retained as **history/context, not current state**.
+`DOORD_SPAWNER` (HEAD `9c9e1e1`) and its **login path is now HARDWARE-VALIDATED** — a
+`DOORD_SPAWNER=1` systemd drop-in on `genny` booted doord in spawner mode and ran a **real PAM
+login (`stephen`) into a `plasma` session over the spawner** (2026-07-01, journal `-b` 10:45 CDT,
+session stable 9h+). This was a **runtime/operational act, not a commit**, so D-0037's
+commit-boundary sync never fired — hence it went undocumented until reconciled here from the live
+machine (same class of gap as the earlier ~3-milestone drift). **Remaining before the shipped
+default flips:** confirm the clean logout/teardown leg (control-EOF → reap; not observed this boot,
+no logout yet) + flip the shipped `doord.service` default (currently on only via the drop-in), then
+Tier 3 seccomp / Tier 4 Landlock. The milestone narrative below (M2/M3/M6/M4/M7) is retained as
+**history/context, not current state**.
 
 ---
 
@@ -175,9 +181,10 @@ old lockstep-with-SCOPE mandate, a Principle-7 violation).
 
 **Milestone:** M5 — Hardening pass (Tier 2, pre-forked spawner); see `ROADMAP.md`
 `## Active` frontier note + the M5 section. **Frontier:** M5 Tier 2 part 2 is landed
-behind `DOORD_SPAWNER` (HEAD `9c9e1e1`); **blocked on** a real seat/PAM hardware
-validation before the flag becomes default. **Criticality: Critical** (privilege
-boundary / login path). M1/M2/M3/M4/M6/M7/M8/M9 are complete.
+behind `DOORD_SPAWNER` (HEAD `9c9e1e1`) and its **login path is hardware-validated** (real
+PAM login → `plasma` over the spawner via a `DOORD_SPAWNER=1` drop-in on `genny`, 2026-07-01);
+**remaining** = confirm the teardown/reap leg + flip the shipped-unit default, then Tier 3/4.
+**Criticality: Critical** (privilege boundary / login path). M1/M2/M3/M4/M6/M7/M8/M9 are complete.
 
 (Projects not using ROADMAP may keep a short DoD list here instead.)
 
@@ -205,14 +212,16 @@ it by kind: deferred-but-committed → a `## Backlog` task in `.agent/ROADMAP.md
 
 ## 5. Next session
 
-**M5 Tier 2 — hardware-validate the spawner, then flip the default.** The pre-forked
-spawner is wired behind `DOORD_SPAWNER` (HEAD `9c9e1e1`) and boot-tested in the binary
-(`ipc_smoke::boots_and_serves_in_spawner_mode`), but the full login path under the flag
-(BeginAuth → real worker over SCM_RIGHTS → session → control-socket EOF teardown) has
-**not** been exercised on a real seat/PAM. Next session: boot with `DOORD_SPAWNER=1` on
-hardware, drive a real login + clean logout, confirm session lifetime + reap, then make
-the spawner the default and proceed to Tier 3 (seccomp allowlist) / Tier 4 (Landlock).
-Minor open leg from M4: exercise the door-settings *save* (`pkexec`-write to `/etc/door`).
+**M5 Tier 2 — login validated; confirm teardown, then flip the shipped default.** The
+pre-forked spawner is wired behind `DOORD_SPAWNER` (HEAD `9c9e1e1`) and its **login path is
+now hardware-validated** — a `DOORD_SPAWNER=1` drop-in on `genny` ran a real PAM login
+(`stephen`) → `plasma` session over the spawner (2026-07-01, journal `-b`). Still open:
+(1) **confirm the clean logout/teardown leg** (control-EOF → worker reap) — on the next real
+logout, check `journalctl -u doord` for session-close + reap with no orphan; (2) **flip the
+shipped default** — the flag is on only via the machine-local drop-in, so make it the default
+in `dist/systemd/doord.service`; then (3) Tier 3 (seccomp allowlist) / Tier 4 (Landlock) on
+the supervisor. Minor open leg from M4: exercise the door-settings *save* (`pkexec`-write to
+`/etc/door`).
 
 **[history] M3 — finish the live end-to-end** (done 2026-06-26). The greeter is built
 and **verified running**: run directly against a wlroots compositor (wayland-0) it
