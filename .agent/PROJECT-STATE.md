@@ -1,6 +1,14 @@
 # Project State
 
-**Last updated:** 2026-07-02 (**M5 COMPLETE** — Tier 4 Landlock validated on `genny` and shipping
+**Last updated:** 2026-07-03 (**greeter black-strip FIXED + on-panel confirmed** — the ~35px
+bottom band was sctk-adwaita client-side decorations (`HEADER_SIZE=35`) drawn because iced left
+`decorations: true` under cage; fix = `decorations: false` in `door-greeter/src/app.rs`, commit
+`95eee0a`. CHECK-IN 0002 → RESOLVED/ARCHIVED; disposition **fixed**. **Release staged: v0.1.7**
+(`dist/release-notes/v0.1.7.md`) — cut it with `scripts/release.sh 0.1.7`. Owner cleanup owed:
+`sudo rm /etc/systemd/system/doord.service.d/30-wayland-debug.conf && sudo systemctl daemon-reload`.
+Prior milestone context below.)
+
+**[history] Last updated:** 2026-07-02 (**M5 COMPLETE** — Tier 4 Landlock validated on `genny` and shipping
 enforce. `dist/systemd/doord.service` now sets `Environment=DOORD_LANDLOCK=enforce`; threat-model
 note filed at `.agent/SECURITY/landlock-path-threat-model.md`. All four sandbox tiers now ship.)
 **Active focus (2026-07-02): M5 CLOSED — supervisor fully sandboxed (spawner + seccomp + Landlock).**

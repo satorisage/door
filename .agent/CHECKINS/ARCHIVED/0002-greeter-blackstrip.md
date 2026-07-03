@@ -1,10 +1,17 @@
-# CHECK-IN 0002 — Greeter black-strip investigation (Material, open)
+# CHECK-IN 0002 — Greeter black-strip investigation (Material, RESOLVED)
 
-**Status:** FIX APPLIED + headless-verified 2026-07-03 — pending on-panel
-confirmation at next boot. Root cause: winit/sctk-adwaita client-side decorations
-(`HEADER_SIZE=35`) drawn because iced left `decorations: true` under cage (no SSD).
-Fix: `decorations: false` in the greeter's `window::Settings`
-(`door-greeter/src/app.rs`). See "TRUE ROOT CAUSE" + "FIX" below.
+**Status:** RESOLVED — 2026-07-03. **On-panel confirmed: black strip gone**, the
+greeter renders edge-to-edge at 1080. Root cause: winit/sctk-adwaita client-side
+decorations (`HEADER_SIZE=35`) drawn because iced left `decorations: true` under
+cage (no SSD). Fix: `decorations: false` in the greeter's `window::Settings`
+(`door-greeter/src/app.rs`, commit `95eee0a`). Ships in **v0.1.7**
+(`dist/release-notes/v0.1.7.md`). Disposition: **fixed.** Full trail below +
+`.agent/REPORTS/2026-07-03-greeter-blackstrip-investigation.md`.
+
+**Cleanup owed (owner-run, sudo):** remove the WAYLAND_DEBUG journal-flood
+drop-in now the trace is captured —
+`sudo rm /etc/systemd/system/doord.service.d/30-wayland-debug.conf && sudo systemctl daemon-reload`
+(no doord restart — that wedges the panel; it clears at next boot).
 
 <details><summary>original status</summary>
 

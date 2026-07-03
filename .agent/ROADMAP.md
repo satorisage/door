@@ -132,6 +132,13 @@ the pre-auth surface — keep new deps justified). Direction (2026-06-27, owner)
             intensity 0.55→0.38 + smaller/softer core, as the new built-in default
             (shared skyshader → greeter + settings). Commit `945cfc5`. Not a theme
             knob; it's the hardcoded default sun. Re-shot the reddit clip's day pass.
+      - [x] **greeter black-strip fixed + on-panel confirmed (2026-07-03)** — a ~35px
+            black band at the panel bottom, greeter-only, invisible in `grim`. Root cause:
+            iced left `decorations: true`; under cage (no SSD) winit drew sctk-adwaita CSD
+            (`HEADER_SIZE=35`), shrinking content to 1045 and leaving the bottom 35px
+            uncovered → scanned out black. Fix: `decorations: false` in `door-greeter`
+            `window::Settings` (commit `95eee0a`). Headless- then on-panel-verified; ships
+            v0.1.7. Full trail: CHECK-IN 0002 (ARCHIVED) + the black-strip REPORT.
       - [ ] **door-settings *save* not yet exercised** — `pkexec`-write to `/etc/door`;
             design-verified, confirm interactively on the real machine.
 

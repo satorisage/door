@@ -1,8 +1,12 @@
-# Investigation — greeter black-strip on physical eDP panel (open)
+# Investigation — greeter black-strip on physical eDP panel (RESOLVED)
 
-**Status:** OPEN, active. Reboot-crossing. Flagged by CHECK-IN 0002.
-**Read this before proposing anything.** Every test appends a dated VERDICT row.
-Never re-run a RULED-OUT test; never re-derive a settled fact.
+**Status:** RESOLVED — 2026-07-03. On-panel confirmed: strip gone, greeter fills
+1080. Root cause = sctk-adwaita client-side decorations (`HEADER_SIZE=35`) drawn
+because door-greeter left `decorations: true` under cage (no SSD). Fix:
+`decorations: false` in `door-greeter/src/app.rs` `window::Settings` (commit
+`95eee0a`). Ships in **v0.1.7**. CHECK-IN 0002 closed (→ ARCHIVED).
+**Kept as the settled record.** Never re-run a RULED-OUT test; never re-derive a
+settled fact. PSR and direct-scanout stay ruled out (see table).
 
 ## Symptom (fixed)
 - Black horizontal **strip** on the **physical eDP-1 panel**, only at the **door
