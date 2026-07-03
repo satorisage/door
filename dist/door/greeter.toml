@@ -28,6 +28,11 @@ font = "MesloLGS Nerd Font"
 corner_radius = 16.0       # card corner radius (px)
 card_width    = 300.0      # card width (px) — keep it minimal
 show_clock    = true       # show the clock + date in the card
+# show_kb_layout = false     # show the active keyboard layout (e.g. US) under the
+#                            # password — a local xkb read, so a login on the wrong
+#                            # layout is visible, not a silent failure. Off by default.
+# show_battery  = false      # show a battery charge indicator near the clock (a local
+#                            # sysfs read; hidden on desktops with no battery). Off by default.
 # clock_seconds = false      # show seconds (HH:MM:SS / analog second hand)
 # clock_size    = 56         # clock font size (px) — also the analog face scale
 # clock_style   = "digital"  # "digital" readout or an "analog" clock face

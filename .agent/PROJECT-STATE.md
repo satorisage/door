@@ -1,6 +1,18 @@
 # Project State
 
-**Last updated:** 2026-07-03 (**cc batch CLOSED — CHECK-IN 0003 resolved/archived.**
+**Last updated:** 2026-07-03 (**D-0018 greeter indicators BUILT.** The two authorized
+default-off indicators shipped: **keyboard-layout** (`show_kb_layout` — local xkb read
+`XKB_DEFAULT_LAYOUT`→localectl→vconsole, `⌨ US` under the password mirroring the
+caps-lock row) and **battery** (`show_battery` — `/sys/class/power_supply` first
+`Battery`-type, `⚡ 100%` near the clock, hidden on desktops). Wired end-to-end:
+door-theme keys (7 sites, both default `false`), greeter render + 1 Hz refresh,
+door-settings toggles + live-preview mocks, `greeter.toml` docs. Byte-identical default
+preserved (off); new door-theme unit test + full workspace green (theme 17 / doord 39 /
++others, clippy 0) + **headless-render verified** live on this laptop
+(`scratch/m4shots/indicators.png`: `⌨ US` + `⚡ 100%` both correct). **Owner action:**
+`git push origin master` (committed, not auto-pushed). Prior cc-batch context below.)
+
+**[history] Last updated:** 2026-07-03 (**cc batch CLOSED — CHECK-IN 0003 resolved/archived.**
 Agent B's `delegate/cc-settings-docs` (M8 settings-UX grouping, M7-E import/export,
 M7-D `clock_tz` key + procedural/palette docs) was **verified green** (build + 20
 tests + clippy; byte-identical greeter defaults; no new IO/exec/privileged surface)

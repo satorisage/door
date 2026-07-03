@@ -284,6 +284,14 @@ struct PromptField {
     value: String,
 }
 
+/// Battery charge for the optional indicator — a percent and whether it's charging,
+/// from a purely local `/sys/class/power_supply` read (no daemon, no privilege).
+#[derive(Clone, Copy)]
+struct Battery {
+    percent: u8,
+    charging: bool,
+}
+
 struct State {
     phase: Phase,
     sessions: Vec<SessionChoice>,
@@ -316,6 +324,13 @@ struct State {
     /// Whether Caps Lock is currently on — read from the keyboard LED (local; no
     /// daemon). Drives the warning shown by the password field.
     caps_lock: bool,
+    /// The active keyboard layout code (e.g. `us`, `de`) from a local xkb read, shown
+    /// under the password field when `theme.show_kb_layout` is on. `None` when the
+    /// indicator is off or no layout is determinable. Refreshed on the 1 Hz Tick.
+    kb_layout: Option<String>,
+    /// Battery charge for the optional indicator, from a local sysfs read. `None` when
+    /// the indicator is off or the machine has no battery. Refreshed on the 1 Hz Tick.
+    battery: Option<Battery>,
     /// An interactive second-factor prompt awaiting a typed reply (a FIDO2 PIN,
     /// or any prompt the pre-typed password can't answer). `None` unless PAM is
     /// mid-conversation asking for input the login form didn't already supply.
@@ -337,6 +352,9 @@ impl State {
             theme.clock_format.as_deref(),
         );
         let (wallpaper, logo) = vet_theme_assets(&theme);
+        // Read the optional indicators before `theme` is moved into the struct.
+        let kb_layout = theme.show_kb_layout.then(kb_layout).flatten();
+        let battery = theme.show_battery.then(battery).flatten();
         State {
             phase: Phase::Connecting,
             sessions: Vec::new(),
@@ -355,6 +373,8 @@ impl State {
             anim: 0.0,
             started: Instant::now(),
             caps_lock: caps_lock_on().unwrap_or(false),
+            kb_layout,
+            battery,
             prompt: None,
             cue: None,
         }
@@ -538,6 +558,18 @@ fn update(state: &mut State, message: Message) -> Task<Message> {
             if let Some(on) = caps_lock_on() {
                 state.caps_lock = on;
             }
+            // Refresh the optional indicators (local reads; skipped when disabled, and
+            // re-evaluated here so a hot-reload that flips the flag takes effect).
+            state.kb_layout = if state.theme.show_kb_layout {
+                kb_layout()
+            } else {
+                None
+            };
+            state.battery = if state.theme.show_battery {
+                battery()
+            } else {
+                None
+            };
         }
         Message::Fade => state.fade = (state.fade + 16.0 / state.theme.fade_ms.max(16.0)).min(1.0),
         // Recompute the clock from real elapsed time each frame — smooth, jitter-free.
@@ -671,6 +703,83 @@ fn caps_lock_on() -> Option<bool> {
             let brightness = std::fs::read_to_string(entry.path().join("brightness")).ok()?;
             return Some(brightness.trim() != "0");
         }
+    }
+    None
+}
+
+/// The configured keyboard layout code (e.g. `us`, `de`) from purely local sources,
+/// in priority order: `XKB_DEFAULT_LAYOUT` (the compositor's launch env), then the
+/// localectl-managed `/etc/X11/xorg.conf.d/00-keyboard.conf` (`XkbLayout`), then
+/// `/etc/vconsole.conf` (`XKBLAYOUT=`). Returns the *primary* (first) layout of a
+/// comma-separated list. No daemon, no privileged path — every source is world-
+/// readable. This reports the *configured* layout: a Wayland client can't see a live
+/// per-keystroke layout switch through iced, so the indicator names what the seat is
+/// set to, which is the thing that trips a login on an unexpected layout.
+fn kb_layout() -> Option<String> {
+    fn primary(value: &str) -> Option<String> {
+        let first = value.trim().trim_matches('"').split(',').next()?.trim();
+        (!first.is_empty()).then(|| first.to_string())
+    }
+    // 1. The compositor's launch environment, if it set an explicit layout.
+    if let Ok(env) = std::env::var("XKB_DEFAULT_LAYOUT") {
+        if let Some(l) = primary(&env) {
+            return Some(l);
+        }
+    }
+    // 2. The localectl-managed X11/Wayland keymap file: `Option "XkbLayout" "us,de"`.
+    if let Ok(conf) = std::fs::read_to_string("/etc/X11/xorg.conf.d/00-keyboard.conf") {
+        for line in conf.lines() {
+            let line = line.trim();
+            if line.starts_with("Option") && line.contains("XkbLayout") {
+                // The value is the last quoted token on the line.
+                if let Some(v) = line.rsplit('"').nth(1) {
+                    if let Some(l) = primary(v) {
+                        return Some(l);
+                    }
+                }
+            }
+        }
+    }
+    // 3. The virtual-console config's xkb layout (`XKBLAYOUT="us"`).
+    if let Ok(vc) = std::fs::read_to_string("/etc/vconsole.conf") {
+        for line in vc.lines() {
+            if let Some(v) = line.trim().strip_prefix("XKBLAYOUT=") {
+                if let Some(l) = primary(v) {
+                    return Some(l);
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Battery charge as `(percent, charging?)` from the first real battery under
+/// `/sys/class/power_supply/*` (the `type` file reads `Battery`, skipping AC/USB
+/// supplies). A purely local, world-readable sysfs read — no daemon, no privilege.
+/// `None` on a machine with no battery, so a desktop asserts nothing.
+fn battery() -> Option<Battery> {
+    let entries = std::fs::read_dir("/sys/class/power_supply").ok()?;
+    for entry in entries.flatten() {
+        let p = entry.path();
+        let is_battery = std::fs::read_to_string(p.join("type"))
+            .map(|s| s.trim() == "Battery")
+            .unwrap_or(false);
+        if !is_battery {
+            continue;
+        }
+        let Some(percent) = std::fs::read_to_string(p.join("capacity"))
+            .ok()
+            .and_then(|s| s.trim().parse::<u8>().ok())
+        else {
+            continue;
+        };
+        let charging = std::fs::read_to_string(p.join("status"))
+            .map(|s| matches!(s.trim(), "Charging" | "Full"))
+            .unwrap_or(false);
+        return Some(Battery {
+            percent: percent.min(100),
+            charging,
+        });
     }
     None
 }
@@ -830,7 +939,8 @@ fn view(state: &State) -> Element<'_, Message> {
     let muted = t.muted.iced_alpha(f);
 
     // Clock + date — the minimal focal point at the top of the card.
-    let header: Element<Message> = if t.show_clock {
+    let mut header_items: Vec<Element<Message>> = Vec::new();
+    if t.show_clock {
         let time_widget: Element<Message> = match t.clock_style {
             ClockStyle::Digital => text(state.clock.clone())
                 .size(t.clock_size * t.font_scale)
@@ -844,17 +954,33 @@ fn view(state: &State) -> Element<'_, Message> {
                     .into()
             }
         };
-        column![
-            time_widget,
+        header_items.push(time_widget);
+        header_items.push(
             text(state.date.clone())
                 .size(13.0 * t.font_scale)
-                .color(muted),
-        ]
-        .spacing(2)
-        .align_x(Alignment::Center)
-        .into()
-    } else {
+                .color(muted)
+                .into(),
+        );
+    }
+    // Optional battery indicator (off by default): a subtle line near the clock,
+    // hidden when the machine has no battery. `⚡` marks charging/full.
+    if t.show_battery {
+        if let Some(b) = &state.battery {
+            let label = if b.charging {
+                format!("⚡ {}%", b.percent)
+            } else {
+                format!("{}%", b.percent)
+            };
+            header_items.push(text(label).size(12.0 * t.font_scale).color(muted).into());
+        }
+    }
+    let header: Element<Message> = if header_items.is_empty() {
         Space::new().into()
+    } else {
+        Column::with_children(header_items)
+            .spacing(2)
+            .align_x(Alignment::Center)
+            .into()
     };
 
     // Emblem: a user-set image (SVG crisp, else raster) overrides; otherwise the
@@ -1012,6 +1138,18 @@ fn view(state: &State) -> Element<'_, Message> {
                     .color(t.error_color.iced_alpha(f))
                     .into(),
             );
+        }
+        // Optional keyboard-layout indicator (off by default): a muted hint so a
+        // login on an unexpected layout is visible, not a silent auth failure.
+        if t.show_kb_layout {
+            if let Some(layout) = &state.kb_layout {
+                items.push(
+                    text(format!("⌨  {}", layout.to_uppercase()))
+                        .size(12.0 * t.font_scale)
+                        .color(muted)
+                        .into(),
+                );
+            }
         }
         items.push(login.into());
     }

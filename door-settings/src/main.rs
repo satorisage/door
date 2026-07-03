@@ -153,6 +153,8 @@ enum Message {
     SpinnerTrail(f32),
     EditDay(bool),
     ToggleClock(bool),
+    ToggleKbLayout(bool),
+    ToggleBattery(bool),
     ToggleAnimate(bool),
     ToggleReducedMotion(bool),
     SkyModePicked(SkyMode),
@@ -362,6 +364,8 @@ struct State {
     day_end: String,
     spinner_speed: f32,
     show_clock: bool,
+    show_kb_layout: bool,
+    show_battery: bool,
     animate: bool,
     sky_mode: SkyMode,
     reduced_motion: bool,
@@ -702,6 +706,8 @@ impl State {
             day_end: minutes_to_hhmm(end),
             spinner_speed: night.spinner_speed,
             show_clock: night.show_clock,
+            show_kb_layout: night.show_kb_layout,
+            show_battery: night.show_battery,
             animate: night.animate,
             sky_mode: night.sky_mode,
             reduced_motion: night.reduced_motion,
@@ -903,6 +909,8 @@ impl State {
         self.day_end = minutes_to_hhmm(window.1);
         self.spinner_speed = night.spinner_speed;
         self.show_clock = night.show_clock;
+        self.show_kb_layout = night.show_kb_layout;
+        self.show_battery = night.show_battery;
         self.animate = night.animate;
         self.sky_mode = night.sky_mode;
         self.reduced_motion = night.reduced_motion;
@@ -1180,6 +1188,8 @@ impl State {
             card_width: num("Card width", &self.card_width)?,
             card_pos: self.card_pos,
             show_clock: self.show_clock,
+            show_kb_layout: self.show_kb_layout,
+            show_battery: self.show_battery,
             animate: self.animate,
             is_day: day,
             sky_mode: self.sky_mode,
@@ -1430,6 +1440,8 @@ fn update(state: &mut State, message: Message) -> Task<Message> {
         Message::ToggleHelp(on) => state.help_on = on,
         Message::ToggleExpert(on) => state.expert = on,
         Message::ToggleClock(on) => state.show_clock = on,
+        Message::ToggleKbLayout(on) => state.show_kb_layout = on,
+        Message::ToggleBattery(on) => state.show_battery = on,
         Message::ToggleAnimate(on) => state.animate = on,
         Message::ToggleReducedMotion(on) => state.reduced_motion = on,
         Message::SkyModePicked(m) => state.sky_mode = m,
@@ -3981,6 +3993,23 @@ fn behavior_tab<'a>(state: &'a State, h: bool) -> Element<'a, Message> {
                 h,
             ),
             helped(
+                toggle_row(
+                    "Keyboard layout",
+                    state.show_kb_layout,
+                    Message::ToggleKbLayout,
+                ),
+                "Show the active keyboard layout (e.g. US) under the password — so a \
+                 login on the wrong layout is visible, not a silent failure. Local \
+                 read, off by default.",
+                h,
+            ),
+            helped(
+                toggle_row("Battery", state.show_battery, Message::ToggleBattery),
+                "Show a battery charge indicator near the clock (laptops only; hidden \
+                 on desktops). Local read, off by default.",
+                h,
+            ),
+            helped(
                 row![
                     color_label("Clock style"),
                     pick_list(
@@ -4435,6 +4464,7 @@ Shape, depth, and the optional backdrop blur.
 The clock, type, and motion — mostly shared knobs.
 
 - **Clock** · `clock_style` / `clock_format` / `clock_tz` · shared — digital or a drawn analog face; an optional `strftime` format; an optional timezone (any IANA zone like `Europe/Paris`; blank = system local time).
+- **Indicators** · `show_kb_layout` / `show_battery` · shared — optional, off by default. Keyboard layout (local xkb read) shows the active layout under the password so a login on the wrong layout is visible; battery (local sysfs read) shows charge near the clock, hidden on desktops with no battery. Both are purely local reads — no daemon, no network.
 - **Type** · `font` / `font_weight` / `font_scale` · shared — family (must be installed), weight, and an accessibility text-size multiplier.
 - **Motion** · `animate` / `reduced_motion` · shared — run the sky animation; reduced-motion stills everything for accessibility.
 - **GPU level** · `gpu_level` · shared — one global render budget (lite / moderate / high / bonkers) bundling shader detail, frame-rate cap, and blur. `high` is the default and keeps the look unchanged; lower tiers trade richness for power and thermals. Global, never per-scene.
@@ -5221,7 +5251,8 @@ fn preview_card(t: &Theme, anim: f32) -> Element<'static, Message> {
         ..iced::Font::DEFAULT
     };
 
-    let header: Element<Message> = if t.show_clock {
+    let mut header_items: Vec<Element<Message>> = Vec::new();
+    if t.show_clock {
         let time_widget: Element<Message> = match t.clock_style {
             ClockStyle::Digital => {
                 // A custom strftime format (or a set timezone) previews against the real
@@ -5259,17 +5290,31 @@ fn preview_card(t: &Theme, anim: f32) -> Element<'static, Message> {
                     .into()
             }
         };
-        column![
-            time_widget,
+        header_items.push(time_widget);
+        header_items.push(
             text("Friday, June 27")
                 .size(13.0 * t.font_scale)
-                .color(muted),
-        ]
-        .spacing(2)
-        .align_x(Alignment::Center)
-        .into()
-    } else {
+                .color(muted)
+                .into(),
+        );
+    }
+    // Battery indicator — a representative mock (like the "12:34" clock) so the
+    // placement reads; the real greeter shows the live charge.
+    if t.show_battery {
+        header_items.push(
+            text("⚡ 85%")
+                .size(12.0 * t.font_scale)
+                .color(muted)
+                .into(),
+        );
+    }
+    let header: Element<Message> = if header_items.is_empty() {
         Space::new().into()
+    } else {
+        Column::with_children(header_items)
+            .spacing(2)
+            .align_x(Alignment::Center)
+            .into()
     };
 
     let emblem: Option<Element<Message>> = match &t.logo {
@@ -5348,6 +5393,16 @@ fn preview_card(t: &Theme, anim: f32) -> Element<'static, Message> {
     }
     body_items.push(field("user", t).into());
     body_items.push(field("password", t).into());
+    // Keyboard-layout indicator — a representative mock (US) under the password, so
+    // the placement reads; the real greeter shows the seat's configured layout.
+    if t.show_kb_layout {
+        body_items.push(
+            text("⌨  US")
+                .size(12.0 * t.font_scale)
+                .color(muted)
+                .into(),
+        );
+    }
     body_items.push(sign_in.into());
     let body = Column::with_children(body_items)
         .spacing(12)

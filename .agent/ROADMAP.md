@@ -482,13 +482,16 @@ existing `naga` parse+validate test.
             slips under the password field when on.
       - [~] **DECISION-gated pre-auth indicators — resolved per-item by D-0018
             (2026-07-03, CHECK-IN 0003), superseding D-0012's blanket park:**
-            - [ ] **keyboard-layout indicator — AUTHORIZED (default-off).** Build: a
-                  `show_kb_layout` theme key (default false) + local xkb read + a card
-                  row in `app.rs` (mirrors the caps-lock row); door-settings toggle.
-                  TCB-neutral, no daemon protocol. → `## Loose`.
-            - [ ] **battery indicator — AUTHORIZED (default-off).** Build: a
-                  `show_battery` key (default false) + `/sys/class/power_supply` read +
-                  card row (hidden when no battery); door-settings toggle. → `## Loose`.
+            - [x] **keyboard-layout indicator — BUILT (2026-07-03, default-off).**
+                  `show_kb_layout` theme key (default false) + local xkb read
+                  (`XKB_DEFAULT_LAYOUT` → `00-keyboard.conf` → `vconsole.conf`) + a `⌨ US`
+                  row under the password in `app.rs` (mirrors the caps-lock row) +
+                  door-settings toggle + preview mock. TCB-neutral, no daemon protocol.
+                  Headless-render verified (`scratch/m4shots/indicators.png`).
+            - [x] **battery indicator — BUILT (2026-07-03, default-off).** `show_battery`
+                  key (default false) + `/sys/class/power_supply/*` read (first `Battery`
+                  type; skips AC/USB) + a `⚡ 100%` row near the clock (hidden when no
+                  battery) + door-settings toggle + preview mock. Headless-render verified.
             - [ ] **user list + avatars — PARKED** (unchanged; new privileged IPC
                   enumeration + username disclosure — cost/benefit did not change).
             - [ ] **network indicator — DECLINED; `No network, ever` reaffirmed
@@ -559,16 +562,20 @@ off-by-default DECISION naming its threat model before it can graduate.
 - ~~Decide greeter toolkit (GTK4 / Qt-QML / Iced / bespoke wgpu)~~ — **resolved
   2026-06-26: Iced + iced_layershell (D-0006).**
 
-- **Keyboard-layout indicator (default-off) — AUTHORIZED (D-0018, 2026-07-03).**
-  Build: a `show_kb_layout` door-theme key (default `false`) + a local xkb read +
-  a card row in `door-greeter/src/app.rs` (mirror the caps-lock row pattern) +
-  a door-settings toggle. TCB-neutral, no daemon protocol, preserves the
-  byte-identical default (off). `depends:` M4.
+- ~~**Keyboard-layout indicator (default-off) — AUTHORIZED (D-0018)**~~ — **BUILT
+  2026-07-03.** `show_kb_layout` door-theme key (default `false`) + a local xkb read
+  (`XKB_DEFAULT_LAYOUT` → localectl `00-keyboard.conf` → `vconsole.conf`, primary
+  layout) + a `⌨ US` row under the password in `door-greeter/src/app.rs` (mirrors the
+  caps-lock row) + a door-settings toggle + preview mock + `greeter.toml` docs.
+  TCB-neutral, no daemon protocol, byte-identical default (off) — unit-tested +
+  headless-render verified (`scratch/m4shots/indicators.png`).
 
-- **Battery indicator (default-off) — AUTHORIZED (D-0018, 2026-07-03).** Build: a
-  `show_battery` door-theme key (default `false`) + a `/sys/class/power_supply/*`
-  read + a card row (hidden when there is no battery — a desktop asserts nothing)
-  + a door-settings toggle. TCB-neutral, local read, default-off. `depends:` M4.
+- ~~**Battery indicator (default-off) — AUTHORIZED (D-0018)**~~ — **BUILT
+  2026-07-03.** `show_battery` door-theme key (default `false`) + a
+  `/sys/class/power_supply/*` read (first `type == Battery`, skipping AC/USB;
+  `Charging`/`Full` → the `⚡` bolt) + a `⚡ 100%` row near the clock (hidden when no
+  battery) + a door-settings toggle + preview mock + `greeter.toml` docs.
+  TCB-neutral, local read, default-off — unit-tested + headless-render verified.
 
 - **No-network verification engagement — commissioned (D-0018, 2026-07-03).**
   Owner-run (CRTO/OSCP) red-team to *prove* `No network, ever` holds (no egress,

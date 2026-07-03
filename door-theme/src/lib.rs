@@ -577,6 +577,17 @@ pub struct Theme {
     pub card_pos: CardPos,
     /// Whether to show the clock + date in the card.
     pub show_clock: bool,
+    /// Whether to show the active keyboard-layout indicator under the password field
+    /// (e.g. `us`, `de`). A purely local read of the greeter's own xkb layout — no
+    /// daemon, no privileged path — so a login on the wrong layout is visible rather
+    /// than a silent auth failure. **Off by default**: the built-in look is
+    /// unchanged unless a theme opts in. Shared.
+    pub show_kb_layout: bool,
+    /// Whether to show a battery indicator in the card (e.g. `85%`, `⚡ 42%`). A purely
+    /// local read of `/sys/class/power_supply/*` — no daemon, no privileged path. Hidden
+    /// when the machine has no battery (a desktop asserts nothing). **Off by default.**
+    /// Shared.
+    pub show_battery: bool,
     /// Whether to run the animated sky (twinkling stars + drifting comet). Off → a
     /// still wallpaper, like the battery half of the Plasma comet wallpaper.
     pub animate: bool,
@@ -1015,6 +1026,8 @@ impl Default for Theme {
             card_width: 300.0,
             card_pos: CardPos::Center,
             show_clock: true,
+            show_kb_layout: false,
+            show_battery: false,
             animate: true,
             is_day: false,
             sky_mode: SkyMode::Auto,
@@ -1216,6 +1229,8 @@ impl Theme {
             card_width: 300.0,
             card_pos: CardPos::Center,
             show_clock: true,
+            show_kb_layout: false,
+            show_battery: false,
             animate: true,
             is_day: true,
             sky_mode: SkyMode::Auto,
@@ -1420,6 +1435,8 @@ struct ThemeFile {
     card_width: Option<f32>,
     card_pos: Option<CardPos>,
     show_clock: Option<bool>,
+    show_kb_layout: Option<bool>,
+    show_battery: Option<bool>,
     animate: Option<bool>,
     sky_mode: Option<SkyMode>,
     reduced_motion: Option<bool>,
@@ -1712,6 +1729,12 @@ impl Theme {
         if let Some(c) = file.show_clock {
             self.show_clock = c;
         }
+        if let Some(k) = file.show_kb_layout {
+            self.show_kb_layout = k;
+        }
+        if let Some(b) = file.show_battery {
+            self.show_battery = b;
+        }
         if let Some(a) = file.animate {
             self.animate = a;
         }
@@ -1977,6 +2000,12 @@ impl Theme {
         }
         if let Some(c) = file.show_clock {
             self.show_clock = c;
+        }
+        if let Some(k) = file.show_kb_layout {
+            self.show_kb_layout = k;
+        }
+        if let Some(b) = file.show_battery {
+            self.show_battery = b;
         }
         if let Some(a) = file.animate {
             self.animate = a;
@@ -2395,6 +2424,8 @@ impl Theme {
         out.push_str(&format!("card_width    = {}\n", self.card_width));
         out.push_str(&format!("card_pos      = {:?}\n", self.card_pos.name()));
         out.push_str(&format!("show_clock    = {}\n", self.show_clock));
+        out.push_str(&format!("show_kb_layout = {}\n", self.show_kb_layout));
+        out.push_str(&format!("show_battery  = {}\n", self.show_battery));
         out.push_str(&format!("animate       = {}\n", self.animate));
         out.push_str(&format!("sky_mode      = {:?}\n", self.sky_mode.name()));
         out.push_str(&format!("reduced_motion = {}\n", self.reduced_motion));
@@ -2865,6 +2896,31 @@ mod tests {
         let file: ThemeFile = toml::from_str(r#"accent = "not-a-color""#).unwrap();
         let merged = Theme::default().merged(file);
         assert_eq!(merged.accent, Theme::default().accent);
+    }
+
+    #[test]
+    fn indicator_keys_default_off_and_round_trip() {
+        // The pre-auth indicators must default OFF so the built-in look is unchanged,
+        // and must survive a write→parse→merge round-trip when opted in.
+        assert!(!Theme::default().show_kb_layout);
+        assert!(!Theme::default().show_battery);
+
+        let t = Theme {
+            show_kb_layout: true,
+            show_battery: true,
+            ..Default::default()
+        };
+        let file: ThemeFile =
+            toml::from_str(&t.to_config_string()).expect("written config must parse");
+        let merged = Theme::default().merged(file);
+        assert!(merged.show_kb_layout);
+        assert!(merged.show_battery);
+
+        // A file that names neither key leaves the (off) default untouched.
+        let partial: ThemeFile = toml::from_str(r##"accent = "#ff0000""##).unwrap();
+        let d = Theme::default().merged(partial);
+        assert!(!d.show_kb_layout);
+        assert!(!d.show_battery);
     }
 
     #[test]
