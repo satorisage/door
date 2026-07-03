@@ -32,6 +32,9 @@ show_clock    = true       # show the clock + date in the card
 # clock_size    = 56         # clock font size (px) — also the analog face scale
 # clock_style   = "digital"  # "digital" readout or an "analog" clock face
 # clock_format  = "%a %H:%M"  # custom strftime for the digital clock (unset = HH:MM)
+# clock_tz      = "America/New_York"  # clock timezone (any IANA zone / TZ value);
+#                                     # unset = the system local time. Applies to the
+#                                     # digital readout and the analog face.
 # font_scale    = 1.0        # scale all card text (accessibility / large-text)
 # font_weight   = "regular"  # card text weight: light | regular | medium | semibold | bold
 # card_pos     = "center"   # card placement: center | left | right | top | bottom
@@ -50,14 +53,20 @@ animate       = true
 # gpu_level     = "high"
 # Sky scene: "auto" (day/night by the clock, the default), "seasonal" (scene by the
 # calendar — snow/winter, rain/spring, meteor/summer, fog/autumn), or a fixed scene.
-# Scenes: "aurora", "storm", "rain", "snow", "meteor", "moon", "synthwave", "fog",
-#         "plasma", "fire", "water". Plus the basics: "day" (force the daytime sky +
-#         light palette), "night" (force the starfield + dark palette), "solid" (a plain
-#         palette gradient — no stars, comet, or motion). Plus the earthy landscapes:
-#         "mountains" (parallax ridgelines), "pyramids" (angular silhouettes + mist +
-#         glints), "forest" (layered pine trees + mist + fireflies),
-#         "ocean" (a sea horizon with a moonlit glitter path). And "sunset" (golden-hour
-#         dusk), "galaxy" (a Milky Way over a starfield), "matrix" (falling code rain).
+#
+# Two kinds of scene:
+#   • PALETTE scenes follow the Day/Night colors above (`background`, `glow_color`,
+#     stars, sun): "auto", "seasonal", "day" (force the daytime sky + light palette),
+#     "night" (force the starfield + dark palette), "solid" (a plain palette gradient —
+#     no stars, comet, or motion). Recolor these on the palette lines above.
+#   • PROCEDURAL scenes are self-contained shaders with their own look and their own
+#     per-scene dials (the grouped keys further below); they ignore the main palette.
+#     These are: "aurora", "storm", "rain", "snow", "meteor", "moon", "synthwave",
+#     "fog", "plasma", "fire", "water", plus the landscapes "mountains" (parallax
+#     ridgelines), "pyramids" (angular silhouettes + mist + glints), "forest" (layered
+#     pine trees + mist + fireflies), "ocean" (a sea horizon with a moonlit glitter
+#     path), and "sunset" (golden-hour dusk), "galaxy" (a Milky Way over a starfield),
+#     "matrix" (falling code rain). To restyle one, edit its own group of keys below.
 # sky_mode      = "auto"
 # Comet-spinner controls. glow = head bloom (0 = crisp; a bright bloom blends on a
 # dark card but bands on a light one, so the day variant below defaults to 0).
