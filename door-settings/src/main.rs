@@ -156,6 +156,7 @@ enum Message {
     ToggleAnimate(bool),
     ToggleReducedMotion(bool),
     SkyModePicked(SkyMode),
+    SkyCategoryPicked(&'static str),
     SelectTab(Tab),
     CardPosPicked(CardPos),
     ToggleHelp(bool),
@@ -319,6 +320,7 @@ enum Message {
     ClockStylePicked(ClockStyle),
     GpuLevelPicked(GpuLevel),
     ClockFormat(String),
+    ClockTz(String),
     FontScale(f32),
     FontWeightPicked(FontWeight),
     CardBlur(bool),
@@ -520,6 +522,7 @@ struct State {
     clock_size: f32,
     clock_style: ClockStyle,
     clock_format: String,
+    clock_tz: String,
     font_scale: f32,
     font_weight: FontWeight,
     fade_ms: f32,
@@ -857,6 +860,7 @@ impl State {
             clock_size: night.clock_size,
             clock_style: night.clock_style,
             clock_format: night.clock_format.clone().unwrap_or_default(),
+            clock_tz: night.clock_tz.clone().unwrap_or_default(),
             font_weight: night.font_weight,
             font_scale: night.font_scale,
             fade_ms: night.fade_ms,
@@ -1057,6 +1061,7 @@ impl State {
         self.clock_size = night.clock_size;
         self.clock_style = night.clock_style;
         self.clock_format = night.clock_format.clone().unwrap_or_default();
+        self.clock_tz = night.clock_tz.clone().unwrap_or_default();
         self.font_weight = night.font_weight;
         self.font_scale = night.font_scale;
         self.fade_ms = night.fade_ms;
@@ -1347,6 +1352,10 @@ impl State {
                 let t = self.clock_format.trim();
                 (!t.is_empty()).then(|| t.to_string())
             },
+            clock_tz: {
+                let t = self.clock_tz.trim();
+                (!t.is_empty()).then(|| t.to_string())
+            },
             font_weight: self.font_weight,
             font_scale: self.font_scale,
             fade_ms: self.fade_ms,
@@ -1424,6 +1433,15 @@ fn update(state: &mut State, message: Message) -> Task<Message> {
         Message::ToggleAnimate(on) => state.animate = on,
         Message::ToggleReducedMotion(on) => state.reduced_motion = on,
         Message::SkyModePicked(m) => state.sky_mode = m,
+        Message::SkyCategoryPicked(cat) => {
+            // Switching category jumps to that group's first scene (only if we're not
+            // already in it), so the scene picker below always shows a valid member.
+            if state.sky_mode.category() != cat {
+                if let Some(m) = SkyMode::ALL.into_iter().find(|m| m.category() == cat) {
+                    state.sky_mode = m;
+                }
+            }
+        }
         // Per-variant sky glow.
         Message::SkyGlow(v) => {
             let pal = if state.editing_day {
@@ -1588,6 +1606,7 @@ fn update(state: &mut State, message: Message) -> Task<Message> {
         Message::ClockStylePicked(s) => state.clock_style = s,
         Message::GpuLevelPicked(g) => state.gpu_level = g,
         Message::ClockFormat(s) => state.clock_format = s,
+        Message::ClockTz(s) => state.clock_tz = s,
         Message::FontScale(v) => state.font_scale = v.clamp(0.7, 1.8),
         Message::FontWeightPicked(w) => state.font_weight = w,
         Message::CardBlur(on) => state.card_blur = on,
@@ -2117,21 +2136,44 @@ fn colors_tab<'a>(
     column![colors, assets].spacing(14).into()
 }
 
-/// A scene picker entry that renders as "Category · Name" so the 23-mode list groups
-/// visually (Basics / Weather / Celestial / Landscape / Stylized, in that order).
+/// A scene entry for the (category-filtered) scene picker — shown as just its
+/// capitalized name, since its category is chosen in the sibling picker.
 #[derive(Clone, Copy, PartialEq, Eq)]
 struct SceneChoice(SkyMode);
 
+fn capitalize(s: &str) -> String {
+    let mut chars = s.chars();
+    match chars.next() {
+        Some(c) => c.to_ascii_uppercase().to_string() + chars.as_str(),
+        None => String::new(),
+    }
+}
+
 impl std::fmt::Display for SceneChoice {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let name = self.0.name();
-        let mut chars = name.chars();
-        let capitalized = match chars.next() {
-            Some(c) => c.to_ascii_uppercase().to_string() + chars.as_str(),
-            None => String::new(),
-        };
-        write!(f, "{} · {}", self.0.category(), capitalized)
+        write!(f, "{}", capitalize(self.0.name()))
     }
+}
+
+/// The scene categories, in `SkyMode::ALL` order (deduped) — the first tier of the
+/// grouped scene picker.
+fn sky_categories() -> Vec<&'static str> {
+    let mut cats: Vec<&'static str> = Vec::new();
+    for m in SkyMode::ALL {
+        if !cats.contains(&m.category()) {
+            cats.push(m.category());
+        }
+    }
+    cats
+}
+
+/// The scenes in one category, in `SkyMode::ALL` order — the second tier.
+fn scenes_in(cat: &str) -> Vec<SceneChoice> {
+    SkyMode::ALL
+        .into_iter()
+        .filter(|m| m.category() == cat)
+        .map(SceneChoice)
+        .collect()
 }
 
 fn sky_tab<'a>(state: &'a State, pal: &'a Palette, h: bool) -> Element<'a, Message> {
@@ -2139,19 +2181,39 @@ fn sky_tab<'a>(state: &'a State, pal: &'a Palette, h: bool) -> Element<'a, Messa
         "SKY",
         column![
             helped(
-                row![
-                    color_label("Scene"),
-                    pick_list(
-                        SkyMode::ALL.map(SceneChoice).to_vec(),
-                        Some(SceneChoice(state.sky_mode)),
-                        |c| Message::SkyModePicked(c.0)
-                    )
-                    .text_size(13)
-                    .padding(6)
-                    .width(Length::Fill),
+                // Two-tier grouped picker: pick a category, then a scene within it —
+                // navigable for the full 23-scene set (a flat list was unwieldy).
+                column![
+                    row![
+                        color_label("Scene"),
+                        pick_list(
+                            sky_categories(),
+                            Some(state.sky_mode.category()),
+                            Message::SkyCategoryPicked
+                        )
+                        .text_size(13)
+                        .padding(6)
+                        .width(Length::Fill),
+                        pick_list(
+                            scenes_in(state.sky_mode.category()),
+                            Some(SceneChoice(state.sky_mode)),
+                            |c| Message::SkyModePicked(c.0)
+                        )
+                        .text_size(13)
+                        .padding(6)
+                        .width(Length::Fill),
+                    ]
+                    .spacing(10)
+                    .align_y(Alignment::Center),
+                    text(if state.sky_mode.is_procedural() {
+                        "Procedural scene — its own generated look, tuned by its controls below (ignores the Colors palette)."
+                    } else {
+                        "Palette scene — driven by the Day/Night colors on the Colors tab."
+                    })
+                    .size(11)
+                    .color(c(MUTED.0, MUTED.1, MUTED.2)),
                 ]
-                .spacing(10)
-                .align_y(Alignment::Center)
+                .spacing(6)
                 .into(),
                 "Sky scene: auto (day/night by clock), or a fixed scene like aurora.",
                 h
@@ -3965,6 +4027,24 @@ fn behavior_tab<'a>(state: &'a State, h: bool) -> Element<'a, Message> {
                 h,
             ),
             helped(
+                row![
+                    text("Timezone")
+                        .size(13)
+                        .width(Length::Fixed(92.0))
+                        .color(c(LABEL.0, LABEL.1, LABEL.2)),
+                    text_input("e.g. America/New_York", &state.clock_tz)
+                        .on_input(Message::ClockTz)
+                        .padding(6)
+                        .size(14)
+                        .style(input_style),
+                ]
+                .spacing(10)
+                .align_y(Alignment::Center)
+                .into(),
+                "Clock timezone (an IANA zone like Europe/Paris); blank = system local time.",
+                h,
+            ),
+            helped(
                 slider_row(
                     "Clock size",
                     state.clock_size,
@@ -4295,13 +4375,43 @@ The palette. Hex `#rrggbb` or `#rrggbbaa`; click a swatch for the visual picker.
 
 ## Sky
 
-The animated background — a GPU fragment shader.
+The animated background — a GPU fragment shader. Pick a **Scene** (`sky_mode`); the
+picker groups scenes by category (Basics / Weather / Celestial / Landscape / Stylized).
 
-- **Scene** · `sky_mode` · shared — `auto` (day/night), `seasonal`, or a fixed scene (aurora, storm, rain, snow, meteor, moon, synthwave, fog, plasma, fire, water).
-- **Stars** · `star_density` / `star_twinkle` · shared — how many stars and how fast they shimmer.
-- **Sky glow** · `sky_glow` / `glow_color` · day/night — atmospheric haze strength and tint (night nebula / daytime sun-haze).
-- **Sun** · `sun_x` / `sun_y` / `sun_size` / `sun_intensity` · shared — daytime sun position, halo size, brightness.
-- **Grain / Vignette** · `grain` / `vignette` · shared — film grain over the sky and darkened screen edges.
+There are two kinds of scene:
+
+- **Palette scenes** follow the Day/Night colors on the **Colors** tab — `auto`
+  (day/night by the clock), `seasonal` (scene by the calendar), `day`, `night`, and
+  `solid` (a plain palette gradient, no motion). Recolor them from the Colors tab.
+- **Procedural scenes** are self-contained shaders with their own look and their own
+  set of dials (which appear below the picker only when that scene is selected). They
+  **ignore the main palette** — style each from its own controls.
+
+Shared sky knobs (mostly for the palette scenes): **Stars** (`star_density` /
+`star_twinkle`), **Sky glow** (`sky_glow` / `glow_color`, day/night), **Sun**
+(`sun_x` / `sun_y` / `sun_size` / `sun_intensity`), and **Grain / Vignette**
+(`grain` / `vignette`) — film grain and darkened edges over any scene.
+
+### What each procedural scene's dials do
+
+- **Aurora** — curtain wave speed, length (`aurora_drop`), shimmer, glow + the green/magenta curtain colors.
+- **Storm** — lightning rate & strike chance, cloud density, bolt + whole-sky flash colors.
+- **Rain** — fall speed, density, diagonal slant, streak brightness + color.
+- **Snow** — fall speed, density, side-to-side sway, flake size + color.
+- **Fog** — bank drift, scale (wispiness), thickness, veil opacity + color.
+- **Meteor** — travel speed, how many at once, trail length, brightness + meteor/star colors.
+- **Moon** — disc size, phase drift speed, surface mottling, halo + moon/halo colors.
+- **Galaxy** — star density, Milky-Way band brightness, twinkle, band tilt + core/outer/star colors.
+- **Mountains** — ridge layers, peak height, parallax drift, atmospheric haze + sky/ridge/haze colors.
+- **Pyramids** — silhouette density, mist thickness, glint (firefly) brightness, drift + sky/silhouette/glow colors.
+- **Forest** — pines per row, mist/haze depth, firefly brightness, drift + sky/tree/glow colors.
+- **Ocean** — horizon height, glitter shimmer speed, glitter strength, ripple scale + sky/sea/glitter colors.
+- **Sunset** — sun height & size, warm-halo glow, lit cloud-band amount + sky/horizon/sun colors.
+- **Synthwave** — grid speed/density/perspective/glow, striped-sun size/stripes/bloom, horizon + grid/sky colors.
+- **Plasma** — churn speed, cell scale, saturation + a tint multiplier over the rainbow.
+- **Fire** — rise speed, flame height + base-flame/hot-tip colors.
+- **Water** — ripple speed, scale, distortion, caustic-web brightness + caustic/deep/shallow colors.
+- **Matrix** — column count, fall speed, glyph brightness, flicker rate + head/trail colors.
 
 ## Spinner
 
@@ -4324,7 +4434,7 @@ Shape, depth, and the optional backdrop blur.
 
 The clock, type, and motion — mostly shared knobs.
 
-- **Clock** · `clock_style` / `clock_format` · shared — digital or a drawn analog face; an optional `strftime` format.
+- **Clock** · `clock_style` / `clock_format` / `clock_tz` · shared — digital or a drawn analog face; an optional `strftime` format; an optional timezone (any IANA zone like `Europe/Paris`; blank = system local time).
 - **Type** · `font` / `font_weight` / `font_scale` · shared — family (must be installed), weight, and an accessibility text-size multiplier.
 - **Motion** · `animate` / `reduced_motion` · shared — run the sky animation; reduced-motion stills everything for accessibility.
 - **GPU level** · `gpu_level` · shared — one global render budget (lite / moderate / high / bonkers) bundling shader detail, frame-rate cap, and blur. `high` is the default and keeps the look unchanged; lower tiers trade richness for power and thermals. Global, never per-scene.
@@ -5033,29 +5143,71 @@ fn is_svg(path: &std::path::Path) -> bool {
         .is_some_and(|e| e.eq_ignore_ascii_case("svg"))
 }
 
-/// Format the current local time with a `strftime` string, for the preview (mirrors
-/// the greeter's own formatting). Empty on a bad format → the caller shows a mock.
-fn sample_strftime(fmt: &str) -> String {
+/// Format the current time with a `strftime` string, for the preview (mirrors the
+/// greeter's own formatting). An optional `tz` (any value libc's `TZ` accepts, e.g.
+/// `"America/New_York"`) overrides the zone for this one read and is then restored, so
+/// it never leaks into the rest of the process. Empty on a bad format → the caller
+/// shows a mock.
+fn sample_strftime(fmt: &str, tz: Option<&str>) -> String {
     let Ok(cfmt) = std::ffi::CString::new(fmt.trim()) else {
         return String::new();
     };
-    // SAFETY: localtime_r fills our owned tm; strftime writes ≤ buf.len() bytes into
-    // buf and reads only the tm and the NUL-terminated format.
+    // SAFETY: all pointers below are either owned buffers or NUL-terminated C strings;
+    // `localtime_r` fills our owned `tm` and `strftime` writes ≤ buf.len() bytes. This
+    // app is single-threaded for time reads, so the transient TZ swap can't race.
     unsafe {
+        // Apply an optional TZ override, remembering the prior value to restore after.
+        let tz = tz.map(str::trim).filter(|z| !z.is_empty());
+        let saved: Option<Option<std::ffi::CString>> = tz.map(|z| {
+            let key = c"TZ".as_ptr();
+            let prev = {
+                let p = libc::getenv(key);
+                (!p.is_null()).then(|| std::ffi::CStr::from_ptr(p).to_owned())
+            };
+            if let Ok(cz) = std::ffi::CString::new(z) {
+                libc::setenv(key, cz.as_ptr(), 1);
+                tzset();
+            }
+            prev
+        });
+
         let now = libc::time(std::ptr::null_mut());
         let mut tm: libc::tm = std::mem::zeroed();
-        if libc::localtime_r(&now, &mut tm).is_null() {
-            return String::new();
+        let out = if libc::localtime_r(&now, &mut tm).is_null() {
+            String::new()
+        } else {
+            let mut buf = [0u8; 128];
+            let n = libc::strftime(
+                buf.as_mut_ptr() as *mut libc::c_char,
+                buf.len(),
+                cfmt.as_ptr(),
+                &tm,
+            );
+            String::from_utf8_lossy(&buf[..n]).into_owned()
+        };
+
+        // Restore the prior TZ so the override is scoped to this call.
+        if let Some(prev) = saved {
+            let key = c"TZ".as_ptr();
+            match prev {
+                Some(v) => {
+                    libc::setenv(key, v.as_ptr(), 1);
+                }
+                None => {
+                    libc::unsetenv(key);
+                }
+            }
+            tzset();
         }
-        let mut buf = [0u8; 128];
-        let n = libc::strftime(
-            buf.as_mut_ptr() as *mut libc::c_char,
-            buf.len(),
-            cfmt.as_ptr(),
-            &tm,
-        );
-        String::from_utf8_lossy(&buf[..n]).into_owned()
+        out
     }
+}
+
+// `tzset()` re-reads the `TZ` environment variable into the C library's zone state.
+// The `libc` crate only declares it for Windows, so declare the POSIX symbol here for
+// the timezone-aware clock preview above.
+extern "C" {
+    fn tzset();
 }
 
 /// A non-interactive mock of the greeter card, themed from the draft.
@@ -5072,10 +5224,17 @@ fn preview_card(t: &Theme, anim: f32) -> Element<'static, Message> {
     let header: Element<Message> = if t.show_clock {
         let time_widget: Element<Message> = match t.clock_style {
             ClockStyle::Digital => {
-                // A custom strftime format previews against the real clock; otherwise a
-                // representative mock so the size/placement read without a live tick.
+                // A custom strftime format (or a set timezone) previews against the real
+                // clock so the effect reads; otherwise a representative mock so the
+                // size/placement read without a live tick.
+                let tz = t.clock_tz.as_deref();
+                let has_tz = tz.is_some_and(|z| !z.trim().is_empty());
                 let label = match t.clock_format.as_deref() {
-                    Some(fmt) if !fmt.trim().is_empty() => sample_strftime(fmt),
+                    Some(fmt) if !fmt.trim().is_empty() => sample_strftime(fmt, tz),
+                    _ if has_tz => {
+                        let fmt = if t.clock_seconds { "%H:%M:%S" } else { "%H:%M" };
+                        sample_strftime(fmt, tz)
+                    }
                     _ if t.clock_seconds => "12:34:56".to_string(),
                     _ => "12:34".to_string(),
                 };

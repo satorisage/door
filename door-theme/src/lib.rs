@@ -191,6 +191,18 @@ impl SkyMode {
             | SkyMode::Matrix => "Stylized",
         }
     }
+    /// Whether this scene is a self-contained *procedural* shader (its own generated
+    /// look with dedicated per-scene dials that ignore the main palette), vs a
+    /// *palette* scene driven by the day/night colors on the Colors tab. The palette
+    /// scenes are the day/night renderer (`Auto`, `Seasonal`, `Day`, `Night`) and the
+    /// plain gradient (`Solid`); every other scene is procedural. Drives the settings
+    /// hint and the docs classification (procedural vs palette).
+    pub fn is_procedural(self) -> bool {
+        !matches!(
+            self,
+            SkyMode::Auto | SkyMode::Seasonal | SkyMode::Day | SkyMode::Night | SkyMode::Solid
+        )
+    }
     /// The shader selector value (0 = auto → the day/night renderer).
     pub fn shader_id(self) -> f32 {
         match self {
@@ -960,6 +972,12 @@ pub struct Theme {
     /// Optional `strftime` format for the digital clock (e.g. `"%a %H:%M"`); `None`
     /// uses the built-in `clock_24h`/`clock_seconds` formatting. Shared.
     pub clock_format: Option<String>,
+    /// Optional clock timezone — any value the C library's `TZ` accepts (an IANA zone
+    /// like `"America/New_York"`, or a POSIX rule). `None` follows the system local
+    /// time. The time *source* lives in each binary (this crate's clock is a pure
+    /// drawing widget), so each applies this the same way it applies `clock_format`.
+    /// Shared.
+    pub clock_tz: Option<String>,
     /// Text size multiplier for the whole card (1 = default; >1 = large-text). Shared.
     pub font_scale: f32,
     /// Card text weight (applied as the greeter's default font weight). Shared.
@@ -1166,6 +1184,7 @@ impl Default for Theme {
             clock_size: 56.0,
             clock_style: ClockStyle::Digital,
             clock_format: None,
+            clock_tz: None,
             font_scale: 1.0,
             font_weight: FontWeight::Regular,
             fade_ms: 384.0,
@@ -1371,6 +1390,7 @@ impl Theme {
             clock_size: 56.0,
             clock_style: ClockStyle::Digital,
             clock_format: None,
+            clock_tz: None,
             font_scale: 1.0,
             font_weight: FontWeight::Regular,
             fade_ms: 384.0,
@@ -1568,6 +1588,7 @@ struct ThemeFile {
     clock_size: Option<f32>,
     clock_style: Option<ClockStyle>,
     clock_format: Option<String>,
+    clock_tz: Option<String>,
     font_scale: Option<f32>,
     font_weight: Option<FontWeight>,
     fade_ms: Option<f32>,
@@ -1924,6 +1945,9 @@ impl Theme {
         if file.clock_format.is_some() {
             self.clock_format = file.clock_format.clone();
         }
+        if file.clock_tz.is_some() {
+            self.clock_tz = file.clock_tz.clone();
+        }
         merge_f32(&mut self.font_scale, file.font_scale);
         if let Some(w) = file.font_weight {
             self.font_weight = w;
@@ -2157,6 +2181,9 @@ impl Theme {
         }
         if file.clock_format.is_some() {
             self.clock_format = file.clock_format.clone();
+        }
+        if file.clock_tz.is_some() {
+            self.clock_tz = file.clock_tz.clone();
         }
         merge_f32(&mut self.font_scale, file.font_scale);
         if let Some(w) = file.font_weight {
@@ -2725,6 +2752,10 @@ impl Theme {
             Some(f) => out.push_str(&format!("clock_format  = {f:?}\n")),
             None => out.push_str("# clock_format =   # (built-in HH:MM)\n"),
         }
+        match &self.clock_tz {
+            Some(z) => out.push_str(&format!("clock_tz      = {z:?}\n")),
+            None => out.push_str("# clock_tz     =   # (system local time)\n"),
+        }
         out.push_str(&format!("font_scale    = {}\n", self.font_scale));
         out.push_str(&format!("font_weight   = {:?}\n", self.font_weight.name()));
         out.push_str(&format!("fade_ms       = {}\n", self.fade_ms));
@@ -2911,6 +2942,8 @@ mod tests {
     fn render_pair_round_trips_both_palettes_and_window() {
         let night = Theme {
             accent: Color::rgb(0xbb, 0x9a, 0xf7),
+            // A shared timezone round-trips through the file (top-level, not `[day]`).
+            clock_tz: Some("America/New_York".to_string()),
             ..Default::default()
         };
         let day = Theme {
@@ -2927,6 +2960,9 @@ mod tests {
         assert_eq!(n2.accent, night.accent);
         assert_eq!(d2.accent, day.accent);
         assert_eq!(d2.background, day.background);
+        assert_eq!(n2.clock_tz.as_deref(), Some("America/New_York"));
+        // Shared keys carry to the day variant too.
+        assert_eq!(d2.clock_tz.as_deref(), Some("America/New_York"));
         assert_eq!(day_window(&file), (6 * 60 + 30, 18 * 60 + 45));
     }
 
