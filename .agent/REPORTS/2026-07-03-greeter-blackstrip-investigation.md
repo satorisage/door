@@ -38,13 +38,17 @@ plane / CRTC / mode data from the greeter itself**. Until we dump DRM state
 3. **Mode selection differs** — cage picks a mode whose active area ≠ panel native.
 4. **HW cursor / overlay plane** leftover.
 
-## NEXT ACTION
-Capture full DRM state **while the greeter shows the strip** (not from desktop):
-`modetest -M i915` (planes/CRTCs/modes/positions) + i915 debugfs. Two ways —
-(a) **SSH in from another machine** while the greeter is up (zero persistent
-change, immediate); (b) **auto-dump** systemd oneshot firing a few seconds after
-doord starts the greeter, writing to `/var/log`. Routing decision pending owner
-(does a second machine reach this box over SSH?).
+## NEXT ACTION — STAGED, awaiting one reboot
+Auto-dump chosen (works without a second machine, no live coordination).
+`scratch/install-greeter-drm-capture.sh` installs a removable systemd oneshot
+(`greeter-drm-capture.service`) that fires 8s after doord starts the greeter and
+dumps to `/var/log/greeter-drm-latest.txt`: **atomic DRM `state`** (plane/CRTC
+src+dst rects — tests hypothesis #1), `i915_display_info`, `i915_fbc_status`
+(hypothesis #2), PSR sanity, connector modes.
+Owner runs: `sudo bash scratch/install-greeter-drm-capture.sh` → reboot → let
+greeter sit ~10s → login → `cp /var/log/greeter-drm-latest.txt scratch/`.
+Revert lines are in the installer header. The service cannot affect boot.
 
 ## Test log (newest first)
+- 2026-07-03 | process | staged greeter-context DRM auto-capture (installer in scratch); awaiting owner reboot to produce the first dump from the failing screen | pending
 - 2026-07-03 | process | investigation moved into dotagent (REPORT + CHECK-IN 0002); PSR + direct-scanout confirmed ruled out; identified all prior captures were from the wrong (desktop) context — the greeter's DRM state has never been dumped | —

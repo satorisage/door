@@ -17,8 +17,9 @@ grim, absent on desktop/BIOS. Full detail + test log:
 Every capture was taken from the **desktop session** — the screen that doesn't
 show the bug. The greeter's DRM plane/CRTC/mode state has **never** been dumped.
 
-## Next action (blocks progress)
-Dump DRM state **while the greeter shows the strip**. Routing question for owner:
-does a second machine reach this box over SSH (capture live, zero persistent
-change), or should we install an auto-dump systemd oneshot that fires after doord
-starts the greeter?
+## Next action (STAGED — one owner reboot away)
+Greeter-context DRM auto-capture is staged: `scratch/install-greeter-drm-capture.sh`
+installs a removable, boot-safe oneshot that dumps DRM state 8s after the greeter
+comes up. Owner: `sudo bash scratch/install-greeter-drm-capture.sh` → reboot →
+let greeter sit ~10s → login → `cp /var/log/greeter-drm-latest.txt scratch/`.
+Then read the atomic `state` plane rects (hyp #1) and FBC (hyp #2).
