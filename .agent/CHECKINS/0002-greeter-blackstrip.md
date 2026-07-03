@@ -1,5 +1,13 @@
 # CHECK-IN 0002 — Greeter black-strip investigation (Material, open)
 
+**Status:** FIX APPLIED + headless-verified 2026-07-03 — pending on-panel
+confirmation at next boot. Root cause: winit/sctk-adwaita client-side decorations
+(`HEADER_SIZE=35`) drawn because iced left `decorations: true` under cage (no SSD).
+Fix: `decorations: false` in the greeter's `window::Settings`
+(`door-greeter/src/app.rs`). See "TRUE ROOT CAUSE" + "FIX" below.
+
+<details><summary>original status</summary>
+
 **Status:** open — active investigation, reboot-crossing.
 **Criticality:** Material (cosmetic panel artifact on the pre-auth greeter; not a
 security or boot blocker, but owner-visible and unresolved).
@@ -50,6 +58,58 @@ renders 1080; the scanout plane is 1045. → the short buffer is allocated insid
 cage/wlroots' DRM backend independent of the client-negotiated size. Consistent
 with the scanout-plane finding. Next: cage/wlroots DRM-backend allocation path
 (upstream-side), or force cage to a full-height scanout — no more client-side probes.
+
+## TRUE ROOT CAUSE — 2026-07-03 (buffer-level trace) — it's the GREETER, not cage
+The buffer/subsurface trace overturns the "cage/wlroots DRM backend" localization
+above. The greeter (client) mis-lays-out its own surfaces:
+- **Main toplevel buffer (`wl_surface#18`, Vulkan/dmabuf) is `1920×1045`** —
+  `zwp_linux_buffer_params_v1.create_immed(…, 1920, 1045, …)` (4×). The greeter
+  renders its main content **35px short** of the 1080 toplevel it negotiated.
+- Greeter makes a **`1920×35`** shm strip (`wl_buffer#65`, stride 7680=1920×4) on
+  subsurface `wl_surface#31`…
+- …positioned at **`wl_subsurface#32.set_position(0, -35)`** — 35px **above** the
+  toplevel origin (off the top, clipped by cage's fullscreen).
+
+**Geometry:** main content covers rows 0–1044; the strip sits at rows −35…−1
+(off-screen top). **Rows 1045–1079 (bottom 35px) are covered by no buffer →
+transparent → black strip at the bottom.** The greeter subtracted 35 from its
+height AND placed the strip on the wrong end (top, negative) instead of filling
+the bottom.
+
+This explains the whole history: `WLR_SCENE_DISABLE_DIRECT_SCANOUT=1` didn't help
+(line 14) because there's genuinely no buffer there in any compositing path; the
+DRM plane read 1045 because that IS the greeter's real main buffer; PSR/FBC/overscan
+were never involved. `35` is a layout constant in door-greeter's own source.
+
+**Fix locus:** door-greeter's layout — either render the main surface full-height
+(1080) or place the 35px strip at the bottom (y=1045), not y=−35. Source location
+search in flight.
+
+### CONFIRMED SOURCE + FIX — 2026-07-03
+Not the greeter's own layout code (it has zero subsurface/`35`/`set_position`) —
+it's **winit/sctk-adwaita client-side decorations**. Chain: door-greeter (iced
+0.14) → iced_winit 0.14 → winit 0.30.13 → **sctk-adwaita 0.10.1**. The greeter's
+`window::Settings` left `decorations: true` (iced default via `..Default::default()`,
+`iced_core-0.14.0/window/settings.rs:116`). cage advertises no server-side-decoration
+protocol, so winit builds an `AdwaitaFrame` CSD titlebar:
+- `sctk-adwaita-0.10.1/src/theme.rs:9` — `HEADER_SIZE: u32 = 35` (the 35).
+- `.../src/lib.rs:448` — content height = `configured − HEADER_SIZE` = 1080−35 = **1045**.
+- `.../src/lib.rs:465` + `parts.rs:120` — header subsurface at `(0, -35)`.
+- `iced_winit-0.14.0/conversion.rs:51` — `.with_decorations(settings.decorations)`
+  forwards the flag; `winit .../wayland/window/mod.rs:99-108` builds the CSD frame
+  when SSD isn't granted.
+
+**FIX (applied):** `decorations: false` in `door-greeter/src/app.rs`
+`window::Settings`. → `winit .with_decorations(false)` → no AdwaitaFrame → content
+fills the full toplevel, no 35px header subsurface.
+
+**Verified headless (no reboot, `WLR_BACKENDS=headless`, production fullscreen
+path), `scratch/verify-decorations-fix.sh`:** fixed run shows main content buffer =
+**full output height** (1280×720, cage's headless default — NOT 720−35=685), **zero**
+`set_position(0,-35)`, **zero** shm `create_buffer` (the 1920×35 header buffer is
+gone). Broken run had both. The 5 frame-part subsurfaces still get created by winit
+but are never positioned or given a buffer (inert/hidden). On-panel confirmation
+pending next boot (can't restart doord live — wedges the panel, see DEAD END above).
 
 **Capture-script fix:** `greeter-wl-capture-boot.sh` filtered `journalctl -u doord`
 (the *service unit*) and caught only 8 lines — cage/greeter run in a **separate

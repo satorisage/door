@@ -55,6 +55,12 @@ pub fn run() -> iced::Result {
         .title("door")
         .window(window::Settings {
             fullscreen,
+            // cage advertises no server-side-decoration protocol, so winit falls
+            // back to client-side decorations even fullscreen: a ~35px titlebar
+            // subsurface placed above the origin, shrinking our content buffer to
+            // 1045 and leaving the bottom 35px of the 1080 panel uncovered — the
+            // black strip. We draw our own chrome; suppress winit's entirely.
+            decorations: false,
             ..Default::default()
         })
         .style(app_style)
