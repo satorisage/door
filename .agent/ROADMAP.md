@@ -5,18 +5,22 @@ milestone's task tree is the plan; `.agent/TODO.md` is its derived ready-frontie
 
 ## Active
 
-> **Current frontier (2026-07-01): M5 Tier 2 — pre-forked spawner, login path HARDWARE-VALIDATED.**
-> M4's Done-when is met on hardware (real-VT PASS 2026-07-01; one minor save-leg open). M8 and
-> M9 are **complete** (see their sections below — tagged in place per the M7 convention, not
-> physically relocated). **M5 §Tier 2 part 2 validation happened out-of-tree** (a runtime act,
-> so D-0037's commit-boundary sync never fired — recorded here 2026-07-01 from the live machine):
-> a `DOORD_SPAWNER=1` systemd drop-in is enabled on `genny`, doord booted in spawner mode, and a
-> **real PAM login (`stephen`) handed off into a `plasma` session over the spawner path** (journal
-> `-b`, boot 10:45 CDT; session stable 9h+). The login leg is proven on metal. **Remaining before
-> the flag becomes the shipped default:** (a) confirm the clean logout/teardown leg (control-EOF →
-> worker reap — not yet observed this boot, no logout), (b) flip the shipped `doord.service`
-> default (currently on only via the machine-local drop-in), then Tier 3 (seccomp) / Tier 4
-> (Landlock). The section lives under `## Backlog` below by the in-place convention.
+> **Current frontier (2026-07-03): no active milestone — M0–M9 all shipped/complete.**
+> M5 (all four sandbox tiers) closed 2026-07-02 (Tier 4 Landlock enforce validated on `genny`,
+> D-0017); the black-strip fix shipped in v0.1.7. The remaining work is **polish + verification,
+> not a milestone:**
+> - **M4's lone open leg** — door-settings *save* (`pkexec`-write to `/etc/door/greeter.toml`),
+>   design-verified only. Owner-run harness: `bash ./scratch/m4-save-verify.sh` on genny; a PASS
+>   closes M4's Done-when.
+> - **D-0018 greeter indicators (default-off)** — keyboard-layout + battery indicators authorized
+>   (CHECK-IN 0003); build tasks in `## Loose` below. TCB-neutral, off by default.
+> - **No-network verification engagement** — owner-run red-team to *prove* `No network, ever`
+>   holds (D-0018); scoped at `.agent/SECURITY/no-network-verification-engagement.md`.
+> - **Per-monitor wallpaper** — documented primary-output-only v1 bound for now; supersession of
+>   D-0006/D-0007 parked to revisit ~2026-07-17 (`## Backlog` below).
+>
+> M-F stays parked entirely (owner directive). M8/M9 are complete (tagged in place under
+> `## Backlog` per the in-place convention, not physically relocated).
 
 ### M4 — The beautiful greeter — **Done-when MET on hardware (2026-07-01)**; lone open leg: door-settings *save*
 **Criticality: Material** (pre-auth UI; no auth/lockout change, but the greeter is
@@ -213,8 +217,11 @@ naga-gated; keeps the D-0011 100%-mapped invariant for the exposed set.
       term needed to subtract) — now fall correctly.
 - [ ] **settings UX** — per-`sky_mode` control group (one shown at a time, labeled to
       the scene); mode picker grouped/expanded for the new set.
-- [ ] **docs** — `greeter.toml` keys + Help: which modes are procedural vs palette,
-      what each scene's dials do.
+- [x] **docs** — `greeter.toml` keys + Help: which modes are procedural vs palette,
+      what each scene's dials do. **Done 2026-07-03** (`14580a9` via
+      `delegate/cc-settings-docs`): greeter.toml now splits scenes into PALETTE vs
+      PROCEDURAL with per-kind guidance, backed by a `SkyMode::is_procedural()` helper
+      that drives the settings hint + the docs classification.
 
 ### M9 — Global GPU-budget level (ratified D-0014, 2026-06-30) — ✅ COMPLETE (2026-06-30, on master)
 `depends:` M7. One global `gpu_level` enum (lite/moderate/high/bonkers, default high)
@@ -422,8 +429,17 @@ existing `naga` parse+validate test.
             rounded rect, drawn under the card via `Stack::push_under`. `card_blur` knob
             (default on) + settings toggle + live preview. Refactored sky into
             `scene_base`/`night_sky` (night verified pixel-identical). Verified live.
-      - [ ] per-monitor wallpaper (multi-output; bigger slice).
+      - [~] per-monitor wallpaper (multi-output) — **RECLASSIFIED DECISION-gated**
+            (2026-07-03, CHECK-IN 0003 item 5). Not a plain slice: the sky shader is
+            already aspect-aware, but cage fullscreens a *single* output, so per-output
+            surfaces reverse D-0006/D-0007 **and** edit the TCB cage invocation
+            (`doord/src/config.rs`) — Critical-adjacent. **Owner call:** ship the
+            documented **primary-output-only v1 bound** now (other outputs dark; Principle
+            6/9 honest bound); **supersession of D-0006/D-0007 parked to revisit
+            ~2026-07-17.** See `## Backlog` → per-monitor revisit.
       - [ ] animated sunrise day↔night transition (low priority — login is brief).
+            2-step when built: a default-off `day_transition` Theme key (door-theme) →
+            consumed in `app.rs` + `skyshader.rs` (Agent A, CHECK-IN 0003).
 - [~] **D — clock / logo / type**. `depends:` M4
       - [x] **slice 1 — clock** (2026-06-29, `c99c937`): `clock_seconds` + `clock_size`.
       - [x] **slice 2 — spinner styles** (2026-06-29, `f046d80`): comet/ring/dots/pulse.
@@ -435,7 +451,13 @@ existing `naga` parse+validate test.
       - [x] **custom clock format** (2026-06-29): `clock_format` strftime string for
             the digital clock (via libc strftime, no new dep); settings Behavior-tab
             input + a live-time preview sample. Timezones still open.
-      - [ ] font weight, SVG + animated logo, custom timezones.
+      - [x] **font weight** (v0.1.1, `lib.rs` `font_weight`) + **SVG logos** (v0.1.1) —
+            shipped; the leaf's stale "[ ]" corrected 2026-07-03 (CHECK-IN 0003).
+      - [x] **custom timezones** (2026-07-03, `14580a9` via `delegate/cc-settings-docs`):
+            `clock_tz` Theme key (any IANA/`TZ` value; `None` = system local), applied by
+            both binaries' clock the way `clock_format` is; door-settings tz control.
+      - [ ] **animated logo** — the only remaining M7-D leaf. Cross-cuts greeter+theme+
+            settings; queued (held follow-up, CHECK-IN 0003).
 - [~] **E — functional / UX**. `depends:` M4
       - [x] **slice 1 — reduced-motion accessibility** (2026-06-29, `a7088ea`):
             `reduced_motion` flag stills all motion at load.
@@ -453,14 +475,27 @@ existing `naga` parse+validate test.
       - [x] **live preset thumbnails** (2026-06-29): a horizontally-scrolling gallery
             of mini greeter-card previews (each in its preset's parsed night palette),
             click-to-load with an accent ring on the active one.
-      - [ ] settings polish: import/export.
+      - [x] **settings polish: import/export** (2026-07-03, `14580a9` via
+            `delegate/cc-settings-docs`): M7-E import/export + M8 settings-UX grouping.
       - [x] **caps-lock indicator** (2026-06-29, D-0012): reclassified TCB-neutral —
             greeter reads the local `capslock` LED (no daemon protocol); a warning
             slips under the password field when on.
-      - [ ] **DECISION-gated (threat-model first, D-0012 parks these):** user list +
-            avatars, keyboard-layout / battery / network indicators — these add
-            pre-auth greeter↔daemon protocol or shoulder-surfer disclosure; do not
-            barrel.
+      - [~] **DECISION-gated pre-auth indicators — resolved per-item by D-0018
+            (2026-07-03, CHECK-IN 0003), superseding D-0012's blanket park:**
+            - [ ] **keyboard-layout indicator — AUTHORIZED (default-off).** Build: a
+                  `show_kb_layout` theme key (default false) + local xkb read + a card
+                  row in `app.rs` (mirrors the caps-lock row); door-settings toggle.
+                  TCB-neutral, no daemon protocol. → `## Loose`.
+            - [ ] **battery indicator — AUTHORIZED (default-off).** Build: a
+                  `show_battery` key (default false) + `/sys/class/power_supply` read +
+                  card row (hidden when no battery); door-settings toggle. → `## Loose`.
+            - [ ] **user list + avatars — PARKED** (unchanged; new privileged IPC
+                  enumeration + username disclosure — cost/benefit did not change).
+            - [ ] **network indicator — DECLINED; `No network, ever` reaffirmed
+                  absolute** (D-0018). No pre-auth dbus. If ever wanted, only the F3
+                  helper-file read pattern is in-bounds. In its place, a **no-network
+                  red-team verification engagement** is commissioned →
+                  `.agent/SECURITY/no-network-verification-engagement.md`.
 
 ### M-F — Pre-auth TCB-expanding graphics (DECISION-gated; NOT ready work)
 Off the ready queue by design — Tenet 1 ("a feature that widens the privileged
@@ -523,6 +558,34 @@ off-by-default DECISION naming its threat model before it can graduate.
 
 - ~~Decide greeter toolkit (GTK4 / Qt-QML / Iced / bespoke wgpu)~~ — **resolved
   2026-06-26: Iced + iced_layershell (D-0006).**
+
+- **Keyboard-layout indicator (default-off) — AUTHORIZED (D-0018, 2026-07-03).**
+  Build: a `show_kb_layout` door-theme key (default `false`) + a local xkb read +
+  a card row in `door-greeter/src/app.rs` (mirror the caps-lock row pattern) +
+  a door-settings toggle. TCB-neutral, no daemon protocol, preserves the
+  byte-identical default (off). `depends:` M4.
+
+- **Battery indicator (default-off) — AUTHORIZED (D-0018, 2026-07-03).** Build: a
+  `show_battery` door-theme key (default `false`) + a `/sys/class/power_supply/*`
+  read + a card row (hidden when there is no battery — a desktop asserts nothing)
+  + a door-settings toggle. TCB-neutral, local read, default-off. `depends:` M4.
+
+- **No-network verification engagement — commissioned (D-0018, 2026-07-03).**
+  Owner-run (CRTO/OSCP) red-team to *prove* `No network, ever` holds (no egress,
+  ingress, IPC-seam or session-spawn-env leak). Scoped at
+  `.agent/SECURITY/no-network-verification-engagement.md`; deliverable = a findings
+  report + ideally a permanent no-`std::net` regression guard. Strengthens the
+  no-network headline rather than lifting the constraint.
+
+- **Per-monitor wallpaper — supersession revisit (parked, trigger ~2026-07-17).**
+  v1 ships the documented primary-output-only bound (CHECK-IN 0003 item 5). Revisit
+  whether to supersede D-0006/D-0007 (layer-shell compositor or per-output surfaces)
+  — a Critical change touching the TCB cage invocation (`doord/src/config.rs`), so it
+  needs a full superseding DECISION + threat re-model, not a code task.
+
+- **M4 door-settings *save* leg (owner-run) — M4's lone open Done-when.** Exercise
+  the `pkexec`-write of the draft to `/etc/door/greeter.toml`. Harness:
+  `bash ./scratch/m4-save-verify.sh` on genny; a PASS closes M4.
 
 ## Shipped
 

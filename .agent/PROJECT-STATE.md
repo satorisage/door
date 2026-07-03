@@ -1,6 +1,24 @@
 # Project State
 
-**Last updated:** 2026-07-03 (**greeter black-strip FIXED + on-panel confirmed** — the ~35px
+**Last updated:** 2026-07-03 (**cc batch CLOSED — CHECK-IN 0003 resolved/archived.**
+Agent B's `delegate/cc-settings-docs` (M8 settings-UX grouping, M7-E import/export,
+M7-D `clock_tz` key + procedural/palette docs) was **verified green** (build + 20
+tests + clippy; byte-identical greeter defaults; no new IO/exec/privileged surface)
+and **integrated to master `14580a9`** (`--no-ff`); full-workspace re-verify passed
+(doord 39 / theme 16 / settings 4 + others green, clippy clean). The **5 owner
+decisions** are filed as **D-0018** (pre-auth stance round 2, supersedes D-0012's
+indicator clause in part): keyboard-layout + battery indicators **authorized**
+default-off (build tasks in ROADMAP `## Loose`); user-list **parked**; network
+indicator **declined** — **`No network, ever` reaffirmed absolute**, and in its
+place a **red-team no-network verification engagement** is commissioned
+(`.agent/SECURITY/no-network-verification-engagement.md`, owner-run CRTO/OSCP);
+per-monitor wallpaper ships the **documented primary-output-only v1 bound**, with a
+D-0006/D-0007 supersession **parked to revisit ~2026-07-17**. **Owner actions owed:**
+(1) `git push origin master` (integration not auto-pushed), (2) M4's last leg
+`bash ./scratch/m4-save-verify.sh` on genny, (3) the WAYLAND_DEBUG drop-in cleanup
+below still stands. Prior black-strip context below.)
+
+**[history] Last updated:** 2026-07-03 (**greeter black-strip FIXED + on-panel confirmed** — the ~35px
 bottom band was sctk-adwaita client-side decorations (`HEADER_SIZE=35`) drawn because iced left
 `decorations: true` under cage; fix = `decorations: false` in `door-greeter/src/app.rs`, commit
 `95eee0a`. CHECK-IN 0002 → RESOLVED/ARCHIVED; disposition **fixed**. **Release staged: v0.1.7**
@@ -234,13 +252,14 @@ ready/blocked frontier. Per-task DoD (`done-when:`) and progress live in
 ROADMAP — do **not** duplicate the DoD checklist here (D-0050 dissolved the
 old lockstep-with-SCOPE mandate, a Principle-7 violation).
 
-**Milestone:** M5 — Hardening pass (Tier 3, supervisor sandbox); see `ROADMAP.md`
-`## Active` frontier note + the M5 section. **Frontier:** Tier 2 shipped as the
-`doord.service` default (spawner mode, reversible); **Tier 3 (supervisor seccomp) is COMPLETE** —
-`Environment=DOORD_SECCOMP=enforce` (`SCMP_ACT_ERRNO(EPERM)`, reversible) is baked into the shipped
-`doord.service` after a clean full-cycle enforce validation on `genny` (per D-0016, log→enforce
-staged). **Next = Tier 4 (Landlock paths)** on the same post-`fork_spawner` supervisor step.
-**Criticality: Critical** (privilege boundary / login path). M1/M2/M3/M4/M6/M7/M8/M9 are complete.
+**Milestone:** **none active — M0–M9 all shipped/complete.** M5 (all four sandbox
+tiers, incl. Tier 4 Landlock enforce) closed 2026-07-02 (D-0017); the earlier
+"Next = Tier 4" note here was stale and is corrected. See `ROADMAP.md` `## Active`
+for the current **polish + verification frontier** (not a milestone): M4's lone
+door-settings *save* leg (owner-run harness), the D-0018 default-off greeter
+indicators (keyboard-layout + battery, in `## Loose`), the no-network red-team
+verification engagement (`.agent/SECURITY/`), and the parked per-monitor-wallpaper
+supersession revisit (~2026-07-17). M-F stays parked (owner directive).
 
 (Projects not using ROADMAP may keep a short DoD list here instead.)
 
@@ -251,9 +270,8 @@ staged). **Next = Tier 4 (Landlock paths)** on the same post-`fork_spawner` supe
 (Files at the root of `.agent/CHECKINS/` that are not yet archived.
 Each represents a question awaiting your input.)
 
-- `<date>-<slug>.md` — [one-line summary]
-
-Or: "none" if no active check-ins.
+**none** — CHECK-IN 0003 (cc batch) resolved + archived 2026-07-03 (all 5 owner
+decisions filed as D-0018; Agent B integrated to master).
 
 ---
 

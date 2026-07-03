@@ -1,5 +1,40 @@
 # CHECK-IN 0003 — command-center batch in flight (pre-reboot snapshot)
 
+**Opened:** 2026-07-03 · **Status:** RESOLVED / ARCHIVED (2026-07-03) · **Criticality:** Material
+
+## Resolution (2026-07-03, post-reboot session)
+
+Batch resumed and closed. Dispositions:
+
+- **Agent B (`delegate/cc-settings-docs` @ `8f96be6`) — VERIFIED + INTEGRATED.**
+  `cargo build` + `test` (-p door-theme -p door-settings, 20 tests) + `clippy` all
+  green; byte-identical greeter defaults confirmed (`clock_tz` defaults `None` →
+  system local; new keys add docs/comments only); no new IO/exec/privileged surface
+  in the unprivileged settings editor. Merged to master `14580a9` (`--no-ff`).
+  Full-workspace re-verify post-merge: build OK, all suites green (doord 39, theme
+  16, settings 4, +others), clippy 0 warnings. **Push is owner-run** (not
+  auto-pushed). ROADMAP leaves updated: M7-D timezones done, M7-E import/export done,
+  M8 procedural/palette docs done, and the stale font_weight/SVG `[ ]` corrected.
+- **5 owner decisions — RESOLVED, filed as D-0018** (`DECISION-0018-pre-auth-stance-round2.md`,
+  supersedes D-0012's indicator clause in part):
+  1. User list + avatars → **PARKED**.
+  2. Keyboard-layout indicator → **AUTHORIZED** (default-off; build task in ROADMAP `## Loose`).
+  3. Battery indicator → **AUTHORIZED** (default-off; build task in ROADMAP `## Loose`).
+  4. Network indicator → **DECLINED; `No network, ever` reaffirmed absolute.** Owner
+     considered lifting it (pentest-guarded) and instead chose to keep it
+     provable-by-construction + commission a **red-team verification engagement**
+     (`.agent/SECURITY/no-network-verification-engagement.md`, owner-run CRTO/OSCP).
+  5. Per-monitor wallpaper → **documented primary-output-only v1 bound now;**
+     supersession of D-0006/D-0007 **parked, revisit ~2026-07-17** (ROADMAP `## Loose`).
+- **Held follow-ups** (animated logo, sunrise 2-step) remain queued in ROADMAP. M-F
+  stays parked (owner directive).
+- **M4's lone open leg** (door-settings pkexec save) unchanged — owner-run
+  `scratch/m4-save-verify.sh` closes it.
+
+---
+
+**[snapshot below — original pre-reboot capture, retained for the audit trail]**
+
 **Opened:** 2026-07-03 · **Status:** OPEN · **Criticality:** Material
 **Context:** M0–M9 all shipped/complete; black-strip fixed (v0.1.7). User asked to
 finish M4, bring remaining decisions up, and batch out the rest (M-F stays parked).
