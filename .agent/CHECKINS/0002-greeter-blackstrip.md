@@ -17,9 +17,19 @@ grim, absent on desktop/BIOS. Full detail + test log:
 Every capture was taken from the **desktop session** — the screen that doesn't
 show the bug. The greeter's DRM plane/CRTC/mode state has **never** been dumped.
 
-## Next action (STAGED — one owner reboot away)
-Greeter-context DRM auto-capture is staged: `scratch/install-greeter-drm-capture.sh`
-installs a removable, boot-safe oneshot that dumps DRM state 8s after the greeter
-comes up. Owner: `sudo bash scratch/install-greeter-drm-capture.sh` → reboot →
-let greeter sit ~10s → login → `cp /var/log/greeter-drm-latest.txt scratch/`.
-Then read the atomic `state` plane rects (hyp #1) and FBC (hyp #2).
+## ROOT CAUSE FOUND — 2026-07-03 (dump captured)
+Greeter DRM dump (`scratch/greeter-drm-latest.txt`) settles it: active scanout
+plane 1A (cage fb) is **1920×1045** while CRTC pipe A drives the panel at
+**1920×1080** → bottom **35px** uncovered → black strip. grim reads cage's full
+buffer, so screenshots stay clean. Hyp #1 confirmed; hyp #2 (FBC) rejected (FBC
+disabled). Full detail in the REPORT.
+
+## Remaining (downgrades this to a fix task, no longer a diagnosis mystery)
+Sub-question: **why cage allocates a 1045-tall buffer** (not in `door*` config —
+lives in cage/wlroots). Next probe: cage-side `WAYLAND_DEBUG`/`WLR_*` logging or
+cage/wlroots version + output-mode check. Consider whether to file this upstream
+vs. force cage to a full-height output.
+
+## Cleanup owed
+`scratch/install-greeter-drm-capture.sh` header has the revert lines — the
+oneshot service can be removed now that the dump is in hand.
