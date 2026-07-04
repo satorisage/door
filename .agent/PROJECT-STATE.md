@@ -1,6 +1,24 @@
 # Project State
 
-**Last updated:** 2026-07-03 (**M4 COMPLETE — door-settings *save* leg closed on hardware;
+**Last updated:** 2026-07-04 (**M10 door-lock BUILT — code + docs complete; hardware demo
+pending.** The `door-lock` binary shipped: an `ext-session-lock-v1` client
+(`iced_sessionlock` 0.18.1 / iced 0.14) rendering the exact greeter surface from the shared
+kit — `door_theme::{host,styles}` were **lifted out of the greeter** (behavior-preserving,
+commit `cfd3ec0`) so both auth surfaces read one source of truth. It drives the D-0019
+Reauth verb over a **fresh connection per attempt** (doord drops idle reauth peers at ~30s),
+mirrors the greeter's disclosure posture (sky/clock/password/FIDO2-prompt/cue/caps-lock +
+D-0018 default-off indicators; no picker, no power row, no username field — peer-cred is the
+identity), and **declines cleanly** on protocol-less compositors via a registry probe.
+Verified here: workspace tests + clippy green, headless dev render PASS
+(`scratch/m10shots/lock-dev.png`), decline PASS against virtual KWin. **Load-bearing
+correction (D-0019 note, 2026-07-04): KWin does NOT support ext-session-lock-v1** —
+verified empty of the global/implementation at 6.7.2 — so the M10 Done-when demo needs
+sway/Hyprland (owner-run; `scratch/lock-kwin-virtual.sh` + `scratch/lockshot.sh` are the
+local harnesses). Honest-bounds + recovery docs landed in README + `--help`. PKGBUILD +
+install-local.sh install door-lock. **Next: owner runs the hardware demo (install sway or
+Hyprland for the test), then release/AUR bump.** Prior context below.)
+
+**[history] Last updated:** 2026-07-03 (**M4 COMPLETE — door-settings *save* leg closed on hardware;
 every milestone M0–M9 now done with no open legs.** The `pkexec` write from the unprivileged
 door-settings to `/etc/door/greeter.toml` was exercised (`scratch/m4-save-verify.sh` PASS):
 sha `083b3765…`→`6d94fc34…`, file `root:root` mode `644` (world-readable, per constraint), diff =
@@ -273,14 +291,13 @@ ready/blocked frontier. Per-task DoD (`done-when:`) and progress live in
 ROADMAP — do **not** duplicate the DoD checklist here (D-0050 dissolved the
 old lockstep-with-SCOPE mandate, a Principle-7 violation).
 
-**Milestone:** **none active — M0–M9 all shipped/complete.** M5 (all four sandbox
-tiers, incl. Tier 4 Landlock enforce) closed 2026-07-02 (D-0017); the earlier
-"Next = Tier 4" note here was stale and is corrected. See `ROADMAP.md` `## Active`
-for the current **polish + verification frontier** (not a milestone): M4's lone
-door-settings *save* leg (owner-run harness), the D-0018 default-off greeter
-indicators (keyboard-layout + battery, in `## Loose`), the no-network red-team
-verification engagement (`.agent/SECURITY/`), and the parked per-monitor-wallpaper
-supersession revisit (~2026-07-17). M-F stays parked (owner directive).
+**Milestone:** **M10 — door-lock (D-0019), code + docs complete 2026-07-04; the
+on-hardware Done-when demo is the only open leg** (needs an ext-session-lock
+compositor — sway/Hyprland, **not KWin**, per the D-0019 correction). See
+`ROADMAP.md` `## Active` → M10 task tree. Also open (owner-paced): the no-network
+red-team verification engagement (`.agent/SECURITY/`) and the parked
+per-monitor-wallpaper supersession revisit (~2026-07-17). M-F stays parked
+(owner directive).
 
 (Projects not using ROADMAP may keep a short DoD list here instead.)
 

@@ -39,7 +39,7 @@ if [[ $DO_BUILD -eq 1 ]]; then
 fi
 
 BIN="$ROOT/target/$PROFILE_DIR"
-for b in doord door-greeter door-settings; do
+for b in doord door-greeter door-settings door-lock; do
     [[ -x "$BIN/$b" ]] || { echo "missing binary: $BIN/$b (build first)" >&2; exit 1; }
 done
 
@@ -60,10 +60,11 @@ echo "==> installing to / (sudo)"
 sudo env ROOT="$ROOT" BIN="$BIN" PKGNAME="$PKGNAME" bash -euo pipefail -s <<'INSTALL'
 cd "$ROOT"
 
-# Binaries: privileged daemon + unprivileged greeter + settings editor.
+# Binaries: privileged daemon + unprivileged greeter + settings editor + locker.
 install -Dm755 "$BIN/doord"         /usr/bin/doord
 install -Dm755 "$BIN/door-greeter"  /usr/bin/door-greeter
 install -Dm755 "$BIN/door-settings" /usr/bin/door-settings
+install -Dm755 "$BIN/door-lock"     /usr/bin/door-lock
 
 # PAM services.
 install -Dm644 dist/pam.d/doord        /etc/pam.d/doord

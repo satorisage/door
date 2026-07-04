@@ -25,6 +25,17 @@ door is **privilege-separated**, deliberately, in the SDDM/greetd lineage:
   `doord` to try these credentials." A compromised greeter is not root.
 - **`door-settings`** — an unprivileged editor for the greeter theme (live preview,
   day/night variants, presets).
+- **`door-lock`** — an unprivileged session **lock screen**: an
+  `ext-session-lock-v1` client of *your running compositor* that renders the same
+  themed surface and unlocks by asking `doord` to verify your own credentials
+  (never another user's — the target identity is the kernel-attested socket peer,
+  not anything the locker sends). Requires a compositor with
+  `ext-session-lock-v1` (sway, Hyprland, river, niri, labwc, Wayfire, COSMIC,
+  Weston 12+, …). **KWin/Plasma and GNOME are not supported** — both ship their
+  own built-in lockers and do not expose the protocol to third-party lockers
+  (verified against KWin 6.7); door-lock declines cleanly rather than pretending.
+  If the locker ever wedges, the compositor keeps the screen blanked — recover
+  from a TTY (`Ctrl+Alt+F3`, log in, `pkill door-lock` and relaunch it).
 
 The login flow: `doord` launches the greeter under [`cage`](https://github.com/cage-kiosk/cage)
 → greeter authenticates via `doord` → on success `doord` registers the logind
@@ -90,6 +101,28 @@ the advanced controls.
 
 The config is `/etc/door/greeter.toml` (copy from `/usr/share/door/greeter.toml`);
 every key is documented there.
+
+## Lock screen
+
+`door-lock` locks your **current session** behind the same themed surface as the
+login screen — same sky, same card, same config. door ships the lock *surface*
+only; wire the trigger into your existing idle stack or a keybinding, e.g.:
+
+```
+# Hyprland (hypridle.conf)
+listener {
+    timeout = 300
+    on-timeout = door-lock
+}
+
+# sway / river (swayidle)
+swayidle -w timeout 300 'door-lock' before-sleep 'door-lock'
+```
+
+Unlocking verifies **your own** credentials (password, or your full PAM stack —
+a YubiKey touch works here too) through the same audited daemon that logged you
+in. Honest bounds and the TTY recovery path are in the Architecture section
+above and `door-lock --help`.
 
 ## Reporting issues
 

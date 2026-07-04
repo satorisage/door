@@ -5,14 +5,18 @@ milestone's task tree is the plan; `.agent/TODO.md` is its derived ready-frontie
 
 ## Active
 
-> **Current frontier (2026-07-03): M10 — door-lock (session lock screen) IN PROGRESS (ratified
-> D-0019).** M0–M9 all shipped/complete; session locking graduated from out-of-scope to committed
-> work today (scope amended, D-0019 Binding). **First two M10 tasks done:** the **doord `Reauth`
-> verb** is built, adversarially verified (3 lens verifiers + a sandbox re-verify — all 8 named
-> invariants sound; 2 residuals deferred), and **merged to master (`8421353`)**; the **lock
-> threat-model file** is written. **Remaining M10:** the `door-lock` ext-session-lock-v1 client
-> (the next build target — it exercises the verb), then honest-bounds + TTY-recovery docs. Not
-> released/packaged yet; the verb has no client wired to it. See M10 task tree below.
+> **Current frontier (2026-07-04): M10 — door-lock, code + docs COMPLETE; hardware demo
+> pending (ratified D-0019).** M0–M9 all shipped/complete. All four M10 tasks are now built:
+> the **doord `Reauth` verb** (adversarially verified, merged `8421353`), the **lock
+> threat-model file**, the **`door-lock` binary** (ext-session-lock-v1 client over the shared
+> door-theme kit; dev-render + unsupported-decline verified locally), and the **honest-bounds
+> + recovery docs** (README + `--help`). **Remaining: the on-hardware Done-when demo only** —
+> lock/unlock/kill-crash-safety/TTY-recovery on a real ext-session-lock compositor.
+> **Correction en route (D-0019, 2026-07-04): KWin does NOT support ext-session-lock-v1** —
+> verified against KWin 6.7.2 (live + `--virtual`); the demo compositor must be
+> sway/Hyprland/river-class, not the owner's Plasma session, and KWin/Plasma joins
+> GNOME/Mutter in the named unsupported bound. Not released/packaged to the AUR yet
+> (PKGBUILD/install-local already install door-lock). See M10 task tree below.
 > M5 (all four sandbox tiers) closed 2026-07-02 (Tier 4 Landlock enforce validated on `genny`,
 > D-0017); the black-strip fix shipped in v0.1.7. Alongside M10, the remaining loose work is
 > **polish + verification, not a milestone:**
@@ -39,7 +43,7 @@ part is the ext-session-lock-v1 client and the verify-only Reauth verb. Surface-
 GNOME/Mutter + protocol-less WMs unsupported). Full shape + six-fork resolution + the
 lock-specific threat model in **D-0019**. Pre-ratified before code (nothing built yet).
 
-- [x] **doord `Reauth` verb** — **BUILT + adversarially verified + merged 2026-07-03**
+- [x] **T1** **doord `Reauth` verb** — **BUILT + adversarially verified + merged 2026-07-03**
       (merge `8421353`; branch `worktree-agent-a3f5c5bd6ff80a4c9` → `e1aa7ea` build →
       `6fc0112` sandbox-confine → `a499612` bind/seccomp-race gate). A verify-only IPC verb
       on a **dedicated** world-connectable socket (`/run/doord-reauth`, peer-cred uid the
@@ -57,18 +61,31 @@ lock-specific threat model in **D-0019**. Pre-ratified before code (nothing buil
       Tests: uid-binding, no-forgery, no-spawn, malformed/handshake, TSYNC-confines-sibling;
       all gates green + live-validated under `DOORD_SECCOMP=enforce`. **Not yet wired to a
       client** (door-lock doesn't exist — the next task exercises it). `depends:` M1 (PAM seam), M2 (IPC).
-- [ ] **`door-lock` binary** — an `ext-session-lock-v1` Wayland client of the *user's*
-      running compositor (not a cage toplevel): per-output lock surfaces, single seat,
-      rendering the door-theme sky + card via the shared crate; drives the Reauth verb;
-      holds no authority beyond "verify these creds for my own uid." Disclosure posture
-      mirrors the greeter exactly — sky + clock + password/FIDO2 prompt + the D-0018
-      default-off kb-layout/battery indicators; **no** notifications/media/session content.
-      `depends:` doord Reauth verb; door-theme.
-- [ ] **honest-bounds + recovery docs** — the unsupported-compositor list (ext-only) and
-      the two-command TTY break-glass recovery (VT-switch → log in → kill/restart
-      door-lock; compositor keeps the screen blanked if door-lock wedges — no daemon
-      unlock lever exists), in the installer-printed spirit of Principle 4. `depends:` door-lock
-- [x] **lock threat-model file** — **WRITTEN 2026-07-03**,
+- [x] **T2** **`door-lock` binary** — **BUILT 2026-07-04** (the on-hardware Done-when demo is
+      its own task below). An `ext-session-lock-v1` Wayland client of the *user's* running compositor
+      via `iced_sessionlock` 0.18.1 (iced 0.14, same as the greeter): per-output lock
+      surfaces, single seat, rendering the door-theme sky + card via the shared crate
+      (shared host reads + widget styles lifted into `door_theme::{host,styles}` so the
+      lock renders *identically* from one source of truth); drives the Reauth verb over
+      a fresh connection per attempt (doord drops idle reauth peers); holds no authority
+      beyond "verify these creds for my own uid." Disclosure posture mirrors the greeter
+      exactly — sky + clock + password/FIDO2 prompt/cue + caps-lock + the D-0018
+      default-off kb-layout/battery indicators; **no** notifications/media/session
+      content, no power row (the reauth vocabulary has no power verb), no username field
+      (peer-cred is the identity; the display name is local-only). Registry **probe
+      declines cleanly** on protocol-less compositors. `DOOR_LOCK_DEV=1` dev mode (plain
+      window, no lock protocol) for nested testing. **Verified:** workspace tests green
+      (4 client tests + wire-shape guard), clippy clean, headless dev render PASS
+      (`scratch/m10shots/lock-dev.png` — sky/card/clock/indicators/focus), unsupported-
+      compositor decline PASS live against virtual KWin 6.7.2. **KWin finding:** KWin
+      does NOT support ext-session-lock (D-0019 correction 2026-07-04) — the positive
+      lock demo needs sway/Hyprland. `depends:` doord Reauth verb; door-theme.
+- [x] **T3** **honest-bounds + recovery docs** — **WRITTEN 2026-07-04**: README (§Architecture
+      bullet: supported list, KWin/GNOME named unsupported, TTY recovery; §Lock screen:
+      idle-stack trigger examples) + `door-lock --help` (same bounds + the break-glass
+      recovery: VT-switch → log in → `pkill door-lock; door-lock &`) + the in-binary
+      decline message itself names the supported set. `depends:` door-lock
+- [x] **T4** **lock threat-model file** — **WRITTEN 2026-07-03**,
       `.agent/SECURITY/lock-screen-threat-model.md`: assets, walk-up/evil-maid adversary
       model, compositor-owned-surface trust boundaries, defends/does-not-defend honest
       bounds, the wedged-unlock residual, the 8 `Reauth` invariants (RI1–RI8) + RI9
@@ -76,14 +93,21 @@ lock-specific threat model in **D-0019**. Pre-ratified before code (nothing buil
       verified residuals (R1/R2). Two leaves stay pending the door-lock binary (§8 D2 live
       crash-safety demo + N2 unsupported-compositor decline). Written from D-0019 up front,
       not blocked on the client.
+- [ ] **T5** **M10 hardware demo (the Done-when, owner-run)** — on a real ext-session-lock-v1
+      compositor (install sway or Hyprland for the test; KWin lacks the protocol):
+      lock across all outputs → wrong-password deny → correct password (or FIDO2
+      touch) unlocks via Reauth → kill -9 door-lock under lock and confirm the
+      compositor keeps the screen blanked (threat model §8 D2) → TTY recovery
+      relaunch. — depends: [T2]
 - Backlog follow-on (not M10): idle/`loginctl lock-session` trigger wiring (F-lock-3);
   a richer locked surface (notification counts / media) would need its own DECISION (F-lock-6).
 
-**Done-when (M10):** on an `ext-session-lock-v1` compositor (sway/Hyprland/KWin),
-`door-lock` locks the live session behind the themed door surface across all outputs;
-a correct password (or FIDO2 touch) unlocks via the doord Reauth verb; a killed/crashed
-door-lock leaves the compositor blanking the screen (session never exposed); and the
-documented two-command TTY recovery restores a wedged locker — all demonstrated on hardware.
+**Done-when (M10):** on an `ext-session-lock-v1` compositor (sway/Hyprland — **not
+KWin**, which lacks the protocol; D-0019 correction 2026-07-04), `door-lock` locks the
+live session behind the themed door surface across all outputs; a correct password (or
+FIDO2 touch) unlocks via the doord Reauth verb; a killed/crashed door-lock leaves the
+compositor blanking the screen (session never exposed); and the documented two-command
+TTY recovery restores a wedged locker — all demonstrated on hardware.
 
 ### M4 — The beautiful greeter — ✅ **COMPLETE (2026-07-03)** — Done-when fully MET (save leg closed)
 **Criticality: Material** (pre-auth UI; no auth/lockout change, but the greeter is

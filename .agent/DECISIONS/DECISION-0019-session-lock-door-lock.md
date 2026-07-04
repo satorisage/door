@@ -16,6 +16,19 @@ disclosure posture the lock surface mirrors); Scope Principles 1 (security
 dominates), 2 (privilege separation), 4 (reversibility), 7 (threat-model-first).
 Graduates `.agent/IDEAS/2026-07-03-session-lock-screen.md` (→ ARCHIVED on ratify).
 
+> **Correction (2026-07-04, build-time finding):** F-lock-1 below claims KWin
+> (Plasma 5.27+) supports `ext-session-lock-v1`. **Observed false** during the
+> door-lock build: KWin 6.7.2 advertises no `ext_session_lock_manager_v1` global
+> (checked on the live Plasma session *and* `kwin_wayland --virtual`), and its
+> shipped binaries contain no implementation of the protocol — KWin, like
+> GNOME/Mutter, ships its own built-in locker and accepts no third-party one.
+> The decision's shape is unchanged (ext-only, decline elsewhere); **KWin moves
+> from the supported list to the named unsupported bound**, which now reads:
+> wlroots-family + others (sway, Hyprland, river, niri, labwc, Wayfire, COSMIC,
+> Weston 12+); unsupported: KWin/Plasma, GNOME/Mutter, protocol-less WMs.
+> Consequence: the M10 hardware demo needs a wlroots compositor, not the
+> owner's Plasma session. Threat model §5 N2 records the same correction.
+
 ## Context
 
 door already owns the hard, security-critical half of a lock screen: the doord

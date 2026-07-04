@@ -1,0 +1,34 @@
+[package]
+name = "door-lock"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "door-lock"
+path = "src/main.rs"
+
+[dependencies]
+futures = "0.3"
+# `image` enables the wallpaper widget; `canvas` the analog clock face; `svg` the
+# vector logo; `wgpu` the GPU sky shader — the same surface the greeter renders.
+iced = { version = "0.14", features = ["image", "canvas", "svg", "wgpu"] }
+iced_futures = "0.14"
+# The ext-session-lock-v1 shell for iced: the *user's* compositor owns the lock
+# surfaces, so a crashed/killed door-lock leaves the screen blanked (never the
+# session) — the structural crash-safety guarantee the protocol was chosen for.
+iced_sessionlock = "0.18.1"
+# Registry probe before locking: detect a compositor without ext-session-lock-v1
+# (KWin, Mutter — they ship their own lockers and do not expose the protocol) and
+# decline with a clear message instead of panicking mid-lock. Same version the
+# session-lock shell already pulls in.
+wayland-client = "0.31"
+protocol = { workspace = true }
+# The shared auth-surface kit: theme + styles + host reads — one source of truth,
+# so the lock screen looks exactly like the login screen.
+door-theme = { workspace = true }
+libc = { workspace = true }
+
+[dev-dependencies]
+# Wire-shape guard: prove `Begin` is fieldless (no identity on the wire).
+serde_json = { workspace = true }

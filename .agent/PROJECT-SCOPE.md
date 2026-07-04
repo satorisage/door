@@ -125,8 +125,9 @@ These extend PERSONAL-PRINCIPLES.md for door. Lower number wins on conflict.
   `ext-session-lock-v1` client (`door-lock`) authenticating via a verify-only
   doord `Reauth` verb (its own threat model, its own lockout-recovery story — it
   is *not* the greeter reused). Honest bound: `ext-session-lock-v1`-only, so
-  GNOME/Mutter and compositors lacking the protocol are unsupported (they ship
-  their own lockers). See D-0019 + ROADMAP M10.
+  GNOME/Mutter **and KWin/Plasma** and compositors lacking the protocol are
+  unsupported (they ship their own lockers; KWin verified protocol-less at 6.7.2,
+  correction dated 2026-07-04 in D-0019). See D-0019 + ROADMAP M10.
 - **Multi-seat / exotic seat configs** — v1 is single-seat. Multi-seat needs a
   check-in.
 - **A general theming/plugin marketplace** — out until the core + one default

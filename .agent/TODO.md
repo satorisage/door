@@ -13,6 +13,8 @@
 
 ## Now
 
+- [ ] **M10 hardware demo (the Done-when, owner-run)** — on a real ext-session-lock-v1 — source: ROADMAP M10.T5
+
 ## Next
 
 ## Parked

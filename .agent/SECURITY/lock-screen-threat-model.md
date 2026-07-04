@@ -135,12 +135,17 @@ worse than one with honest limits.
   attacker out, it does not protect a session that is already owned.**
 - **N2 — Compositors without `ext-session-lock-v1`.** The crash-safety guarantee
   (TB1) is a property of the protocol; a compositor that does not implement it
-  cannot provide it. GNOME/Mutter (which ships its own locker) and exotic WMs
-  lacking the protocol are a **named, unsupported bound** (F-lock-1) — door-lock
-  **declines to lock them** rather than ship a layer-shell fallback that would
-  reveal the session on crash. No insecure fallback is shipped: the honest limit
-  is "we do not lock this compositor," never "we lock it weakly." The unsupported
-  list is installer-printed (M10 recovery docs).
+  cannot provide it. GNOME/Mutter **and KWin/Plasma** (each ships its own locker
+  and exposes no lock protocol to third-party clients) and exotic WMs lacking the
+  protocol are a **named, unsupported bound** (F-lock-1) — door-lock **declines to
+  lock them** rather than ship a layer-shell fallback that would reveal the
+  session on crash. No insecure fallback is shipped: the honest limit is "we do
+  not lock this compositor," never "we lock it weakly." The unsupported list is
+  printed by `door-lock --help` and the README. *(Correction 2026-07-04: D-0019
+  originally claimed KWin ≥ 5.27 support; observed false — KWin 6.7.2 advertises
+  no `ext_session_lock_manager_v1` global, live session and `--virtual` both, and
+  its binaries contain no implementation. The decline path was validated against
+  it instead: door-lock probes the registry and refuses with a clear message.)*
 - **N3 — DMA / cold-boot / physical-RAM attacks.** A software locker cannot defend
   the contents of RAM against an attacker who extracts or images it (bench access,
   DMA over a debug port, cold-boot). Out of scope by adversary model (§2): the
@@ -271,9 +276,15 @@ after the fix.
   unconfined-but-connectable window. Positive control: the TSYNC test
   `all_threads_filter_confines_a_sibling_thread` (`doord/src/hardening.rs`).
 - **D2 — locker compromise ≠ exposure (crash-safety)** — _(live: kill door-lock
-  under lock, confirm compositor keeps screen blanked — pending the door-lock binary)_
-- **N2 — unsupported-compositor decline** — _(behavior + installer-printed list —
-  pending the door-lock binary + M10 recovery docs)_
+  under lock, confirm compositor keeps screen blanked — binary built 2026-07-04;
+  demo pending an `ext-session-lock-v1` compositor on hardware (sway/Hyprland —
+  not KWin, see N2 correction))_
+- **N2 — unsupported-compositor decline** — **DEMONSTRATED 2026-07-04**: door-lock
+  probes the registry before locking (`door-lock/src/app.rs`
+  `compositor_supports_session_lock`) and refused a virtual KWin 6.7.2 with the
+  clear unsupported message (exit 1, nothing locked, session untouched); the list
+  is printed by `door-lock --help` and the README. The pre-probe failure mode (a
+  panic out of the lock shell) was replaced by this decline.
 
 ## 9. Verified residuals (deferred, per owner decision 2026-07-03)
 

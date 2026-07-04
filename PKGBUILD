@@ -51,11 +51,13 @@ check() {
 package() {
     cd "${pkgname}-${pkgver}"
 
-    # Binaries: the privileged daemon, the unprivileged greeter, and the (also
-    # unprivileged) settings editor.
+    # Binaries: the privileged daemon, the unprivileged greeter, the (also
+    # unprivileged) settings editor, and the session locker (unprivileged,
+    # ext-session-lock-v1 compositors only).
     install -Dm755 target/release/doord         "$pkgdir/usr/bin/doord"
     install -Dm755 target/release/door-greeter   "$pkgdir/usr/bin/door-greeter"
     install -Dm755 target/release/door-settings  "$pkgdir/usr/bin/door-settings"
+    install -Dm755 target/release/door-lock      "$pkgdir/usr/bin/door-lock"
 
     # PAM: the login service (doord) and the passwordless greeter session service.
     install -Dm644 dist/pam.d/doord            "$pkgdir/etc/pam.d/doord"
