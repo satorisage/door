@@ -5,10 +5,14 @@ milestone's task tree is the plan; `.agent/TODO.md` is its derived ready-frontie
 
 ## Active
 
-> **Current frontier (2026-07-03): no active milestone — M0–M9 all shipped/complete.**
+> **Current frontier (2026-07-03): M10 — door-lock (session lock screen) is the new committed
+> milestone (ratified D-0019).** M0–M9 all shipped/complete; session locking graduated from an
+> out-of-scope candidate to committed work today (scope amended, D-0019 Binding). M10 is the
+> next build target — its task tree is below under `## Active`. **Nothing built yet** (Critical:
+> new privilege verb + new lockout mode; it pre-ratified before code, per D-0019).
 > M5 (all four sandbox tiers) closed 2026-07-02 (Tier 4 Landlock enforce validated on `genny`,
-> D-0017); the black-strip fix shipped in v0.1.7. The remaining work is **polish + verification,
-> not a milestone:**
+> D-0017); the black-strip fix shipped in v0.1.7. Alongside M10, the remaining loose work is
+> **polish + verification, not a milestone:**
 > - ~~**M4's lone open leg** — door-settings *save*~~ — **CLOSED 2026-07-03.** The `pkexec`
 >   write to `/etc/door/greeter.toml` was exercised on hardware (`scratch/m4-save-verify.sh`
 >   PASS: sha changed, `root:root` `644`, diff = the real edit). **M4 Done-when fully MET —
@@ -23,6 +27,45 @@ milestone's task tree is the plan; `.agent/TODO.md` is its derived ready-frontie
 >
 > M-F stays parked entirely (owner directive). M8/M9 are complete (tagged in place under
 > `## Backlog` per the in-place convention, not physically relocated).
+
+### M10 — door-lock (session lock screen) — ⏳ COMMITTED (ratified D-0019, 2026-07-03) — not started
+**Criticality: Critical** (new privileged IPC verb + a new lockout mode). Reuses the
+hardware-proven doord PAM engine + door-theme surface; the novel, security-critical
+part is the ext-session-lock-v1 client and the verify-only Reauth verb. Surface-first
+(triggering left to the user's idle stack); ext-session-lock-v1-only (honest bound:
+GNOME/Mutter + protocol-less WMs unsupported). Full shape + six-fork resolution + the
+lock-specific threat model in **D-0019**. Pre-ratified before code (nothing built yet).
+
+- [ ] **doord `Reauth` verb** — a verify-only IPC verb: run the PAM conversation for
+      the supplied credentials **pinned to the socket peer-cred uid**, return allow/deny;
+      never spawns a session, never enters a session scope. Reuses the worker/spawner +
+      FIDO2/multi-prompt + min-failure-delay path. **Load-bearing invariant:** target uid
+      is derived from `SO_PEERCRED`, never a client-supplied username (a locker for user A
+      authenticates *only* as A — no cross-user brute-force oracle). Tests: uid-binding,
+      no `AuthSuccess` forgery, no-spawn. `depends:` M1 (PAM seam), M2 (IPC).
+- [ ] **`door-lock` binary** — an `ext-session-lock-v1` Wayland client of the *user's*
+      running compositor (not a cage toplevel): per-output lock surfaces, single seat,
+      rendering the door-theme sky + card via the shared crate; drives the Reauth verb;
+      holds no authority beyond "verify these creds for my own uid." Disclosure posture
+      mirrors the greeter exactly — sky + clock + password/FIDO2 prompt + the D-0018
+      default-off kb-layout/battery indicators; **no** notifications/media/session content.
+      `depends:` doord Reauth verb; door-theme.
+- [ ] **honest-bounds + recovery docs** — the unsupported-compositor list (ext-only) and
+      the two-command TTY break-glass recovery (VT-switch → log in → kill/restart
+      door-lock; compositor keeps the screen blanked if door-lock wedges — no daemon
+      unlock lever exists), in the installer-printed spirit of Principle 4. `depends:` door-lock
+- [ ] **lock threat-model file** — `.agent/SECURITY/lock-screen-threat-model.md`, the
+      D-0019 threat-model section expanded on build (defends: walk-up/evil-maid, locker
+      compromise ≠ exposure, cross-user auth abuse; does-not: compromised live session,
+      non-ext compositors, DMA/cold-boot; residual: the wedged-unlock trap). `depends:` door-lock
+- Backlog follow-on (not M10): idle/`loginctl lock-session` trigger wiring (F-lock-3);
+  a richer locked surface (notification counts / media) would need its own DECISION (F-lock-6).
+
+**Done-when (M10):** on an `ext-session-lock-v1` compositor (sway/Hyprland/KWin),
+`door-lock` locks the live session behind the themed door surface across all outputs;
+a correct password (or FIDO2 touch) unlocks via the doord Reauth verb; a killed/crashed
+door-lock leaves the compositor blanking the screen (session never exposed); and the
+documented two-command TTY recovery restores a wedged locker — all demonstrated on hardware.
 
 ### M4 — The beautiful greeter — ✅ **COMPLETE (2026-07-03)** — Done-when fully MET (save leg closed)
 **Criticality: Material** (pre-auth UI; no auth/lockout change, but the greeter is

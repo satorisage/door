@@ -1,6 +1,14 @@
 # Idea — door as the session lock screen too (2026-07-03)
 
-**Status:** raw idea inbox — pre-decision, no scope commitment. Session locking is
+> **GRADUATED 2026-07-03 → DECISION-0019 (Binding).** The owner walked all six
+> forks (F-lock-1…6) and ratified each on its lean: ext-session-lock-v1-only ·
+> doord `Reauth` verb · surface-first · TTY recovery (no unlock verb) ·
+> single-seat/all-outputs · mirror the greeter disclosure posture. Session
+> locking is now in-scope as milestone **M10 — door-lock** (PROJECT-SCOPE
+> amended, ROADMAP `## Active`). Archived per the graduation-path convention;
+> the canonical record is D-0019.
+
+**Status:** GRADUATED (was: raw idea inbox — pre-decision). Session locking was
 currently **Out of scope** (PROJECT-SCOPE `## Out of scope`): *"door is login-only
 for v1. Locking is a candidate (the same privilege seam could serve it) but is not
 committed; needs a check-in to bring in."* This file captures the design + open

@@ -118,9 +118,15 @@ These extend PERSONAL-PRINCIPLES.md for door. Lower number wins on conflict.
   no-network constraint. Nothing would justify adding it.
 - **X11-rendered greeter** — Wayland-first; door may *launch* X11 sessions, but
   the greeter itself is a Wayland client. Adding an X greeter needs a check-in.
-- **Session locking (lock screen)** — door is login-only for v1. Locking is a
+- ~~**Session locking (lock screen)** — door is login-only for v1. Locking is a
   candidate (the same privilege seam could serve it) but is not committed; needs
-  a check-in to bring in.
+  a check-in to bring in.~~ — **GRADUATED IN-SCOPE 2026-07-03 (D-0019).** Session
+  locking is now a committed milestone (**M10 — door-lock**): a separate
+  `ext-session-lock-v1` client (`door-lock`) authenticating via a verify-only
+  doord `Reauth` verb (its own threat model, its own lockout-recovery story — it
+  is *not* the greeter reused). Honest bound: `ext-session-lock-v1`-only, so
+  GNOME/Mutter and compositors lacking the protocol are unsupported (they ship
+  their own lockers). See D-0019 + ROADMAP M10.
 - **Multi-seat / exotic seat configs** — v1 is single-seat. Multi-seat needs a
   check-in.
 - **A general theming/plugin marketplace** — out until the core + one default
