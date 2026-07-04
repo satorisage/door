@@ -1,6 +1,8 @@
-//! The greeter's look (M4): a config-driven theme with a built-in beautiful
-//! default. Shared by `door-greeter` (which renders it) and `door-settings` (which
-//! edits it) — one source of truth for the schema and the colors.
+//! The shared kit for door's auth surfaces: a config-driven theme with a
+//! built-in beautiful default, plus the widget styles ([`styles`]) and local
+//! host reads ([`host`]) the surfaces render it with. Shared by `door-greeter`
+//! and `door-lock` (which render it) and `door-settings` (which edits it) —
+//! one source of truth for the schema, the colors, and the look.
 //!
 //! The greeter is the pre-auth surface, so the config is admin-controlled and
 //! world-readable — never user-supplied at login time. It is loaded from the first
@@ -17,8 +19,10 @@
 //! stock font rather than failing.
 
 pub mod clock;
+pub mod host;
 pub mod sky;
 pub mod skyshader;
+pub mod styles;
 
 use serde::Deserialize;
 use std::path::PathBuf;

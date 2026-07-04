@@ -8,9 +8,9 @@ license.workspace = true
 name = "door_theme"
 path = "src/lib.rs"
 
-# The shared greeter theme: schema, parse/merge/load, and color helpers. Used by
-# both door-greeter (renders it) and door-settings (edits it) — one source of
-# truth for the look. Depends on iced only for the Color conversions both UIs need.
+# The shared auth-surface kit: theme schema, parse/merge/load, color helpers,
+# widget styles, and local host reads. Used by door-greeter and door-lock (which
+# render it) and door-settings (which edits it) — one source of truth for the look.
 [dependencies]
 # `canvas` for the line-art spinner; `wgpu` for the GPU sky shader (real radial
 # glow / nebula / comet, per-pixel — no flat-fill banding).
@@ -19,6 +19,11 @@ serde = { workspace = true }
 toml = "0.8"
 # Plain-old-data → bytes for the shader's uniform buffer (already in the tree via wgpu).
 bytemuck = { version = "1", features = ["derive"] }
+# Dependency-free local clock reads (`localtime_r`/`strftime`) for the host module.
+libc = { workspace = true }
+# Header-only dimension probe in the asset vetting — the pre-auth decompression-bomb
+# guard on wallpaper/logo assets.
+image = "0.25"
 
 [dev-dependencies]
 # Validate the WGSL shaders at test time (parse + type-check) — no GPU needed. Pinned
