@@ -60,3 +60,4 @@ inline in the title cell: `— **Superseded by 0NNN (YYYY-MM-DD)**`.)
 | 0017 | 2026-07-02 | [Supervisor Landlock path sandbox via the landlock crate, enforce-only (M5 Tier 4)](DECISION-0017-supervisor-landlock-enforce.md) |
 | 0018 | 2026-07-03 | [Pre-auth stance round 2: graduate keyboard-layout + battery (default-off); user-list parked; no-network reaffirmed absolute + a verification engagement](DECISION-0018-pre-auth-stance-round2.md) — *supersedes D-0012's indicator-parking clause in part* |
 | 0019 | 2026-07-03 | [Session lock screen: door-lock as an ext-session-lock-v1 client + a doord Reauth verb (M10)](DECISION-0019-session-lock-door-lock.md) |
+| 0020 | 2026-07-04 | [Module naming: the door-parts convention](DECISION-0020-module-naming-door-parts.md) |

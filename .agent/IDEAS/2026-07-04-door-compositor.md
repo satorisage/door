@@ -85,3 +85,9 @@ environment." The full anatomy map (what makes Plasma Plasma, the door module
 map, honest costs, the shippable sequence) is in
 `.agent/REPORTS/2026-07-04-desktop-environment-anatomy.md`. Tier B here is that
 map's module 2 (door-comp).
+
+## Naming (2026-07-04, D-0020)
+
+The door-parts naming convention is Binding: Tier A's working name
+"door-stage" is reserved as **doorstep**; Tier B as **doorframe**. See
+DECISION-0020.

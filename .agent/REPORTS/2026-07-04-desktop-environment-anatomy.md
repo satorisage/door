@@ -101,3 +101,13 @@ every arrow; no step is wasted if the vision stops there.
 This is a map, not a decision. Graduation path per D-0028: an owner-ratified
 DECISION (likely: ratify Tier A as a milestone first; Tier B/DE as its own
 `.agent`-tracked project with door as sibling), then ROADMAP tasks.
+
+## Addendum (2026-07-04): naming — D-0020
+
+The owner ratified the **door-parts convention** (DECISION-0020): every module
+is named as a part of, or a figure at, the door. The §4 module map's names are
+reserved accordingly: door-stage → **doorstep**, door-comp → **doorframe**,
+door-shell's pieces → **sill** (panel) + **doorbell** (notifications),
+door-session → **threshold**, door-idle → **latch**; plus **doorman** (polkit
+agent) and **keyhole** (secrets) when their day comes. The environment's
+umbrella name is parked (candidate: **foyer**) until a shell exists.
