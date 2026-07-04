@@ -22,6 +22,7 @@ use protocol::{read_frame, write_frame, ReauthRequest, ReauthResponse, PROTOCOL_
 struct Daemon {
     child: Child,
     socket: PathBuf,
+    reauth_dir: PathBuf,
     reauth_socket: PathBuf,
     session_root: PathBuf,
 }
@@ -32,6 +33,7 @@ impl Drop for Daemon {
         let _ = self.child.wait();
         let _ = std::fs::remove_file(&self.socket);
         let _ = std::fs::remove_file(&self.reauth_socket);
+        let _ = std::fs::remove_dir_all(&self.reauth_dir);
         let _ = std::fs::remove_dir_all(&self.session_root);
     }
 }
@@ -39,10 +41,14 @@ impl Drop for Daemon {
 fn start_daemon(tag: &str) -> Daemon {
     let socket =
         std::env::temp_dir().join(format!("doord-reauth-{tag}-{}.sock", std::process::id()));
-    let reauth_socket =
-        std::env::temp_dir().join(format!("doord-reauth-{tag}-r-{}.sock", std::process::id()));
+    // The reauth socket lives in its own dedicated dir (the daemon chmods that dir to
+    // 0755 for world-traversal), mirroring production's /run/doord-reauth — never a
+    // shared parent like /tmp itself.
+    let reauth_dir =
+        std::env::temp_dir().join(format!("doord-reauth-{tag}-dir-{}", std::process::id()));
+    let reauth_socket = reauth_dir.join("reauth.sock");
     let _ = std::fs::remove_file(&socket);
-    let _ = std::fs::remove_file(&reauth_socket);
+    let _ = std::fs::remove_dir_all(&reauth_dir);
 
     let session_root = std::env::temp_dir().join(format!(
         "doord-reauth-sessions-{tag}-{}",
@@ -66,6 +72,7 @@ fn start_daemon(tag: &str) -> Daemon {
     Daemon {
         child,
         socket,
+        reauth_dir,
         reauth_socket,
         session_root,
     }

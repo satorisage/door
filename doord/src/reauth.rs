@@ -301,22 +301,34 @@ pub(crate) fn serve_reauth(config: &Config, factory: &dyn ReauthFactory) -> io::
     Ok(())
 }
 
-/// Create the reauth socket directory (world-traversable — any local session user must
-/// reach the socket to unlock their own session), remove any stale socket, bind, and
-/// make the socket world-connectable. The peer-cred uid, not the socket mode, is the
-/// authorization gate on this seam.
-fn bind_reauth(config: &Config) -> io::Result<UnixListener> {
-    let path = &config.reauth_socket_path;
-
-    if let Some(dir) = path.parent() {
-        // Only touch permissions on a dir we created (the dedicated reauth dir in
-        // production); a pre-existing shared dir (e.g. a temp dir in dev/tests) is left
-        // exactly as its owner set it.
+/// Ensure the reauth socket's **dedicated** directory exists and is world-traversable
+/// (`0755`) — any local session user must reach the socket to unlock their own session;
+/// the peer-cred uid, not the dir mode, is the authorization gate. Idempotent.
+///
+/// Called twice, deliberately: once on the main thread **before the sandbox**, so the
+/// dir exists when the Landlock ruleset seeds it as a `PathFd` (a missing dir would make
+/// the whole ruleset install fail, silently un-sandboxing the supervisor); and again
+/// from [`bind_reauth`] on the listener thread. The `0755` is set unconditionally so a
+/// systemd `RuntimeDirectory` that pre-created the dir at `0700` is widened to
+/// traversable. `DOORD_REAUTH_SOCKET` is expected to name a path inside a dedicated dir
+/// (the default `/run/doord-reauth/…` and the tests' per-run temp subdir both do), so
+/// this only ever chmods a directory the daemon owns — never a shared parent like `/tmp`.
+pub(crate) fn ensure_socket_dir(config: &Config) -> io::Result<()> {
+    if let Some(dir) = config.reauth_socket_path.parent() {
         if !dir.exists() {
             fs::create_dir_all(dir)?;
-            fs::set_permissions(dir, fs::Permissions::from_mode(0o755))?;
         }
+        fs::set_permissions(dir, fs::Permissions::from_mode(0o755))?;
     }
+    Ok(())
+}
+
+/// Ensure the socket directory, remove any stale socket, bind, and make the socket
+/// world-connectable. The peer-cred uid, not the socket mode, is the authorization
+/// gate on this seam.
+fn bind_reauth(config: &Config) -> io::Result<UnixListener> {
+    let path = &config.reauth_socket_path;
+    ensure_socket_dir(config)?;
 
     if path.exists() {
         fs::remove_file(path)?;
