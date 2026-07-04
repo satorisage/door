@@ -597,6 +597,32 @@ off-by-default DECISION naming its threat model before it can graduate.
 
 ## Shipped
 
+- **v0.1.8** (2026-07-03): tag `v0.1.8` → `1c4e525`, released via `release.sh`
+  (GitHub Release + AUR). Ships the two **opt-in greeter indicators** —
+  keyboard-layout (`show_kb_layout`) and battery (`show_battery`), both **off by
+  default**, purely local reads (no daemon protocol, no network, no privileged
+  path). Verified headless on hardware (laptop: `⌨ US` + `⚡ 100%`; desktop /
+  no-battery via a user+mount namespace: battery row hidden, kb-layout shown).
+  Notes: `dist/release-notes/v0.1.8.md`. Graduated from D-0018.
+
+- **v0.1.7** (2026-07-03): tag `v0.1.7` → `fa5571e`, released via `release.sh`.
+  Fixes the **greeter black strip on the physical eDP panel** — a ~35px bottom band
+  (absent from every `grim` shot, which made it slippery). Root cause: door-greeter
+  left `decorations: true`, so cage/winit drew sctk-adwaita CSD (`HEADER_SIZE=35`),
+  shifting the content buffer up and leaving the bottom 35 scanout rows uncovered →
+  black. Fix: `decorations: false` (`door-greeter/src/app.rs`). Confirmed on-panel.
+  Notes: `dist/release-notes/v0.1.7.md`.
+
+- **v0.1.6** (2026-07-02): tag `v0.1.6` → `e998667`, released via `release.sh`.
+  Completes the **supervisor hardening milestone (M5)** — adds **Tier 4 Landlock**
+  (`DOORD_LANDLOCK=enforce`) atop the Tier 3 seccomp filter, so a compromised login
+  daemon can no longer read `/home` `/root` `/var` `/tmp` or write outside its two
+  runtime paths. All four sandbox tiers (spawner + capability drop + seccomp +
+  Landlock) now ship enabled by default; ABI pinned to Landlock V1 (DRM/VT never at
+  risk); reversible via `DOORD_LANDLOCK=off` / `DOORD_NO_SANDBOX=1`. Validated on
+  hardware (full login cycle, zero denials). Notes: `dist/release-notes/v0.1.6.md`;
+  threat model `.agent/SECURITY/landlock-path-threat-model.md` (D-0017).
+
 - **v0.1.5 → AUR** (2026-07-02): **live on the AUR** (pkgver 0.1.5, pkgrel 1) —
   GitHub tag `v0.1.5` → `bf0d425`, AUR commit `0185cc2 door 0.1.5-1` (real sha256
   pinned by `updpkgsums`), GitHub Release
