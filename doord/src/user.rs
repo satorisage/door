@@ -87,6 +87,64 @@ pub fn resolve(username: &str) -> io::Result<TargetUser> {
     }
 }
 
+/// Look up a numeric uid in the passwd database and return the identity it names.
+///
+/// This is the reverse of [`resolve`], and it is how the reauth path binds a lock
+/// screen to a single user: the daemon reads the connecting peer's kernel-attested
+/// uid from `SO_PEERCRED` and resolves *that* uid here to the username PAM will
+/// authenticate — never a name the client supplied. A uid with no passwd entry is a
+/// `NotFound`, and the caller must then refuse rather than fall back to any default.
+pub fn resolve_uid(uid: u32) -> io::Result<TargetUser> {
+    let mut buf_len = match unsafe { libc::sysconf(libc::_SC_GETPW_R_SIZE_MAX) } {
+        n if n > 0 => n as usize,
+        _ => 1024,
+    };
+
+    loop {
+        let mut passwd: libc::passwd = unsafe { std::mem::zeroed() };
+        let mut result: *mut libc::passwd = std::ptr::null_mut();
+        let mut buf = vec![0i8; buf_len];
+
+        // SAFETY: all pointers reference live, correctly-sized storage held by this
+        // stack frame for the duration of the call. getpwuid_r writes the entry into
+        // `passwd`/`buf` and sets `result` to `&passwd` on success or null if no such
+        // uid.
+        let ret =
+            unsafe { libc::getpwuid_r(uid, &mut passwd, buf.as_mut_ptr(), buf_len, &mut result) };
+
+        if ret == libc::ERANGE {
+            buf_len = buf_len.saturating_mul(2);
+            continue;
+        }
+        if ret != 0 {
+            return Err(io::Error::from_raw_os_error(ret));
+        }
+        if result.is_null() {
+            return Err(io::Error::new(
+                io::ErrorKind::NotFound,
+                format!("no passwd entry for uid {uid}"),
+            ));
+        }
+
+        // SAFETY: these passwd fields point into `buf`, which outlives the reads here;
+        // getpwuid_r guarantees them NUL-terminated.
+        let name = unsafe { cstr_to_string(passwd.pw_name) };
+        let home = unsafe { cstr_to_string(passwd.pw_dir) };
+        let mut shell = unsafe { cstr_to_string(passwd.pw_shell) };
+        if shell.is_empty() {
+            shell = "/bin/sh".to_string();
+        }
+
+        return Ok(TargetUser {
+            name,
+            uid: passwd.pw_uid,
+            gid: passwd.pw_gid,
+            home,
+            shell,
+        });
+    }
+}
+
 /// Copy a C string field out of a passwd entry into an owned `String`.
 ///
 /// SAFETY: `ptr` must be a valid, NUL-terminated C string (or null). A null or
@@ -124,5 +182,34 @@ mod tests {
     fn username_with_nul_is_rejected() {
         let err = resolve("ro\0ot").unwrap_err();
         assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+    }
+
+    #[test]
+    fn resolve_uid_zero_is_root() {
+        // uid 0 is `root` on every Unix — the reverse lookup the reauth path uses to
+        // turn a peercred uid into the username PAM authenticates.
+        let root = resolve_uid(0).expect("uid 0 must resolve");
+        assert_eq!(root.name, "root");
+        assert_eq!(root.uid, 0);
+    }
+
+    #[test]
+    fn resolve_uid_round_trips_with_resolve() {
+        // Whatever uid this test runs as must resolve to a name that resolves back to
+        // the same uid — the binding reauth relies on (peercred uid → name → PAM).
+        let me_uid = unsafe { libc::getuid() };
+        let by_uid = resolve_uid(me_uid).expect("own uid must resolve");
+        let by_name = resolve(&by_uid.name).expect("own name must resolve");
+        assert_eq!(by_uid.uid, me_uid);
+        assert_eq!(by_name.uid, me_uid);
+        assert_eq!(by_uid.name, by_name.name);
+    }
+
+    #[test]
+    fn resolve_uid_unknown_is_not_found() {
+        // A very high uid with no passwd entry must be a clean NotFound, so the reauth
+        // path refuses rather than authenticating some default identity.
+        let err = resolve_uid(4_000_000_000).unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::NotFound);
     }
 }

@@ -392,8 +392,9 @@ const SUPERVISOR_RO_PATHS: &[&str] = &[
 
 /// Read-write subtrees the supervisor needs (full filesystem access set at ABI V1).
 const SUPERVISOR_RW_PATHS: &[&str] = &[
-    "/run/doord", // the IPC listener socket dir: create/bind/chmod/chown/unlink
-    "/dev",       // `/dev/dri/card*` (DRM master) + `/dev/tty{N}` (VT); tighten on genny
+    "/run/doord",        // the IPC listener socket dir: create/bind/chmod/chown/unlink
+    "/run/doord-reauth", // the session-lock reauth listener socket dir (create/bind/chmod/unlink)
+    "/dev",              // `/dev/dri/card*` (DRM master) + `/dev/tty{N}` (VT); tighten on genny
 ];
 
 /// Install the supervisor Landlock ruleset for `mode`. A no-op for [`LandlockMode::Off`].
@@ -421,9 +422,15 @@ pub fn apply_landlock(mode: LandlockMode) -> io::Result<RulesetStatus> {
         .map_err(landlock_err)?
         .create()
         .map_err(landlock_err)?
-        .add_rules(path_beneath_rules(SUPERVISOR_RO_PATHS, AccessFs::from_read(abi)))
+        .add_rules(path_beneath_rules(
+            SUPERVISOR_RO_PATHS,
+            AccessFs::from_read(abi),
+        ))
         .map_err(landlock_err)?
-        .add_rules(path_beneath_rules(SUPERVISOR_RW_PATHS, AccessFs::from_all(abi)))
+        .add_rules(path_beneath_rules(
+            SUPERVISOR_RW_PATHS,
+            AccessFs::from_all(abi),
+        ))
         .map_err(landlock_err)?
         .restrict_self()
         .map_err(landlock_err)?;
@@ -494,7 +501,10 @@ mod tests {
 
     #[test]
     fn landlock_no_sandbox_overrides_every_value() {
-        assert_eq!(LandlockMode::parse(Some("enforce"), true), LandlockMode::Off);
+        assert_eq!(
+            LandlockMode::parse(Some("enforce"), true),
+            LandlockMode::Off
+        );
         assert_eq!(LandlockMode::parse(None, true), LandlockMode::Off);
     }
 

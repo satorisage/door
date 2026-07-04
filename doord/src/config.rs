@@ -33,10 +33,23 @@ pub struct SeatTarget {
     pub vtnr: Option<u32>,
 }
 
+/// Default reauth socket path. Lives in its own dir (not the greeter's `/run/doord`,
+/// which is locked to the greeter group) because the reauth listener must be
+/// reachable by any local session user — the peer-cred uid, not the socket mode, is
+/// the authorization gate on this seam.
+const DEFAULT_REAUTH_SOCKET_PATH: &str = "/run/doord-reauth/reauth.sock";
+
 /// Resolved daemon configuration.
+///
+/// `Clone` so the daemon-lifetime reauth listener thread can own an immutable copy
+/// rather than borrow across the thread boundary.
+#[derive(Clone)]
 pub struct Config {
     /// Pathname Unix socket to listen on (`DOORD_SOCKET`).
     pub socket_path: PathBuf,
+    /// Pathname Unix socket the session-lock reauth listener binds
+    /// (`DOORD_REAUTH_SOCKET`). World-connectable; the peer-cred uid is the gate.
+    pub reauth_socket_path: PathBuf,
     /// Data-dir roots searched for `wayland-sessions/` and `xsessions/`
     /// (`DOORD_SESSION_DIRS`, `:`-separated; defaults to the freedesktop dirs).
     pub session_dirs: Vec<PathBuf>,
@@ -70,6 +83,10 @@ impl Config {
         let socket_path = env_os("DOORD_SOCKET")
             .map(PathBuf::from)
             .unwrap_or_else(|| PathBuf::from(DEFAULT_SOCKET_PATH));
+
+        let reauth_socket_path = env_os("DOORD_REAUTH_SOCKET")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from(DEFAULT_REAUTH_SOCKET_PATH));
 
         // `:`-separated data-dir roots, mirroring how XDG paths are written.
         // Empty segments are dropped so a trailing `:` is harmless.
@@ -137,6 +154,7 @@ impl Config {
 
         Config {
             socket_path,
+            reauth_socket_path,
             session_dirs,
             greeter_uid,
             greeter_gid,

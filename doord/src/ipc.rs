@@ -138,7 +138,7 @@ pub(crate) fn read_greeter_request(conn: &UnixStream) -> Result<Request, FrameEr
 /// must not fail visibly faster than a wrong password, or the timing itself
 /// leaks which accounts exist. Only the failure path is padded — success is not
 /// slowed. Lockout/backoff proper is left to the PAM stack (`pam_faillock`).
-const MIN_AUTH_FAILURE: Duration = Duration::from_secs(1);
+pub(crate) const MIN_AUTH_FAILURE: Duration = Duration::from_secs(1);
 
 /// The seat VT doord owns, or `-1` for none — read by the teardown signal
 /// handler, which runs in async-signal context and so cannot consult [`Config`].
@@ -500,8 +500,7 @@ pub fn serve(
         let greeted_at = Instant::now();
         match accept_with_greeter_watch(&listener, greeter.as_ref()) {
             Ok(AcceptOutcome::Connected(stream)) => {
-                if let Err(e) =
-                    handle_connection(stream, config, logins, spawner, greeter.as_ref())
+                if let Err(e) = handle_connection(stream, config, logins, spawner, greeter.as_ref())
                 {
                     eprintln!("doord: connection ended: {e}");
                 }
@@ -1303,8 +1302,10 @@ fn run_start(
     }
 }
 
-/// Sleep until at least [`MIN_AUTH_FAILURE`] has elapsed since `started`.
-fn pad_failure(started: Instant) {
+/// Sleep until at least [`MIN_AUTH_FAILURE`] has elapsed since `started`. Shared with
+/// the reauth path so a denied reauth is padded exactly like a failed login — a fast
+/// rejection must not be timeable into an account-existence oracle.
+pub(crate) fn pad_failure(started: Instant) {
     let elapsed = started.elapsed();
     if elapsed < MIN_AUTH_FAILURE {
         thread::sleep(MIN_AUTH_FAILURE - elapsed);
@@ -1389,8 +1390,9 @@ fn dispatch(request: &Request, config: &Config) -> Response {
 
 /// Read the peer's kernel-attested credentials via `SO_PEERCRED`. The uid here
 /// is asserted by the kernel, not by anything the greeter sent, which is what
-/// makes it a trustworthy authorization signal.
-fn peer_cred(stream: &UnixStream) -> io::Result<libc::ucred> {
+/// makes it a trustworthy authorization signal. Shared with the reauth listener,
+/// where the same kernel-attested uid *is* the identity being reauthenticated.
+pub(crate) fn peer_cred(stream: &UnixStream) -> io::Result<libc::ucred> {
     let mut cred = libc::ucred {
         pid: 0,
         uid: 0,
@@ -1440,6 +1442,7 @@ mod tests {
     fn test_config() -> Config {
         Config {
             socket_path: PathBuf::from("/unused-in-pair-test.sock"),
+            reauth_socket_path: PathBuf::from("/unused-in-pair-test-reauth.sock"),
             session_dirs: Vec::new(),
             // A socketpair reports the creating process's creds on SO_PEERCRED,
             // so authorize our own uid.

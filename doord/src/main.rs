@@ -27,6 +27,7 @@ mod hardening;
 mod ipc;
 mod pam;
 mod privdrop;
+mod reauth;
 mod sessions;
 mod spawn;
 // M5 sandbox groundwork: the pre-forked spawner + its supervisor-side helpers. It
@@ -75,13 +76,59 @@ fn main() -> ExitCode {
                 Some(spawner::Spawner::new(sock))
             }
             Err(e) => {
-                eprintln!("doord: could not fork the spawner ({e}); using the direct in-lineage path");
+                eprintln!(
+                    "doord: could not fork the spawner ({e}); using the direct in-lineage path"
+                );
                 None
             }
         }
     } else {
         None
     };
+    // The session-lock reauth listener: a daemon-lifetime thread serving
+    // the verify-only reauth verb on its own world-connectable socket, so a lock screen
+    // running as the session user can ask the daemon to reauthenticate *that* user — the
+    // peer-cred uid, never a client-named one. Its PAM runs in workers forked off a
+    // dedicated reauth spawner (production) — outside the supervisor's sandbox, exactly
+    // like the login path — or directly (dev). Both the spawner fork and the thread must
+    // happen *before* the sandbox: the supervisor's seccomp allowlist has no `clone`, so
+    // the one thread it needs is created here while that is still permitted, and it then
+    // serves connections sequentially (no per-connection threads).
+    let reauth_spawner: std::sync::Arc<std::sync::Mutex<Option<spawner::Spawner>>> =
+        if spawner.is_some() {
+            match spawner::fork_spawner(pam::spawn_raw) {
+                Ok(sock) => {
+                    std::sync::Arc::new(std::sync::Mutex::new(Some(spawner::Spawner::new(sock))))
+                }
+                Err(e) => {
+                    eprintln!(
+                        "doord: could not fork the reauth spawner ({e}); reauth will use the \
+                         direct in-lineage worker path"
+                    );
+                    std::sync::Arc::new(std::sync::Mutex::new(None))
+                }
+            }
+        } else {
+            std::sync::Arc::new(std::sync::Mutex::new(None))
+        };
+    {
+        let reauth_config = config.clone();
+        let factory = reauth::WorkerReauthFactory::new(reauth_spawner);
+        let spawned = std::thread::Builder::new()
+            .name("doord-reauth".to_string())
+            .spawn(move || {
+                if let Err(e) = reauth::serve_reauth(&reauth_config, &factory) {
+                    eprintln!(
+                        "doord: reauth listener could not start on {}: {e}",
+                        reauth_config.reauth_socket_path.display()
+                    );
+                }
+            });
+        if let Err(e) = spawned {
+            eprintln!("doord: could not spawn the reauth listener thread: {e}; reauth is disabled");
+        }
+    }
+
     // Confine the supervisor's syscall surface (seccomp), now that the spawner owns
     // session/greeter creation off this lineage. Applied here — after fork_spawner,
     // before serving — and only in spawner mode: on the direct in-lineage path the
