@@ -160,16 +160,26 @@ fn main() -> ExitCode {
     }
 
     // Spawn the reauth listener now — after Landlock (so it inherits the path ruleset) and
-    // before seccomp (whose allowlist has no `clone`). It briefly binds and blocks on
-    // accept seccomp-unconfined until the TSYNC install below lands — a startup window
-    // before any client can connect — while its Landlock confinement is already in force
-    // via inheritance.
-    {
+    // before seccomp (whose allowlist has no `clone`) — but hold it on a release gate: the
+    // thread blocks on `rx.recv()` (nothing but a futex wait — `futex` is allowlisted, and
+    // the wake happens post-filter) and touches the socket only once released. The main
+    // thread releases it *after* the TSYNC install below, so the reauth thread's very first
+    // socket syscall (the `bind`/`listen` that makes the socket connectable, then `accept`)
+    // already runs under the all-threads filter — the connectable window is never
+    // seccomp-unconfined, no scheduler race. A channel (not a `Barrier`) so a failed spawn
+    // can't deadlock the release: `send` on a dropped receiver is a harmless error.
+    let reauth_release: Option<std::sync::mpsc::Sender<()>> = {
+        let (tx, rx) = std::sync::mpsc::channel::<()>();
         let reauth_config = config.clone();
         let factory = reauth::WorkerReauthFactory::new(reauth_spawner);
         let spawned = std::thread::Builder::new()
             .name("doord-reauth".to_string())
             .spawn(move || {
+                // Park until the all-threads seccomp filter is installed. Issue no
+                // meaningful syscall (only the futex wait) before this returns.
+                if rx.recv().is_err() {
+                    return; // released nothing (startup aborted) — never serve
+                }
                 if let Err(e) = reauth::serve_reauth(&reauth_config, &factory) {
                     eprintln!(
                         "doord: reauth listener could not start on {}: {e}",
@@ -177,10 +187,16 @@ fn main() -> ExitCode {
                     );
                 }
             });
-        if let Err(e) = spawned {
-            eprintln!("doord: could not spawn the reauth listener thread: {e}; reauth is disabled");
+        match spawned {
+            Ok(_handle) => Some(tx), // detach the thread; keep the release handle
+            Err(e) => {
+                eprintln!(
+                    "doord: could not spawn the reauth listener thread: {e}; reauth is disabled"
+                );
+                None
+            }
         }
-    }
+    };
 
     // Confine the supervisor's syscall surface (seccomp) LAST, with TSYNC (all threads),
     // so it covers both the greeter loop (this thread) and the reauth listener thread
@@ -209,6 +225,13 @@ fn main() -> ExitCode {
             "doord: DOORD_SECCOMP set but not in spawner mode; skipping — a supervisor \
              filter on the direct in-lineage path would confine the desktop session"
         );
+    }
+
+    // Release the reauth listener: the all-threads filter is now installed, so everything
+    // the thread does from here — bind/listen/accept and the PAM relay — runs fully
+    // seccomp-confined. (A dropped receiver, from a failed spawn, makes this a no-op.)
+    if let Some(release) = reauth_release {
+        let _ = release.send(());
     }
 
     let logins = WorkerLoginFactory::new();

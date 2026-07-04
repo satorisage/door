@@ -512,6 +512,12 @@ mod tests {
     /// been per-thread, the sibling would run unconfined and the call would succeed —
     /// exactly the reauth-thread hole this guards against. The child's exit code encodes
     /// the outcome. Skips gracefully where an unprivileged seccomp install is unavailable.
+    ///
+    /// Coverage note: this proves the *filter* reaches a sibling thread. In `main` the
+    /// reauth thread is additionally held on a release channel — it blocks on `recv`
+    /// (only a futex wait) and touches no socket until the main thread releases it *after*
+    /// this all-threads install — so its first `bind`/`listen`/`accept` already runs under
+    /// the filter, with no scheduler race over the connectable window.
     #[test]
     fn all_threads_filter_confines_a_sibling_thread() {
         use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
