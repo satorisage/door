@@ -9,9 +9,10 @@ milestone's task tree is the plan; `.agent/TODO.md` is its derived ready-frontie
 > M5 (all four sandbox tiers) closed 2026-07-02 (Tier 4 Landlock enforce validated on `genny`,
 > D-0017); the black-strip fix shipped in v0.1.7. The remaining work is **polish + verification,
 > not a milestone:**
-> - **M4's lone open leg** — door-settings *save* (`pkexec`-write to `/etc/door/greeter.toml`),
->   design-verified only. Owner-run harness: `bash ./scratch/m4-save-verify.sh` on genny; a PASS
->   closes M4's Done-when.
+> - ~~**M4's lone open leg** — door-settings *save*~~ — **CLOSED 2026-07-03.** The `pkexec`
+>   write to `/etc/door/greeter.toml` was exercised on hardware (`scratch/m4-save-verify.sh`
+>   PASS: sha changed, `root:root` `644`, diff = the real edit). **M4 Done-when fully MET —
+>   every milestone M0–M9 is now complete with no open legs.**
 > - ~~**D-0018 greeter indicators (default-off)**~~ — **SHIPPED in v0.1.8** (2026-07-03):
 >   keyboard-layout + battery indicators built, verified headless, released. TCB-neutral,
 >   off by default. (Both `## Loose` tasks marked done.)
@@ -23,7 +24,7 @@ milestone's task tree is the plan; `.agent/TODO.md` is its derived ready-frontie
 > M-F stays parked entirely (owner directive). M8/M9 are complete (tagged in place under
 > `## Backlog` per the in-place convention, not physically relocated).
 
-### M4 — The beautiful greeter — **Done-when MET on hardware (2026-07-01)**; lone open leg: door-settings *save*
+### M4 — The beautiful greeter — ✅ **COMPLETE (2026-07-03)** — Done-when fully MET (save leg closed)
 **Criticality: Material** (pre-auth UI; no auth/lockout change, but the greeter is
 the pre-auth surface — keep new deps justified). Direction (2026-06-27, owner):
 **wallpaper + frosted card**, **config-driven theme engine + a built-in default**
@@ -144,8 +145,12 @@ the pre-auth surface — keep new deps justified). Direction (2026-06-27, owner)
             uncovered → scanned out black. Fix: `decorations: false` in `door-greeter`
             `window::Settings` (commit `95eee0a`). Headless- then on-panel-verified; ships
             v0.1.7. Full trail: CHECK-IN 0002 (ARCHIVED) + the black-strip REPORT.
-      - [ ] **door-settings *save* not yet exercised** — `pkexec`-write to `/etc/door`;
-            design-verified, confirm interactively on the real machine.
+      - [x] **door-settings *save* — EXERCISED on hardware (2026-07-03).** The `pkexec`
+            write of a draft edit landed at `/etc/door/greeter.toml`: sha changed
+            (`083b3765…` → `6d94fc34…`), file owned `root:root` mode `644` (world-readable,
+            per constraint), diff = the actual edit (card alpha `d0`→`94`). Owner-run via
+            `scratch/m4-save-verify.sh` — unprivileged door-settings → pkexec-elevated
+            write, the real user path. **M4 Done-when now fully MET.**
 
 **Done-when (M4):** booting into door shows the themed greeter — wallpaper, frosted
 card, clock, themed font, subtle fade-in — rendered from a config file with a
@@ -591,9 +596,10 @@ off-by-default DECISION naming its threat model before it can graduate.
   — a Critical change touching the TCB cage invocation (`doord/src/config.rs`), so it
   needs a full superseding DECISION + threat re-model, not a code task.
 
-- **M4 door-settings *save* leg (owner-run) — M4's lone open Done-when.** Exercise
-  the `pkexec`-write of the draft to `/etc/door/greeter.toml`. Harness:
-  `bash ./scratch/m4-save-verify.sh` on genny; a PASS closes M4.
+- ~~**M4 door-settings *save* leg (owner-run)**~~ — **DONE 2026-07-03.** The
+  `pkexec`-write of a draft to `/etc/door/greeter.toml` was exercised on hardware
+  (`scratch/m4-save-verify.sh` PASS: sha `083b3765…`→`6d94fc34…`, `root:root` `644`,
+  diff = the real edit). M4 Done-when fully met.
 
 ## Shipped
 

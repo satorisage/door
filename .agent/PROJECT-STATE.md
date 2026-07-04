@@ -1,6 +1,15 @@
 # Project State
 
-**Last updated:** 2026-07-03 (**D-0018 greeter indicators BUILT.** The two authorized
+**Last updated:** 2026-07-03 (**M4 COMPLETE — door-settings *save* leg closed on hardware;
+every milestone M0–M9 now done with no open legs.** The `pkexec` write from the unprivileged
+door-settings to `/etc/door/greeter.toml` was exercised (`scratch/m4-save-verify.sh` PASS):
+sha `083b3765…`→`6d94fc34…`, file `root:root` mode `644` (world-readable, per constraint), diff =
+the real edit (card alpha `d0`→`94`). This was the last open Done-when leg across the whole
+roadmap. **Remaining work is now purely optional/verification:** the no-network red-team engagement
+(owner-run, `.agent/SECURITY/`), the per-monitor-wallpaper supersession revisit (~2026-07-17), and
+the parked M-F set. Indicators context below.)
+
+**[history] Last updated:** 2026-07-03 (**D-0018 greeter indicators BUILT.** The two authorized
 default-off indicators shipped: **keyboard-layout** (`show_kb_layout` — local xkb read
 `XKB_DEFAULT_LAYOUT`→localectl→vconsole, `⌨ US` under the password mirroring the
 caps-lock row) and **battery** (`show_battery` — `/sys/class/power_supply` first
