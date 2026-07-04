@@ -77,3 +77,11 @@ siblings and were offered as alternatives (2026-07-04):
 DECISION + scope amendment (Tier A: a door milestone; Tier B: arguably its own
 `.agent`-tracked project with door as a sibling), then ROADMAP tasks. Per
 D-0028, this file moves to `ARCHIVED/` with a pointer when that happens.
+
+## Pointer (2026-07-04, later)
+
+Owner asked for the serious version of "door as the first piece of a desktop
+environment." The full anatomy map (what makes Plasma Plasma, the door module
+map, honest costs, the shippable sequence) is in
+`.agent/REPORTS/2026-07-04-desktop-environment-anatomy.md`. Tier B here is that
+map's module 2 (door-comp).
