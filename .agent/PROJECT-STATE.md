@@ -291,8 +291,12 @@ supersession revisit (~2026-07-17). M-F stays parked (owner directive).
 (Files at the root of `.agent/CHECKINS/` that are not yet archived.
 Each represents a question awaiting your input.)
 
-**none** — CHECK-IN 0003 (cc batch) resolved + archived 2026-07-03 (all 5 owner
-decisions filed as D-0018; Agent B integrated to master).
+- `0004-pre-reload-clean-state.md` — pre-reload state snapshot (2026-07-03). **Not
+  blocking** — a clean-state resume anchor (no in-flight work; HEAD `6a6a86c`,
+  tree clean, M0–M9 all complete). Read + archive on next session.
+
+(CHECK-IN 0003 (cc batch) resolved + archived 2026-07-03 — all 5 owner decisions
+filed as D-0018; Agent B integrated to master.)
 
 ---
 
