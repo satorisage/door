@@ -27,6 +27,7 @@ mod hardening;
 mod ipc;
 mod pam;
 mod privdrop;
+mod reauth;
 mod sessions;
 mod spawn;
 // M5 sandbox groundwork: the pre-forked spawner + its supervisor-side helpers. It
@@ -75,49 +76,68 @@ fn main() -> ExitCode {
                 Some(spawner::Spawner::new(sock))
             }
             Err(e) => {
-                eprintln!("doord: could not fork the spawner ({e}); using the direct in-lineage path");
+                eprintln!(
+                    "doord: could not fork the spawner ({e}); using the direct in-lineage path"
+                );
                 None
             }
         }
     } else {
         None
     };
-    // Confine the supervisor's syscall surface (seccomp), now that the spawner owns
-    // session/greeter creation off this lineage. Applied here — after fork_spawner,
-    // before serving — and only in spawner mode: on the direct in-lineage path the
-    // supervisor itself forks the session, so a seccomp filter, being inherited
-    // across fork and preserved across execve, would confine the desktop and break
-    // every login.
-    // Best-effort: a failed install (or `off`) leaves the supervisor running with
-    // the baseline only, and says so. `DOORD_SECCOMP=log` records unlisted syscalls
-    // without blocking; `enforce` fails them with EPERM; `DOORD_NO_SANDBOX=1` forces off.
-    if spawner.is_some() {
-        let mode = hardening::SeccompMode::from_env();
-        match hardening::apply_seccomp(mode) {
-            Ok(()) if mode != hardening::SeccompMode::Off => {
-                eprintln!("doord: supervisor seccomp filter installed ({mode:?})");
+    // The session-lock reauth listener's PAM runs in workers forked off a *dedicated*
+    // reauth spawner (production) — outside the supervisor's sandbox, exactly like the
+    // login path — or directly (dev). Fork that spawner here, while the process is still
+    // single-threaded and before any sandbox: it forks/execs, which the supervisor's own
+    // seccomp filter forbids. (The listener thread itself is spawned further below —
+    // after Landlock, before seccomp — so it inherits the Landlock domain and is then
+    // covered by the TSYNC seccomp install; see there.)
+    let reauth_spawner: std::sync::Arc<std::sync::Mutex<Option<spawner::Spawner>>> =
+        if spawner.is_some() {
+            match spawner::fork_spawner(pam::spawn_raw) {
+                Ok(sock) => {
+                    std::sync::Arc::new(std::sync::Mutex::new(Some(spawner::Spawner::new(sock))))
+                }
+                Err(e) => {
+                    eprintln!(
+                        "doord: could not fork the reauth spawner ({e}); reauth will use the \
+                         direct in-lineage worker path"
+                    );
+                    std::sync::Arc::new(std::sync::Mutex::new(None))
+                }
             }
-            Ok(()) => {}
-            Err(e) => {
-                eprintln!(
-                    "doord: warning: could not apply the seccomp filter ({mode:?}); \
-                     continuing with the baseline only: {e}"
-                );
-            }
-        }
-    } else if hardening::SeccompMode::from_env() != hardening::SeccompMode::Off {
+        } else {
+            std::sync::Arc::new(std::sync::Mutex::new(None))
+        };
+
+    // Establish confinement *around* the reauth listener thread, in an order dictated by
+    // two facts: a Landlock ruleset and a seccomp filter are both inherited across
+    // `clone`, and the supervisor seccomp allowlist has neither `clone` nor the Landlock
+    // syscalls. So: create the reauth socket dir → apply Landlock → spawn the reauth
+    // thread (it inherits the Landlock domain; it never issues a Landlock syscall itself,
+    // which under the filter it could not) → install the seccomp filter with TSYNC so it
+    // covers the already-existing reauth thread. Landlock precedes seccomp so the
+    // supervisor's own Landlock syscalls run before the filter that would deny them.
+
+    // Create /run/doord-reauth before Landlock seeds it as a PathFd: a missing dir would
+    // make the ruleset install fail and silently un-sandbox the whole supervisor. The
+    // shipped unit also pre-creates it via RuntimeDirectory; this is the dev/non-systemd
+    // belt-and-suspenders. Best-effort — a failure (an unprivileged dev run that cannot
+    // write the runtime dir) is logged; the listener's own bind reports the rest.
+    if let Err(e) = reauth::ensure_socket_dir(&config) {
         eprintln!(
-            "doord: DOORD_SECCOMP set but not in spawner mode; skipping — a supervisor \
-             filter on the direct in-lineage path would confine the desktop session"
+            "doord: warning: could not prepare the reauth socket dir for {}: {e}",
+            config.reauth_socket_path.display()
         );
     }
 
-    // Confine the supervisor's filesystem reach (Landlock), after seccomp and under the
-    // same rule: spawner-only, so the desktop/greeter — forked off the spawner, not this
-    // lineage — never inherits the path ruleset. Landlock has no permissive mode, so this
-    // ships flag-gated + default-off (`DOORD_LANDLOCK=enforce` opts a genny boot in; the
-    // path seed is tuned there before the shipped unit flips). Best-effort: an old kernel
-    // degrades to NotEnforced. `DOORD_NO_SANDBOX=1` forces off.
+    // Confine the supervisor's filesystem reach (Landlock) FIRST — before the reauth
+    // thread is spawned, so that thread inherits the ruleset (Landlock has no all-threads
+    // apply; inheritance across `clone` is how a sibling thread is confined), and before
+    // seccomp, so the supervisor's own Landlock syscalls are not denied by the filter.
+    // Spawner-only: the desktop/greeter forked off the spawner never inherits the ruleset.
+    // Flag-gated + default-off; best-effort (an old kernel degrades to NotEnforced).
+    // `DOORD_NO_SANDBOX=1` forces off.
     if spawner.is_some() {
         let mode = hardening::LandlockMode::from_env();
         match hardening::apply_landlock(mode) {
@@ -137,6 +157,81 @@ fn main() -> ExitCode {
             "doord: DOORD_LANDLOCK set but not in spawner mode; skipping — a supervisor \
              path ruleset on the direct in-lineage path would confine the desktop session"
         );
+    }
+
+    // Spawn the reauth listener now — after Landlock (so it inherits the path ruleset) and
+    // before seccomp (whose allowlist has no `clone`) — but hold it on a release gate: the
+    // thread blocks on `rx.recv()` (nothing but a futex wait — `futex` is allowlisted, and
+    // the wake happens post-filter) and touches the socket only once released. The main
+    // thread releases it *after* the TSYNC install below, so the reauth thread's very first
+    // socket syscall (the `bind`/`listen` that makes the socket connectable, then `accept`)
+    // already runs under the all-threads filter — the connectable window is never
+    // seccomp-unconfined, no scheduler race. A channel (not a `Barrier`) so a failed spawn
+    // can't deadlock the release: `send` on a dropped receiver is a harmless error.
+    let reauth_release: Option<std::sync::mpsc::Sender<()>> = {
+        let (tx, rx) = std::sync::mpsc::channel::<()>();
+        let reauth_config = config.clone();
+        let factory = reauth::WorkerReauthFactory::new(reauth_spawner);
+        let spawned = std::thread::Builder::new()
+            .name("doord-reauth".to_string())
+            .spawn(move || {
+                // Park until the all-threads seccomp filter is installed. Issue no
+                // meaningful syscall (only the futex wait) before this returns.
+                if rx.recv().is_err() {
+                    return; // released nothing (startup aborted) — never serve
+                }
+                if let Err(e) = reauth::serve_reauth(&reauth_config, &factory) {
+                    eprintln!(
+                        "doord: reauth listener could not start on {}: {e}",
+                        reauth_config.reauth_socket_path.display()
+                    );
+                }
+            });
+        match spawned {
+            Ok(_handle) => Some(tx), // detach the thread; keep the release handle
+            Err(e) => {
+                eprintln!(
+                    "doord: could not spawn the reauth listener thread: {e}; reauth is disabled"
+                );
+                None
+            }
+        }
+    };
+
+    // Confine the supervisor's syscall surface (seccomp) LAST, with TSYNC (all threads),
+    // so it covers both the greeter loop (this thread) and the reauth listener thread
+    // without needing a post-filter `clone`. Spawner-only: on the direct in-lineage path
+    // the supervisor itself forks the session, so a filter — inherited across fork and
+    // preserved across execve — would confine the desktop and break every login.
+    // Best-effort: a failed install (or `off`) leaves the supervisor on the baseline, and
+    // says so. `DOORD_SECCOMP=log` records unlisted syscalls without blocking; `enforce`
+    // fails them with EPERM; `DOORD_NO_SANDBOX=1` forces off.
+    if spawner.is_some() {
+        let mode = hardening::SeccompMode::from_env();
+        match hardening::apply_seccomp(mode) {
+            Ok(()) if mode != hardening::SeccompMode::Off => {
+                eprintln!("doord: supervisor seccomp filter installed ({mode:?}, all threads)");
+            }
+            Ok(()) => {}
+            Err(e) => {
+                eprintln!(
+                    "doord: warning: could not apply the seccomp filter ({mode:?}); \
+                     continuing with the baseline only: {e}"
+                );
+            }
+        }
+    } else if hardening::SeccompMode::from_env() != hardening::SeccompMode::Off {
+        eprintln!(
+            "doord: DOORD_SECCOMP set but not in spawner mode; skipping — a supervisor \
+             filter on the direct in-lineage path would confine the desktop session"
+        );
+    }
+
+    // Release the reauth listener: the all-threads filter is now installed, so everything
+    // the thread does from here — bind/listen/accept and the PAM relay — runs fully
+    // seccomp-confined. (A dropped receiver, from a failed spawn, makes this a no-op.)
+    if let Some(release) = reauth_release {
+        let _ = release.send(());
     }
 
     let logins = WorkerLoginFactory::new();

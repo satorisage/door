@@ -360,8 +360,10 @@ fn reexec_with_control(arg: &str, control_env: Option<&str>) -> io::Result<(Chil
     Ok((child, daemon_end))
 }
 
-/// Re-exec the daemon as a session worker (D-0005) with a control socket.
-fn spawn_worker() -> io::Result<(Child, UnixStream)> {
+/// Re-exec the daemon as a session worker with a control socket. Shared with the
+/// reauth path's dev/non-spawner mode, which forks a worker directly for a
+/// verify-only PAM conversation (it sends the worker `Auth` but never `Start`).
+pub(crate) fn spawn_worker() -> io::Result<(Child, UnixStream)> {
     reexec_with_control(worker::WORKER_ARG, None)
 }
 
@@ -369,7 +371,10 @@ fn spawn_worker() -> io::Result<(Child, UnixStream)> {
 /// supervisor observes greeter-worker exit as EOF on it — the same mechanism the
 /// session worker uses. The env marker tells the greeter worker to adopt the fd.
 fn spawn_greeter() -> io::Result<(Child, UnixStream)> {
-    reexec_with_control(worker::GREETER_WORKER_ARG, Some(worker::GREETER_CONTROL_ENV))
+    reexec_with_control(
+        worker::GREETER_WORKER_ARG,
+        Some(worker::GREETER_CONTROL_ENV),
+    )
 }
 
 /// The [`crate::spawner::SpawnFn`] for the pre-forked spawner: fork the requested

@@ -22,9 +22,14 @@ StartLimitBurst=5
 [Service]
 Type=simple
 ExecStart=/usr/bin/doord
-# /run/doord (root:root 0700) holds the socket; doord locks down door.sock to
-# 0660 root:<greeter group> itself.
-RuntimeDirectory=doord
+# /run/doord (root:root 0700) holds the greeter socket; doord locks down door.sock
+# to 0660 root:<greeter group> itself. /run/doord-reauth holds the session-lock
+# reauth socket; pre-creating it here guarantees it exists before doord seeds it into
+# the Landlock ruleset (a missing dir would fail the whole ruleset install and silently
+# un-sandbox the supervisor). doord widens it to 0755 and sets the socket to 0666
+# itself — the reauth socket is reachable by any local session user (the peer-cred uid,
+# not the socket mode, is the authorization gate), unlike the greeter-group-only socket.
+RuntimeDirectory=doord doord-reauth
 RuntimeDirectoryMode=0700
 # The greeter is named, not a numeric uid (doord resolves it). Seat/VT are door's.
 Environment=DOORD_GREETER_USER=door-greeter

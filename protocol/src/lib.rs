@@ -49,7 +49,14 @@ pub use secret::Secret;
 ///
 /// v2 added [`Response::Started`] — the session-spawn outcome — as an additive
 /// variant (the sanctioned evolution path: a new variant guarded by this bump).
-pub const PROTOCOL_VERSION: u32 = 2;
+///
+/// v3 added the **reauth seam** — [`ReauthRequest`]/[`ReauthResponse`], a verify-only
+/// credential-check vocabulary spoken on a *separate* socket by the session lock
+/// screen. Additive: new variants, guarded by this bump. Deliberately its own
+/// enum pair rather than more `Request`/`Response` variants, so the reauth seam has
+/// no session-spawn verb in its type system at all (its whole point is to verify and
+/// report, never to start a session).
+pub const PROTOCOL_VERSION: u32 = 3;
 
 /// A desktop session the daemon discovered and is willing to start.
 ///
@@ -150,5 +157,65 @@ pub enum Response {
     AuthFailure { reason: String },
     /// The daemon refused or could not satisfy a request. Never leaks
     /// privileged detail; it is shown to a user standing at the login screen.
+    Error { message: String },
+}
+
+/// Session-lock client → daemon, on the **reauth seam** (a separate socket from the
+/// greeter's, spoken by the lock screen). Asks the daemon to reauthenticate the
+/// *connecting peer's own uid* — verify-only, never a session spawn.
+///
+/// **Untrusted input to the TCB** — `deny_unknown_fields`, exactly like [`Request`]:
+/// an extra or stray field is a malformed frame and is rejected.
+///
+/// This vocabulary has no session verb by design: the reauth seam can verify a
+/// credential and nothing else, so "no session ever" is a property of the type, not
+/// of a handler that happens to decline. Note especially that [`ReauthRequest::Begin`]
+/// carries **no username**: the daemon derives the reauth target uid solely from the
+/// connection's `SO_PEERCRED`, so a client can only ever reauthenticate as *itself*
+/// (no cross-user brute-force oracle). A client that tries to smuggle a target
+/// identity — e.g. an extra `username` field — is rejected by `deny_unknown_fields`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub enum ReauthRequest {
+    /// Always the first message. Declares the version the client speaks; the daemon
+    /// answers [`ReauthResponse::Welcome`] or [`ReauthResponse::Incompatible`]. No
+    /// other reauth request is honored before a successful handshake.
+    Hello { protocol_version: u32 },
+    /// Begin a verify-only reauthentication of this connection's own uid. Carries no
+    /// identity — the target uid is the kernel-attested `SO_PEERCRED` uid.
+    Begin,
+    /// Answer the most recent [`AuthPrompt::Question`]. The reply is a [`Secret`]: it
+    /// lives only as long as the daemon's PAM call needs it and is zeroized after.
+    Reply { response: Secret },
+    /// Abandon the in-progress reauthentication.
+    Cancel,
+}
+
+/// Daemon → session-lock client, on the **reauth seam**. Carries the reauth
+/// conversation and its verdict.
+///
+/// Forward-lenient by design (no `deny_unknown_fields`), like [`Response`]: a newer
+/// daemon may add fields an older client ignores; new variants are version-gated by
+/// the handshake. There is deliberately no "started"/session variant — a reauth
+/// allow is just an allow, with no seat, pid, or session behind it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ReauthResponse {
+    /// Handshake accepted; the daemon speaks `protocol_version`.
+    Welcome { protocol_version: u32 },
+    /// Handshake rejected: the daemon cannot speak the client's version. The daemon
+    /// closes the connection after sending this.
+    Incompatible { daemon_protocol_version: u32 },
+    /// PAM needs the client to render this prompt and (if a question) reply. Reuses
+    /// the greeter's [`AuthPrompt`] so a lock screen renders identically to the login
+    /// screen.
+    Prompt(AuthPrompt),
+    /// Reauthentication succeeded: the peer's own credentials verified. The client may
+    /// unlock. Carries nothing — there is no session, seat, or spawn on this seam.
+    Allow,
+    /// Reauthentication failed or was cancelled. The reason is deliberately coarse: it
+    /// never reveals whether the account exists or which factor failed.
+    Deny { reason: String },
+    /// The daemon could not process the request (malformed, or sent before the
+    /// handshake). Coarse; never leaks privileged detail.
     Error { message: String },
 }

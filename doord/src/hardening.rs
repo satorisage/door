@@ -130,13 +130,23 @@ impl SeccompMode {
 /// before the spawner fork (or on the direct in-lineage path, where the supervisor
 /// itself forks the session) is inherited by the desktop and breaks every login.
 ///
+/// Installed with `TSYNC` ([`apply_filter_all_threads`](seccompiler::apply_filter_all_threads))
+/// so it confines **every** supervisor thread, not just the caller. The supervisor is
+/// no longer single-threaded: the session-lock reauth listener runs on its own
+/// daemon-lifetime thread — created before this install, since the allowlist has no
+/// `clone` — and it serves the daemon's most-exposed surface (the world-connectable
+/// reauth socket). A per-thread `apply_filter` would leave that thread unconfined; TSYNC
+/// covers it without needing a post-filter `clone`. The precondition (`NO_NEW_PRIVS`,
+/// set in the baseline before any thread is spawned and inherited by them) is what lets
+/// the TSYNC install take for all of them.
+///
 /// The filter is irreversible and inherited by children, so it is never installed
 /// from a test — [`compile`] (which does everything up to the install) is the
 /// testable half.
 pub fn apply_seccomp(mode: SeccompMode) -> io::Result<()> {
     match compile(mode)? {
         None => Ok(()),
-        Some(program) => seccompiler::apply_filter(&program)
+        Some(program) => seccompiler::apply_filter_all_threads(&program)
             .map_err(|e| io::Error::other(format!("seccomp: could not install filter: {e}"))),
     }
 }
@@ -392,8 +402,9 @@ const SUPERVISOR_RO_PATHS: &[&str] = &[
 
 /// Read-write subtrees the supervisor needs (full filesystem access set at ABI V1).
 const SUPERVISOR_RW_PATHS: &[&str] = &[
-    "/run/doord", // the IPC listener socket dir: create/bind/chmod/chown/unlink
-    "/dev",       // `/dev/dri/card*` (DRM master) + `/dev/tty{N}` (VT); tighten on genny
+    "/run/doord",        // the IPC listener socket dir: create/bind/chmod/chown/unlink
+    "/run/doord-reauth", // the session-lock reauth listener socket dir (create/bind/chmod/unlink)
+    "/dev",              // `/dev/dri/card*` (DRM master) + `/dev/tty{N}` (VT); tighten on genny
 ];
 
 /// Install the supervisor Landlock ruleset for `mode`. A no-op for [`LandlockMode::Off`].
@@ -421,9 +432,15 @@ pub fn apply_landlock(mode: LandlockMode) -> io::Result<RulesetStatus> {
         .map_err(landlock_err)?
         .create()
         .map_err(landlock_err)?
-        .add_rules(path_beneath_rules(SUPERVISOR_RO_PATHS, AccessFs::from_read(abi)))
+        .add_rules(path_beneath_rules(
+            SUPERVISOR_RO_PATHS,
+            AccessFs::from_read(abi),
+        ))
         .map_err(landlock_err)?
-        .add_rules(path_beneath_rules(SUPERVISOR_RW_PATHS, AccessFs::from_all(abi)))
+        .add_rules(path_beneath_rules(
+            SUPERVISOR_RW_PATHS,
+            AccessFs::from_all(abi),
+        ))
         .map_err(landlock_err)?
         .restrict_self()
         .map_err(landlock_err)?;
@@ -486,6 +503,96 @@ mod tests {
         }
     }
 
+    /// The supervisor grew a second thread (the reauth listener), so the seccomp filter
+    /// must confine *both* threads, not just the caller — hence `apply_filter_all_threads`
+    /// (TSYNC). This proves it: in a forked child (so the test runner is never confined),
+    /// spawn a sibling thread, install the real enforce filter with TSYNC from the main
+    /// child thread, then have the **sibling** attempt a syscall outside the allowlist
+    /// (`chdir`). If TSYNC covered the sibling, the call is `EPERM`'d; if the install had
+    /// been per-thread, the sibling would run unconfined and the call would succeed —
+    /// exactly the reauth-thread hole this guards against. The child's exit code encodes
+    /// the outcome. Skips gracefully where an unprivileged seccomp install is unavailable.
+    ///
+    /// Coverage note: this proves the *filter* reaches a sibling thread. In `main` the
+    /// reauth thread is additionally held on a release channel — it blocks on `recv`
+    /// (only a futex wait) and touches no socket until the main thread releases it *after*
+    /// this all-threads install — so its first `bind`/`listen`/`accept` already runs under
+    /// the filter, with no scheduler race over the connectable window.
+    #[test]
+    fn all_threads_filter_confines_a_sibling_thread() {
+        use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
+
+        static PROCEED: AtomicBool = AtomicBool::new(false);
+        static DONE: AtomicBool = AtomicBool::new(false);
+        static SIBLING_ERRNO: AtomicI32 = AtomicI32::new(0);
+
+        // SAFETY: fork; the child does only atomics + one thread spawn + the filter
+        // install + a probe syscall before _exit, never returning to the harness.
+        let pid = unsafe { libc::fork() };
+        assert!(pid >= 0, "fork failed");
+        if pid == 0 {
+            // TSYNC on an unprivileged caller requires NO_NEW_PRIVS on every thread, so
+            // set it before spawning the sibling (which then inherits it).
+            let nnp = unsafe { libc::prctl(libc::PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) };
+            if nnp != 0 {
+                unsafe { libc::_exit(40) }; // can't set NNP → inconclusive, skip
+            }
+
+            let sibling = std::thread::spawn(|| {
+                // Wait (unconfined syscalls are fine here) until the filter is installed.
+                while !PROCEED.load(Ordering::SeqCst) {
+                    std::thread::yield_now();
+                }
+                // A syscall deliberately outside SUPERVISOR_ALLOWLIST. Under the enforce
+                // filter this returns EPERM *iff* TSYNC confined this sibling thread.
+                let rc = unsafe { libc::chdir(c"/".as_ptr()) };
+                let err = if rc == 0 {
+                    0
+                } else {
+                    io::Error::last_os_error().raw_os_error().unwrap_or(0)
+                };
+                SIBLING_ERRNO.store(err, Ordering::SeqCst);
+                DONE.store(true, Ordering::SeqCst);
+            });
+
+            // Install the real enforce filter across ALL threads (main + sibling).
+            let program = compile(SeccompMode::Enforce)
+                .expect("compile")
+                .expect("program");
+            match seccompiler::apply_filter_all_threads(&program) {
+                Ok(()) => {}
+                // No unprivileged seccomp here (restricted sandbox) → inconclusive, skip.
+                Err(_) => unsafe { libc::_exit(40) },
+            }
+
+            PROCEED.store(true, Ordering::SeqCst);
+            while !DONE.load(Ordering::SeqCst) {
+                std::thread::yield_now();
+            }
+            let _ = sibling.join();
+
+            let code = if SIBLING_ERRNO.load(Ordering::SeqCst) == libc::EPERM {
+                0 // sibling was confined by TSYNC — the guarantee holds
+            } else {
+                10 // sibling ran unconfined — the per-thread hole would look like this
+            };
+            unsafe { libc::_exit(code) };
+        }
+
+        let mut wstatus = 0i32;
+        unsafe { libc::waitpid(pid, &mut wstatus, 0) };
+        let code = libc::WEXITSTATUS(wstatus);
+        if code == 40 {
+            eprintln!("unprivileged seccomp unavailable here — skipping the TSYNC assertion");
+            return;
+        }
+        assert_eq!(
+            code, 0,
+            "child exit {code}: 0 = sibling thread confined by TSYNC, \
+             10 = sibling ran UNCONFINED (per-thread filter would leave the reauth thread open)"
+        );
+    }
+
     // --- Landlock ---
     //
     // Only the (pure) mode parser is unit-tested: building a real ruleset syscalls,
@@ -494,7 +601,10 @@ mod tests {
 
     #[test]
     fn landlock_no_sandbox_overrides_every_value() {
-        assert_eq!(LandlockMode::parse(Some("enforce"), true), LandlockMode::Off);
+        assert_eq!(
+            LandlockMode::parse(Some("enforce"), true),
+            LandlockMode::Off
+        );
         assert_eq!(LandlockMode::parse(None, true), LandlockMode::Off);
     }
 
