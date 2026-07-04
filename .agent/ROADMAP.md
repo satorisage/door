@@ -12,8 +12,9 @@ milestone's task tree is the plan; `.agent/TODO.md` is its derived ready-frontie
 > - **M4's lone open leg** — door-settings *save* (`pkexec`-write to `/etc/door/greeter.toml`),
 >   design-verified only. Owner-run harness: `bash ./scratch/m4-save-verify.sh` on genny; a PASS
 >   closes M4's Done-when.
-> - **D-0018 greeter indicators (default-off)** — keyboard-layout + battery indicators authorized
->   (CHECK-IN 0003); build tasks in `## Loose` below. TCB-neutral, off by default.
+> - ~~**D-0018 greeter indicators (default-off)**~~ — **SHIPPED in v0.1.8** (2026-07-03):
+>   keyboard-layout + battery indicators built, verified headless, released. TCB-neutral,
+>   off by default. (Both `## Loose` tasks marked done.)
 > - **No-network verification engagement** — owner-run red-team to *prove* `No network, ever`
 >   holds (D-0018); scoped at `.agent/SECURITY/no-network-verification-engagement.md`.
 > - **Per-monitor wallpaper** — documented primary-output-only v1 bound for now; supersession of
