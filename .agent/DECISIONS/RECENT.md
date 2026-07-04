@@ -11,7 +11,6 @@
 
 | ID | Date | Title |
 |---|---|---|
-| 0006 | 2026-06-26 | [Greeter UI toolkit: Iced + iced_layershell](DECISION-0006-greeter-toolkit-iced.md) — *surface clause superseded by 0007 (2026-06-26); Iced stands* |
 | 0007 | 2026-06-26 | [Greeter host: cage + plain-iced fullscreen toplevel](DECISION-0007-greeter-host-cage-toplevel.md) |
 | 0008 | 2026-06-26 | [doord owns the greeter lifecycle (handoff + re-greet)](DECISION-0008-doord-owns-greeter-lifecycle.md) |
 | 0009 | 2026-06-27 | [Session lifetime tied to doord; seat freed by killing the compositor process group](DECISION-0009-session-lifetime-tied-to-doord.md) |
@@ -26,3 +25,4 @@
 | 0018 | 2026-07-03 | [Pre-auth stance round 2: graduate keyboard-layout + battery (default-off); user-list parked; no-network reaffirmed absolute + a verification engagement](DECISION-0018-pre-auth-stance-round2.md) — *supersedes D-0012's indicator-parking clause in part* |
 | 0019 | 2026-07-03 | [Session lock screen: door-lock as an ext-session-lock-v1 client + a doord Reauth verb (M10)](DECISION-0019-session-lock-door-lock.md) |
 | 0020 | 2026-07-04 | [Module naming: the door-parts convention](DECISION-0020-module-naming-door-parts.md) |
+| 0021 | 2026-07-04 | [DE work graduates to its own project: foyer (door stays the DM)](DECISION-0021-de-graduates-to-foyer.md) |

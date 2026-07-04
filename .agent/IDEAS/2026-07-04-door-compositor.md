@@ -91,3 +91,12 @@ map's module 2 (door-comp).
 The door-parts naming convention is Binding: Tier A's working name
 "door-stage" is reserved as **doorstep**; Tier B as **doorframe**. See
 DECISION-0020.
+
+## Graduation (2026-07-04, D-0021) — Tier B fork RESOLVED → foyer
+
+The DE work (Tier B+: doorframe, sill, doorbell, threshold, latch) graduated
+to its own sibling project **foyer** (`~/Projects/foyer`), per DECISION-0021.
+Of the forks above: 1–2 are answered (Tier B → its own repo/scope; Tier A
+remains a door candidate), 3–4 transfer to doorstep's eventual door DECISION.
+**This file stays in the inbox for the doorstep (Tier A) half only** — the
+cage-replacement question is door's, unratified, and unaffected by foyer.

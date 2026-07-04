@@ -1,6 +1,19 @@
 # Project State
 
-**Last updated:** 2026-07-04 (**M10 door-lock BUILT — code + docs complete; hardware demo
+**Last updated:** 2026-07-04 (**DE work GRADUATED → foyer (D-0021, Binding).** The
+desktop-environment thread (Tier B+ of the door-compositor idea: doorframe, sill,
+doorbell, threshold, latch) moved to its own `.agent`-tracked sibling project
+**`~/Projects/foyer`** — repo stood up, founding brief (the DE-anatomy map) + the
+idea material seeded into `foyer/docs/`; the umbrella name **foyer** is unparked
+(supersedes D-0020's parking clause in part; the door-parts convention stands).
+**door's scope is unchanged**: door/door-lock/door-theme/door-settings stay here,
+and **doorstep** (Tier A cage replacement, pre-auth TCB) remains a door-owned
+unratified candidate in IDEAS. foyer's scope/vision comes from a vision-first
+bootstrap (`.agent init`) run in a foyer session — not yet run. door's frontier is
+unchanged: **M10 hardware demo (owner-run)** — `scratch/m10-install.sh` → reboot →
+`scratch/m10-demo.sh`, then release/AUR bump. Prior context below.)
+
+**[history] Last updated:** 2026-07-04 (**M10 door-lock BUILT — code + docs complete; hardware demo
 pending.** The `door-lock` binary shipped: an `ext-session-lock-v1` client
 (`iced_sessionlock` 0.18.1 / iced 0.14) rendering the exact greeter surface from the shared
 kit — `door_theme::{host,styles}` were **lifted out of the greeter** (behavior-preserving,
@@ -308,12 +321,9 @@ per-monitor-wallpaper supersession revisit (~2026-07-17). M-F stays parked
 (Files at the root of `.agent/CHECKINS/` that are not yet archived.
 Each represents a question awaiting your input.)
 
-- `0004-pre-reload-clean-state.md` — pre-reload state snapshot (2026-07-03). **Not
-  blocking** — a clean-state resume anchor (no in-flight work; HEAD `6a6a86c`,
-  tree clean, M0–M9 all complete). Read + archive on next session.
-
-(CHECK-IN 0003 (cc batch) resolved + archived 2026-07-03 — all 5 owner decisions
-filed as D-0018; Agent B integrated to master.)
+(none open — CHECK-IN 0004 (pre-reload resume anchor) consumed + archived `529ede3`;
+CHECK-IN 0003 (cc batch) resolved + archived 2026-07-03, all 5 owner decisions filed
+as D-0018.)
 
 ---
 

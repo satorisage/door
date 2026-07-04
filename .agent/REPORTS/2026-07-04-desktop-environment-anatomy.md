@@ -111,3 +111,12 @@ door-shell's pieces → **sill** (panel) + **doorbell** (notifications),
 door-session → **threshold**, door-idle → **latch**; plus **doorman** (polkit
 agent) and **keyhole** (secrets) when their day comes. The environment's
 umbrella name is parked (candidate: **foyer**) until a shell exists.
+
+## Addendum (2026-07-04, later): graduated — D-0021
+
+This map is now the **founding brief of `foyer`** (`~/Projects/foyer`), the
+DE's own `.agent`-tracked sibling project (DECISION-0021; umbrella name
+unparked, superseding the parking clause above in part). foyer owns §4's
+modules 2–6 (doorframe, sill, doorbell, threshold, latch + the late
+doorman/keyhole); **doorstep (module 1) stays a door concern** (pre-auth TCB).
+This copy remains door's historical record; foyer carries its own.
